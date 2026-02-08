@@ -1,0 +1,74 @@
+{
+	"name": "vsfire",
+	"displayName": "Firebase",
+	"description": "Firestore Security Rules syntax highlighting",
+	"version": "1.4.1",
+	"publisher": "toba",
+	"keywords": [
+		"firebase",
+		"firestore",
+		"rules"
+	],
+	"icon": "logo.png",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/toba/vsfire.git"
+	},
+	"bugs": {
+		"url": "https://github.com/toba/vsfire/issues"
+	},
+	"engines": {
+		"vscode": "^1.75.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"scripts": {
+		"compile": "tsc -p ./",
+		"pkgvars": "node ./node_modules/vscode/bin/install",
+		"postinstall": "node ./node_modules/vscode/bin/install",
+		"test": "jest --coverage"
+	},
+	"main": "./dist/extension",
+	"contributes": {
+		"languages": [
+			{
+				"id": "firerules",
+				"extensions": [
+					".rules",
+					".rule"
+				],
+				"aliases": [
+					"Firebase Rules"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "firerules",
+				"scopeName": "source.firerules",
+				"path": "./syntaxes/firerules.json"
+			}
+		],
+		"jsonValidation": [
+			{
+				"fileMatch": "*.indexes.json",
+				"url": "./syntaxes/index.schema.json"
+			}
+		]
+	},
+	"devDependencies": {
+		"@toba/develop": "^4.4.2",
+		"@toba/test": "^3.4.1",
+		"@types/node": "^10.0.0",
+		"ts-node": "^8.0.0",
+		"vscode": "^1.1.28"
+	},
+	"dependencies": {},
+	"__metadata": {
+		"installedTimestamp": 1764443089935,
+		"targetPlatform": "undefined",
+		"size": 71497
+	}
+}

@@ -1,0 +1,184 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "App intelligente per cliniche dentali e pazienti",
+    "selectLanguage": "Seleziona Lingua",
+    "forClinicOwners": "Per proprietari di cliniche",
+    "forPatients": "Per pazienti",
+    "existingClinic": "Clinica esistente",
+    "existingClinicSub": "Accedi al tuo pannello",
+    "newClinic": "Nuova clinica",
+    "newClinicSub": "Inizia la tua prova gratuita di 30 giorni",
+    "patientAccess": "Accesso paziente",
+    "patientAccessSub": "Visualizza il tuo piano di trattamento"
+  },
+  "home": {
+    "chooseLanguage": "Scegli lingua",
+    "primaryActions": {
+      "myClinic": {
+        "title": "La mia clinica",
+        "subtitle": "Accesso smart: inizio, setup o dashboard"
+      },
+      "patient": {
+        "title": "Paziente",
+        "subtitle": "Accesso paziente con codice o account"
+      },
+      "ai": {
+        "title": "Chiedi all’assistente IA 🧠",
+        "subtitle": "Fai le tue domande odontoiatriche"
+      },
+      "upload": {
+        "title": "Carica file",
+        "subtitle": "Carica immagini o documenti per clinica o paziente"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "Cronologia Trattamento",
+    "chatPatient": "Chat con il paziente",
+    "chatClinic": "Chat con la clinica",
+    "messages": "Messaggi"
+  },
+  "clinic": {
+    "title": "Assistente dentale IA",
+    "subtitle": "Solo informazioni educative; non è una diagnosi medica",
+    "welcome": "Ciao 👋\nSono un assistente IA dentale.\nOffro solo informazioni generali.",
+    "inputPlaceholder": "Scrivi la tua domanda...",
+    "footer": "Non sostituisce il parere di un professionista",
+    "send": "Invia",
+    "back": "Indietro",
+    "thinking": "Sto riflettendo sulla tua domanda dentale...",
+    "thinkingHelper": "Preparo una risposta sicura e professionale per te.",
+    "responses": {
+      "emergency": "⚠️ Sembra urgente. Contatta subito un dentista o il pronto soccorso.",
+      "nonDental": "Posso aiutare solo con temi dentali. Chiedi su salute orale, denti o odontoiatria.",
+      "ambiguousDental": "Sono focalizzato su indicazioni dentali. Per una diagnosi precisa, consulta un dentista abilitato.",
+      "dentalGeneral1": "Per qualsiasi problema dentale, fissa una visita con un dentista abilitato per esame e diagnosi adeguati.",
+      "dentalGeneral2": "Spazzolino, filo interdentale e pulizie professionali regolari sono fondamentali per la salute orale.",
+      "dentalGeneral3": "I problemi dentali variano per persona. Un dentista può darti consigli personalizzati.",
+      "dentalGeneral4": "Se avverti fastidio, consulta presto un dentista per valutazione e cura.",
+      "fallback": "Consulta un professionista dentale per un supporto personalizzato. Non ho potuto elaborare la richiesta ora.",
+      "empty": "Inserisci una domanda dentale per poterti aiutare."
+    },
+    "labels": {
+      "emergency": "Avviso dentale urgente",
+      "warning": "Guida dentale",
+      "dental": "Info dentale"
+    },
+    "code": "Codice",
+    "name": "Nome",
+    "age": "Età",
+    "gender": "Genere",
+    "male": "Maschio",
+    "female": "Femmina"
+  },
+  "patient": {
+    "logout": "Esci",
+    "noSessions": "Nessuna sessione ancora.",
+    "enterCode": "Inserisci il tuo codice paziente",
+    "login": "Accedi",
+    "code": "Codice Paziente"
+  },
+  "chat": {
+    "placeholder": "Scrivi un messaggio...",
+    "send": "Invia"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "firstName": "Nome",
+    "lastName": "Cognome",
+    "phone": "Telefono",
+    "clinicName": "Nome della clinica (opzionale)",
+    "clinicPhone": "Telefono della clinica (opzionale)",
+    "country": "Paese",
+    "city": "Città",
+    "signup": "Registrati",
+    "login": "Accedi",
+    "clinicSignup": "Registrazione Clinica",
+    "clinicLogin": "Accesso Clinica"
+  },
+  "createPatient": {
+    "title": "Crea Paziente",
+    "name": "Nome",
+    "age": "Età",
+    "gender": "Genere",
+    "male": "Maschio",
+    "female": "Femmina",
+    "medication": "Farmaci Regolari?",
+    "medicationDetails": "Dettagli farmaci",
+    "allergy": "Allergia?",
+    "allergyDetails": "Dettagli allergia",
+    "yes": "Sì",
+    "no": "No",
+    "photos": "Foto",
+    "photo": "Foto",
+    "camera": "Fotocamera",
+    "save": "Salva",
+    "selectCountry": "Seleziona paese",
+    "searchCountries": "Cerca paesi...",
+    "noCountriesFound": "Nessun paese trovato"
+  },
+  "common": {
+    "loading": "Caricamento...",
+    "error": "Errore",
+    "success": "Successo",
+    "cancel": "Annulla",
+    "ok": "OK",
+    "saved": "Salvato",
+    "validation": "Validazione",
+    "required": "Questo campo è obbligatorio",
+    "submit": "Invia",
+    "skip": "Salta"
+  },
+  "clinicRating": {
+    "rateClinic": "Valuta questa clinica",
+    "title": "Valuta Clinica",
+    "ratingTitle": "Come valuteresti questa clinica?",
+    "feedback": "Condividi il tuo feedback (opzionale)",
+    "feedbackPlaceholder": "Raccontaci della tua esperienza...",
+    "submit": "Invia Valutazione",
+    "cancel": "Annulla",
+    "ratingSubmitted": "Grazie per la tua valutazione!",
+    "validationError": "Si prega di selezionare una valutazione",
+    "star": "Stella",
+    "stars": "Stelle"
+  },
+  "storeRating": {
+    "title": "Ti piace BeSmile AI?",
+    "body": "Ci piacerebbe sentire la tua opinione. Vorresti valutare BeSmile AI sull'App Store?",
+    "cta_rate": "Valuta su App Store",
+    "cta_not_now": "Non ora"
+  },
+  "aiAssistant": {
+    "title": "Assistente AI Dentale",
+    "comingSoon": "In arrivo",
+    "disclaimer": "Questa funzione fornisce solo informazioni generali e non costituisce una diagnosi medica.",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "Scopri cosa arriva dopo — In arrivo"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "emergencyAlert": "⚠️ Questo sembra essere un'emergenza dentale grave. Si prega di contattare immediatamente un dentista."
+  }
+}

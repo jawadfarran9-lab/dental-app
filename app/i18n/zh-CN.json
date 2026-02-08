@@ -1,0 +1,184 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "智能牙科诊所和患者应用",
+    "selectLanguage": "选择语言",
+    "forClinicOwners": "为诊所所有者",
+    "forPatients": "为患者",
+    "existingClinic": "现有诊所",
+    "existingClinicSub": "登录到您的控制面板",
+    "newClinic": "新诊所",
+    "newClinicSub": "开始您的30天免费试用",
+    "patientAccess": "患者访问",
+    "patientAccessSub": "查看您的治疗计划"
+  },
+  "home": {
+    "chooseLanguage": "选择语言",
+    "primaryActions": {
+      "myClinic": {
+        "title": "我的诊所",
+        "subtitle": "智能登录：起始、设置或仪表盘"
+      },
+      "patient": {
+        "title": "患者",
+        "subtitle": "患者使用代码或账户登录"
+      },
+      "ai": {
+        "title": "询问AI助手 🧠",
+        "subtitle": "提出您的牙科问题"
+      },
+      "upload": {
+        "title": "上传文件",
+        "subtitle": "为诊所或患者添加图片/文档"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "治疗时间线",
+    "chatPatient": "与患者聊天",
+    "chatClinic": "与诊所聊天",
+    "messages": "消息"
+  },
+  "clinic": {
+    "title": "牙科AI助手",
+    "subtitle": "仅提供科普信息，并非医疗诊断",
+    "welcome": "你好 👋\n我是牙科AI助手。\n只提供一般信息。",
+    "inputPlaceholder": "请输入你的问题...",
+    "footer": "不能替代专业医疗建议",
+    "send": "发送",
+    "back": "返回",
+    "thinking": "正在思考您的牙科问题...",
+    "thinkingHelper": "为您准备安全、专业的回复。",
+    "responses": {
+      "emergency": "⚠️ 可能是紧急情况。请立即联系牙医或急救服务。",
+      "nonDental": "我只能帮助牙科相关问题。请询问口腔健康、牙齿或牙科内容。",
+      "ambiguousDental": "我专注于牙科指导。准确诊断请咨询执业牙医。",
+      "dentalGeneral1": "有任何牙科问题，请预约执业牙医进行检查和诊断。",
+      "dentalGeneral2": "规律刷牙、使用牙线和定期洁牙是口腔健康的关键。",
+      "dentalGeneral3": "牙科情况因人而异。牙医可以提供个性化建议。",
+      "dentalGeneral4": "如有不适，请尽快找牙医评估与处理。",
+      "fallback": "请咨询牙科专业人士获取个性化护理。目前无法处理该请求。",
+      "empty": "请输入牙科相关问题以便我帮助您。"
+    },
+    "labels": {
+      "emergency": "紧急牙科警示",
+      "warning": "牙科指引",
+      "dental": "牙科信息"
+    },
+    "code": "代码",
+    "name": "姓名",
+    "age": "年龄",
+    "gender": "性别",
+    "male": "男",
+    "female": "女"
+  },
+  "patient": {
+    "logout": "退出",
+    "noSessions": "还没有疗程。",
+    "enterCode": "输入您的患者代码",
+    "login": "登录",
+    "code": "患者代码"
+  },
+  "chat": {
+    "placeholder": "写一条消息...",
+    "send": "发送"
+  },
+  "auth": {
+    "email": "电子邮件",
+    "password": "密码",
+    "firstName": "名字",
+    "lastName": "姓氏",
+    "phone": "电话",
+    "clinicName": "诊所名称(可选)",
+    "clinicPhone": "诊所电话(可选)",
+    "country": "国家",
+    "city": "城市",
+    "signup": "注册",
+    "login": "登录",
+    "clinicSignup": "诊所注册",
+    "clinicLogin": "诊所登录"
+  },
+  "createPatient": {
+    "title": "创建患者",
+    "name": "姓名",
+    "age": "年龄",
+    "gender": "性别",
+    "male": "男",
+    "female": "女",
+    "medication": "定期服药？",
+    "medicationDetails": "药物详情",
+    "allergy": "过敏？",
+    "allergyDetails": "过敏详情",
+    "yes": "是",
+    "no": "否",
+    "photos": "照片",
+    "photo": "照片",
+    "camera": "相机",
+    "save": "保存",
+    "selectCountry": "选择国家",
+    "searchCountries": "搜索国家...",
+    "noCountriesFound": "未找到国家"
+  },
+  "common": {
+    "loading": "加载中...",
+    "error": "错误",
+    "success": "成功",
+    "cancel": "取消",
+    "ok": "确定",
+    "saved": "已保存",
+    "validation": "验证",
+    "required": "此字段为必填项",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "评价此诊所",
+    "title": "评价诊所",
+    "ratingTitle": "您如何评价此诊所？",
+    "feedback": "分享您的反馈(可选)",
+    "feedbackPlaceholder": "告诉我们您的体验...",
+    "submit": "提交评价",
+    "cancel": "取消",
+    "ratingSubmitted": "感谢您的评价!",
+    "validationError": "请选择评价",
+    "star": "星",
+    "stars": "星"
+  },
+  "storeRating": {
+    "title": "您喜欢BeSmile AI吗？",
+    "body": "我们很想听听您的意见。您想在App Store上评价BeSmile AI吗？",
+    "cta_rate": "在App Store上评价",
+    "cta_not_now": "稍后"
+  },
+  "aiAssistant": {
+    "title": "牙科AI助手",
+    "comingSoon": "即将推出",
+    "disclaimer": "此功能仅提供一般信息，并不构成医疗诊断。",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "探索接下来的功能 — 即将上线"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "emergencyAlert": "⚠️ 这似乎是一个严重的牙科紧急情况。请立即联系牙医。"
+  }
+}

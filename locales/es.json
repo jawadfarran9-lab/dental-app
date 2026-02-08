@@ -1,0 +1,29 @@
+{
+  "landing": {
+    "selectLanguage": "Seleccionar idioma",
+    "dentist": "I'm a dentist / clinic",
+    "dentistSub": "Manage clinic and patients",
+    "patient": "I'm a patient",
+    "patientSub": "View my treatment"
+  },
+  "tabs": {
+    "timeline": "Cronología de tratamiento",
+    "chatPatient": "Chat con el paciente",
+    "chatClinic": "Chat con la clínica",
+    "messages": "Mensajes"
+  },
+  "clinic": {
+    "sessionType": "Tipo de sesión (ej. Limpieza)",
+    "description": "Descripción",
+    "addSession": "Agregar sesión",
+    "addPhoto": "Agregar foto"
+  },
+  "patient": {
+    "logout": "Cerrar sesión",
+    "noSessions": "Aún no hay sesiones."
+  },
+  "chat": {
+    "placeholder": "Escribe un mensaje...",
+    "send": "Enviar"
+  }
+}

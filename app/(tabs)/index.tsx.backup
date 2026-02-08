@@ -1,0 +1,63 @@
+import React from "react";
+import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+
+export default function HomeScreen() {
+  const handleDentistPress = () => {
+    console.log("Dentist selected");
+    // هنا لاحقًا نروح لصفحة الطبيب
+  };
+
+  const handlePatientPress = () => {
+    console.log("Patient selected");
+    // هنا لاحقًا نروح لصفحة المريض
+  };
+
+  return (
+    <View style={styles.container}>
+      <Text style={styles.title}>{/* Removed hardcoded DentalFlow - Phase G */}</Text>
+      <Text style={styles.subtitle}>اختر نوع الحساب</Text>
+
+      <TouchableOpacity style={styles.button} onPress={handleDentistPress}>
+        <Text style={styles.buttonText}>أنا طبيب / عيادة</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.button} onPress={handlePatientPress}>
+        <Text style={styles.buttonText}>أنا مريض</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#f5f7fb",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 24,
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: "bold",
+    marginBottom: 8,
+    color: "#1B3C73",
+  },
+  subtitle: {
+    fontSize: 18,
+    marginBottom: 32,
+    color: "#555",
+  },
+  button: {
+    width: "100%",
+    backgroundColor: "#2E8BFD",
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  buttonText: {
+    color: "#fff",
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "600",
+  },
+});

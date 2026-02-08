@@ -1,0 +1,29 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Allow clinic images (logo/profile) to be uploaded without auth
+    // Path: clinics/{clinicId}/clinicImage.jpg
+    match /clinics/{clinicId}/clinicImage.jpg {
+      allow read: if true;  // Anyone can view clinic images
+      allow write: if true; // Allow uploads without auth (app-level validation)
+    }
+
+    // Allow access to files under clinics/{clinicId}/patients/{patientId}/...
+    match /clinics/{clinicId}/patients/{patientId}/{allPaths=**} {
+      allow read: if isClinicOwner(clinicId) || isPatientOwner(patientId);
+      // Only clinic users may upload/update/delete images for their patients
+      allow write: if isClinicOwner(clinicId);
+    }
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isClinicOwner(clinicId) {
+      return isAuthenticated() && request.auth.token.clinicId == clinicId;
+    }
+    function isPatientOwner(patientId) {
+      return isAuthenticated() && request.auth.token.patientId == patientId;
+    }
+  }
+}

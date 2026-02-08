@@ -1,0 +1,237 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "Aplicación inteligente para clínicas dentales y pacientes",
+    "selectLanguage": "Seleccionar idioma",
+    "forClinicOwners": "Para propietarios de clínicas",
+    "forPatients": "Para pacientes",
+    "existingClinic": "Clínica existente",
+    "existingClinicSub": "Inicie sesión en su panel",
+    "newClinic": "Nueva clínica",
+    "newClinicSub": "Comience su prueba gratuita de 30 días",
+    "patientAccess": "Acceso de paciente",
+    "patientAccessSub": "Ver su plan de tratamiento"
+  },
+  "home": {
+    "chooseLanguage": "Elegir idioma",
+    "primaryActions": {
+      "myClinic": {
+        "title": "Mi Clínica",
+        "subtitle": "Ingreso inteligente: inicio, configuración o panel"
+      },
+      "patient": {
+        "title": "Paciente",
+        "subtitle": "Acceso del paciente con código o cuenta"
+      },
+      "ai": {
+        "title": "Pregunta al Asistente IA 🧠",
+        "subtitle": "Haz tus preguntas sobre odontología"
+      },
+      "upload": {
+        "title": "Subir archivos",
+        "subtitle": "Sube imágenes o documentos para tu clínica o paciente"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "Cronología de tratamiento",
+    "chatPatient": "Chat con el paciente",
+    "chatClinic": "Chat con la clínica",
+    "messages": "Mensajes"
+  },
+  "clinic": {
+    "sessionType": "Tipo de sesión (ej. Limpieza)",
+    "description": "Descripción",
+    "addSession": "Agregar sesión",
+    "addPhoto": "Agregar foto",
+    "noPatients": "Aún no hay pacientes",
+    "code": "Código",
+    "name": "Nombre",
+    "age": "Edad",
+    "gender": "Género",
+    "male": "Masculino",
+    "female": "Femenino"
+  },
+  "patient": {
+    "logout": "Cerrar sesión",
+    "noSessions": "Aún no hay sesiones.",
+    "enterCode": "Ingrese su código de paciente",
+    "login": "Iniciar sesión",
+    "code": "Código de paciente"
+  },
+  "chat": {
+    "placeholder": "Escribe un mensaje...",
+    "send": "Enviar"
+  },
+  "auth": {
+    "email": "Correo",
+    "password": "Contraseña",
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "phone": "Teléfono",
+    "clinicName": "Nombre de la clínica (opcional)",
+    "clinicPhone": "Teléfono de la clínica (opcional)",
+    "country": "País",
+    "city": "Ciudad",
+    "signup": "Registrarse",
+    "login": "Iniciar sesión",
+    "clinicSignup": "Registro de clínica",
+    "clinicLogin": "Inicio de sesión de clínica"
+  },
+  "createPatient": {
+    "title": "Crear paciente",
+    "name": "Nombre",
+    "age": "Edad",
+    "gender": "Género",
+    "male": "Masculino",
+    "female": "Femenino",
+    "medication": "¿Medicación regular?",
+    "medicationDetails": "Detalles de medicación",
+    "allergy": "¿Alergia?",
+    "allergyDetails": "Detalles de alergia",
+    "yes": "Sí",
+    "no": "No",
+    "photos": "Fotos",
+    "photo": "Foto",
+    "camera": "Cámara",
+    "save": "Guardar",
+    "selectCountry": "Seleccionar país",
+    "searchCountries": "Buscar países...",
+    "noCountriesFound": "No se encontraron países"
+  },
+  "common": {
+    "loading": "Cargando...",
+    "error": "Error",
+    "success": "Éxito",
+    "cancel": "Cancelar",
+    "ok": "OK",
+    "saved": "Guardado",
+    "validation": "Validación",
+    "required": "Este campo es obligatorio",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "Calificar esta clínica",
+    "title": "Calificar Clínica",
+    "ratingTitle": "¿Cómo calificaría esta clínica?",
+    "feedback": "Comparta sus comentarios (opcional)",
+    "feedbackPlaceholder": "Cuéntenos sobre su experiencia...",
+    "submit": "Enviar Calificación",
+    "cancel": "Cancelar",
+    "ratingSubmitted": "¡Gracias por su calificación!",
+    "validationError": "Por favor seleccione una calificación",
+    "star": "Estrella",
+    "stars": "Estrellas"
+  },
+  "storeRating": {
+    "title": "¿Te encanta BeSmile AI?",
+    "body": "Nos encantaría saber tu opinión. ¿Te gustaría calificar BeSmile AI en la App Store?",
+    "cta_rate": "Calificar en App Store",
+    "cta_not_now": "Ahora no"
+  },
+  "aiAssistant": {
+    "title": "Asistente de IA Dental",
+    "comingSoon": "Próximamente",
+    "disclaimer": "Esta función proporciona solo información general y no es un diagnóstico médico.",
+    "proPlusBadge": "Pro+ IA",
+    "entrySubtitle": "Explora lo que sigue — Próximamente"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "title": "Asistente Dental IA",
+    "subtitle": "Asistente educativo; no reemplaza un diagnóstico médico",
+    "welcome": "Hola 👋\nSoy un asistente de IA dental.\nSolo brindo información general.",
+    "inputPlaceholder": "Escribe tu pregunta...",
+    "footer": "No reemplaza la consulta con un profesional",
+    "send": "Enviar",
+    "back": "Volver",
+    "thinking": "Pensando en tu pregunta dental...",
+    "thinkingHelper": "Preparando una respuesta segura y profesional para ti.",
+    "responses": {
+      "emergency": "⚠️ Suena urgente. Contacta a un dentista o servicio de emergencias de inmediato.",
+      "nonDental": "Solo puedo ayudar con temas dentales. Pregunta sobre salud bucal, dientes o odontología.",
+      "ambiguousDental": "Me enfoco en orientación dental. Para un diagnóstico preciso, consulta a un dentista.",
+      "dentalGeneral1": "Para cualquier problema dental, agenda con un dentista titulado para un examen y diagnóstico adecuados.",
+      "dentalGeneral2": "Cepillado, hilo dental y limpiezas profesionales regulares son clave para la salud bucal.",
+      "dentalGeneral3": "Los problemas dentales varían según la persona. Un dentista puede darte consejos personalizados.",
+      "dentalGeneral4": "Si sientes molestia, consulta pronto a un dentista para evaluación y cuidado.",
+      "fallback": "Consulta a un profesional dental para atención personalizada. No pude procesar tu solicitud ahora.",
+      "empty": "Ingresa una pregunta dental para poder ayudarte."
+    },
+    "labels": {
+      "emergency": "Alerta dental urgente",
+      "warning": "Guía dental",
+      "dental": "Info dental"
+    }
+  },
+    "clinicProfile": {
+      "title": "Perfil de la Clínica",
+      "subtitle": "Descubre clínicas de confianza",
+      "pro": "Pro",
+      "follow": "Seguir",
+      "contact": "Contacto",
+      "about": "Acerca de",
+      "services": "Servicios",
+      "hours": "Horario de atención",
+      "location": "Ubicación",
+      "stories": "Historias",
+      "media": "Galería",
+      "footerNote": "Este perfil es solo informativo.",
+      "nav": {
+        "home": "Inicio",
+        "reels": "Reels",
+        "discover": "Descubrir",
+        "profile": "Perfil",
+        "add": "Agregar"
+      }
+    },
+    "discover": {
+      "storiesTitle": "Clínicas destacadas",
+      "addFavorite": "Agregar a favoritos",
+      "addedFavorite": "Agregado a favoritos",
+      "viewProfile": "Ver perfil",
+      "visitClinic": "Visitar",
+      "viewDetails": "Ver detalles",
+      "searchPlaceholder": "Buscar clínica o ciudad",
+      "nearMe": "Cerca de mí",
+      "on": "Activado",
+      "off": "Desactivado",
+      "enableLocation": "Habilita la ubicación para mostrar clínicas cercanas",
+      "filterBySpecialty": "Filtrar por especialidad",
+      "specialty": {
+        "all": "Todas las especialidades",
+        "general": "Odontología General",
+        "orthodontics": "Ortodoncia",
+        "cosmetic": "Odontología Estética",
+        "pediatric": "Odontopediatría",
+        "surgery": "Cirugía Oral",
+        "endodontics": "Endodoncia",
+        "periodontics": "Periodoncia",
+        "prosthodontics": "Prótesis Dental"
+      },
+      "rating": "Calificación",
+      "reviews": "reseñas",
+      "noRating": "Sin calificaciones aún"
+  }
+}

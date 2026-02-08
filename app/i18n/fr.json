@@ -1,0 +1,237 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "Application intelligente pour cliniques dentaires et patients",
+    "selectLanguage": "Sélectionner la langue",
+    "forClinicOwners": "Pour les propriétaires de cliniques",
+    "forPatients": "Pour les patients",
+    "existingClinic": "Clinique existante",
+    "existingClinicSub": "Connectez-vous à votre tableau de bord",
+    "newClinic": "Nouvelle clinique",
+    "newClinicSub": "Commencez votre essai gratuit de 30 jours",
+    "patientAccess": "Accès patient",
+    "patientAccessSub": "Voir votre plan de traitement"
+  },
+  "home": {
+    "chooseLanguage": "Choisir la langue",
+    "primaryActions": {
+      "myClinic": {
+        "title": "Ma clinique",
+        "subtitle": "Connexion intelligente : accueil, configuration ou tableau de bord"
+      },
+      "patient": {
+        "title": "Patient",
+        "subtitle": "Accès patient via code ou compte"
+      },
+      "ai": {
+        "title": "Demander à l’assistant IA 🧠",
+        "subtitle": "Posez vos questions dentaires"
+      },
+      "upload": {
+        "title": "Téléverser des fichiers",
+        "subtitle": "Ajoutez des images ou documents pour la clinique ou le patient"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "Chronologie du traitement",
+    "chatPatient": "Chat avec le patient",
+    "chatClinic": "Chat avec la clinique",
+    "messages": "Messages"
+  },
+  "clinic": {
+    "sessionType": "Type de session (ex. Nettoyage)",
+    "description": "Description",
+    "addSession": "Ajouter une session",
+    "addPhoto": "Ajouter une photo",
+    "noPatients": "Pas encore de patients",
+    "code": "Code",
+    "name": "Nom",
+    "age": "Âge",
+    "gender": "Genre",
+    "male": "Masculin",
+    "female": "Féminin"
+  },
+  "patient": {
+    "logout": "Se déconnecter",
+    "noSessions": "Pas encore de sessions.",
+    "enterCode": "Entrez votre code patient",
+    "login": "Connexion",
+    "code": "Code patient"
+  },
+  "chat": {
+    "placeholder": "Écrire un message...",
+    "send": "Envoyer"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Mot de passe",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "phone": "Téléphone",
+    "clinicName": "Nom de la clinique (optionnel)",
+    "clinicPhone": "Téléphone de la clinique (optionnel)",
+    "country": "Pays",
+    "city": "Ville",
+    "signup": "S'inscrire",
+    "login": "Connexion",
+    "clinicSignup": "Inscription clinique",
+    "clinicLogin": "Connexion clinique"
+  },
+  "createPatient": {
+    "title": "Créer un patient",
+    "name": "Nom",
+    "age": "Âge",
+    "gender": "Genre",
+    "male": "Masculin",
+    "female": "Féminin",
+    "medication": "Médicament régulier?",
+    "medicationDetails": "Détails du médicament",
+    "allergy": "Allergie?",
+    "allergyDetails": "Détails de l'allergie",
+    "yes": "Oui",
+    "no": "Non",
+    "photos": "Photos",
+    "photo": "Photo",
+    "camera": "Caméra",
+    "save": "Enregistrer",
+    "selectCountry": "Sélectionner le pays",
+    "searchCountries": "Rechercher des pays...",
+    "noCountriesFound": "Aucun pays trouvé"
+  },
+  "common": {
+    "loading": "Chargement...",
+    "error": "Erreur",
+    "success": "Succès",
+    "cancel": "Annuler",
+    "ok": "OK",
+    "saved": "Enregistré",
+    "validation": "Validation",
+    "required": "Ce champ est obligatoire",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "Évaluer cette clinique",
+    "title": "Évaluer la Clinique",
+    "ratingTitle": "Comment évalueriez-vous cette clinique?",
+    "feedback": "Partagez vos commentaires (optionnel)",
+    "feedbackPlaceholder": "Parlez-nous de votre expérience...",
+    "submit": "Soumettre l'Évaluation",
+    "cancel": "Annuler",
+    "ratingSubmitted": "Merci pour votre évaluation!",
+    "validationError": "Veuillez sélectionner une évaluation",
+    "star": "Étoile",
+    "stars": "Étoiles"
+  },
+  "storeRating": {
+    "title": "Vous aimez BeSmile AI?",
+    "body": "Nous aimerions bien connaître votre avis. Souhaiteriez-vous évaluer BeSmile AI sur l'App Store?",
+    "cta_rate": "Évaluer sur App Store",
+    "cta_not_now": "Pas maintenant"
+  },
+  "aiAssistant": {
+    "title": "Assistant IA Dentaire",
+    "comingSoon": "Bientôt disponible",
+    "disclaimer": "Cette fonctionnalité fournit uniquement des informations générales et ne constitue pas un diagnostic médical.",
+    "proPlusBadge": "Pro+ IA",
+    "entrySubtitle": "Découvrez ce qui arrive — Bientôt"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "title": "Assistant dentaire IA",
+    "subtitle": "Assistant éducatif, ne remplace pas un diagnostic médical",
+    "welcome": "Bonjour 👋\nJe suis un assistant IA dentaire.\nJe fournis uniquement des informations générales.",
+    "inputPlaceholder": "Écrivez votre question...",
+    "footer": "Ne remplace pas l'avis d'un professionnel de santé",
+    "send": "Envoyer",
+    "back": "Retour",
+    "thinking": "Réflexion sur votre question dentaire...",
+    "thinkingHelper": "Je prépare une réponse sûre et professionnelle.",
+    "responses": {
+      "emergency": "⚠️ Cela semble urgent. Contactez immédiatement un dentiste ou les urgences.",
+      "nonDental": "Je peux uniquement aider sur des sujets dentaires. Posez une question sur la santé bucco-dentaire ou la dentisterie.",
+      "ambiguousDental": "Je suis axé sur les conseils dentaires. Pour un diagnostic précis, consultez un dentiste diplômé.",
+      "dentalGeneral1": "Pour tout problème dentaire, prenez rendez-vous avec un dentiste diplômé pour un examen et un diagnostic adéquats.",
+      "dentalGeneral2": "Le brossage, le fil dentaire et des nettoyages réguliers sont essentiels pour la santé bucco-dentaire.",
+      "dentalGeneral3": "Les problèmes dentaires varient selon la personne. Un dentiste peut vous conseiller de façon personnalisée.",
+      "dentalGeneral4": "En cas d'inconfort, consultez rapidement un dentiste pour une évaluation et des soins.",
+      "fallback": "Veuillez consulter un professionnel dentaire pour des soins personnalisés. Je n'ai pas pu traiter la demande pour le moment.",
+      "empty": "Veuillez saisir une question dentaire pour que je puisse aider."
+    },
+    "labels": {
+      "emergency": "Alerte dentaire urgente",
+      "warning": "Conseil dentaire",
+      "dental": "Info dentaire"
+    }
+  },
+    "clinicProfile": {
+      "title": "Profil de la Clinique",
+      "subtitle": "Découvrez des cliniques de confiance",
+      "pro": "Pro",
+      "follow": "Suivre",
+      "contact": "Contact",
+      "about": "À propos",
+      "services": "Services",
+      "hours": "Heures d'ouverture",
+      "location": "Emplacement",
+      "stories": "Histoires",
+      "media": "Galerie",
+      "footerNote": "Ce profil est à titre informatif uniquement.",
+      "nav": {
+        "home": "Accueil",
+        "reels": "Reels",
+        "discover": "Découvrir",
+        "profile": "Profil",
+        "add": "Ajouter"
+      }
+    },
+    "discover": {
+      "storiesTitle": "Cliniques en vedette",
+      "addFavorite": "Ajouter aux favoris",
+      "addedFavorite": "Ajouté aux favoris",
+      "viewProfile": "Voir le profil",
+      "visitClinic": "Visiter",
+      "viewDetails": "Voir les détails",
+      "searchPlaceholder": "Rechercher une clinique ou une ville",
+      "nearMe": "Près de moi",
+      "on": "Activé",
+      "off": "Désactivé",
+      "enableLocation": "Activez la localisation pour afficher les cliniques à proximité",
+      "filterBySpecialty": "Filtrer par spécialité",
+      "specialty": {
+        "all": "Toutes les spécialités",
+        "general": "Dentisterie Générale",
+        "orthodontics": "Orthodontie",
+        "cosmetic": "Dentisterie Esthétique",
+        "pediatric": "Dentisterie Pédiatrique",
+        "surgery": "Chirurgie Orale",
+        "endodontics": "Endodontie",
+        "periodontics": "Parodontologie",
+        "prosthodontics": "Prothèse Dentaire"
+      },
+      "rating": "Note",
+      "reviews": "avis",
+      "noRating": "Pas encore d'avis"
+  }
+}

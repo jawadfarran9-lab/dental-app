@@ -1,0 +1,184 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "Diş klinikleri ve hastalar için akıllı uygulama",
+    "selectLanguage": "Dil Seçin",
+    "forClinicOwners": "Klinik sahipleri için",
+    "forPatients": "Hastalar için",
+    "existingClinic": "Mevcut klinik",
+    "existingClinicSub": "Kontrol panelinize giriş yapın",
+    "newClinic": "Yeni klinik",
+    "newClinicSub": "30 günlük ücretsiz denemenizi başlatın",
+    "patientAccess": "Hasta erişimi",
+    "patientAccessSub": "Tedavi planınızı görüntüleyin"
+  },
+  "home": {
+    "chooseLanguage": "Dil seç"
+  },
+  "tabs": {
+    "timeline": "Tedavi Zaman Çizelgesi",
+    "chatPatient": "Hastayla sohbet",
+    "chatClinic": "Klinikle sohbet",
+    "messages": "Mesajlar"
+  },
+  "clinic": {
+    "title": "Diş AI Asistanı",
+    "subtitle": "Sadece bilgilendirici; tıbbi teşhis değildir",
+    "welcome": "Merhaba 👋\nBen diş AI asistanıyım.\nYalnızca genel bilgi sunuyorum.",
+    "inputPlaceholder": "Sorunuzu yazın...",
+    "footer": "Profesyonel tıbbi tavsiyenin yerine geçmez",
+    "send": "Gönder",
+    "back": "Geri",
+    "thinking": "Dişle ilgili sorunuzu düşünüyorum...",
+    "thinkingHelper": "Sizin için güvenli ve profesyonel bir yanıt hazırlıyorum.",
+    "responses": {
+      "emergency": "⚠️ Acil görünüyor. Hemen bir diş hekimi veya acil servise başvurun.",
+      "nonDental": "Yalnızca dişle ilgili konularda yardımcı olabilirim. Ağız sağlığı veya diş hekimliği hakkında sorun.",
+      "ambiguousDental": "Diş yönlendirmesine odaklıyım. Kesin tanı için lisanslı bir diş hekimiyle görüşün.",
+      "dentalGeneral1": "Herhangi bir diş sorununda muayene ve teşhis için lisanslı bir diş hekimiyle randevu alın.",
+      "dentalGeneral2": "Düzenli fırçalama, diş ipi ve profesyonel temizlik ağız sağlığının anahtarıdır.",
+      "dentalGeneral3": "Diş sorunları kişiye özeldir. Bir diş hekimi size özel tavsiyeler verebilir.",
+      "dentalGeneral4": "Rahatsızlık hissediyorsanız hızlıca diş hekimine görünerek değerlendirme ve bakım alın.",
+      "fallback": "Kişiye özel bakım için lütfen bir diş hekimine danışın. Şu anda isteği işleyemedim.",
+      "empty": "Yardımcı olabilmem için lütfen bir diş sorusu girin."
+    },
+    "labels": {
+      "emergency": "Acil diş uyarısı",
+      "warning": "Diş rehberi",
+      "dental": "Diş bilgisi"
+    },
+    "code": "Kod",
+    "name": "İsim",
+    "age": "Yaş",
+    "gender": "Cinsiyet",
+    "male": "Erkek",
+    "female": "Kadın"
+  },
+  "patient": {
+    "logout": "Çıkış Yap",
+    "noSessions": "Henüz seans yok.",
+    "enterCode": "Hasta kodunuzu girin",
+    "login": "Giriş Yap",
+    "code": "Hasta Kodu"
+  },
+  "chat": {
+    "placeholder": "Bir mesaj yazın...",
+    "send": "Gönder"
+  },
+  "auth": {
+    "email": "E-posta",
+    "password": "Şifre",
+    "firstName": "Ad",
+    "lastName": "Soyad",
+    "phone": "Telefon",
+        "primaryActions": {
+          "myClinic": {
+            "title": "Klinikim",
+            "subtitle": "Akıllı giriş: başlangıç, kurulum veya kontrol paneli"
+          },
+          "patient": {
+            "title": "Hasta",
+            "subtitle": "Kod veya hesap ile hasta girişi"
+          },
+          "ai": {
+            "title": "Yapay zeka asistana sor 🧠",
+            "subtitle": "Diş hekimliği sorularınızı sorun"
+          },
+          "upload": {
+            "title": "Dosya yükle",
+            "subtitle": "Klinik veya hasta için görsel/belge ekleyin"
+          }
+        },
+    "clinicName": "Klinik Adı (isteğe bağlı)",
+    "clinicPhone": "Klinik Telefonu (isteğe bağlı)",
+    "country": "Ülke",
+    "city": "Şehir",
+    "signup": "Kayıt Ol",
+    "login": "Giriş Yap",
+    "clinicSignup": "Klinik Kaydı",
+    "clinicLogin": "Klinik Girişi"
+  },
+  "createPatient": {
+    "title": "Hasta Oluştur",
+    "name": "İsim",
+    "age": "Yaş",
+    "gender": "Cinsiyet",
+    "male": "Erkek",
+    "female": "Kadın",
+    "medication": "Düzenli İlaç?",
+    "medicationDetails": "İlaç detayları",
+    "allergy": "Alerji?",
+    "allergyDetails": "Alerji detayları",
+    "yes": "Evet",
+    "no": "Hayır",
+    "photos": "Fotoğraflar",
+    "photo": "Fotoğraf",
+    "camera": "Kamera",
+    "save": "Kaydet",
+    "selectCountry": "Ülke seçin",
+    "searchCountries": "Ülke ara...",
+    "noCountriesFound": "Ülke bulunamadı"
+  },
+  "common": {
+    "loading": "Yükleniyor...",
+    "error": "Hata",
+    "success": "Başarılı",
+    "cancel": "İptal",
+    "ok": "Tamam",
+    "saved": "Kaydedildi",
+    "validation": "Doğrulama",
+    "required": "Bu alan gereklidir",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "Bu kliniği değerlendir",
+    "title": "Klinik Değerlendir",
+    "ratingTitle": "Bu kliniği nasıl değerlendirirsiniz?",
+    "feedback": "Geri bildirim paylaş (isteğe bağlı)",
+    "feedbackPlaceholder": "Deneyiminiz hakkında bize anlatın...",
+    "submit": "Değerlendirmeyi Gönder",
+    "cancel": "İptal",
+    "ratingSubmitted": "Değerlendirmeniz için teşekkürler!",
+    "validationError": "Lütfen bir değerlendirme seçin",
+    "star": "Yıldız",
+    "stars": "Yıldız"
+  },
+  "storeRating": {
+    "title": "BeSmile AI'ı beğeniyor musunuz?",
+    "body": "Görüşünüzü duymak isteriz. BeSmile AI'ı App Store'da değerlendirmek ister misiniz?",
+    "cta_rate": "App Store'da Değerlendir",
+    "cta_not_now": "Şimdi Değil"
+  },
+  "aiAssistant": {
+    "title": "Diş Hekimliği AI Asistanı",
+    "comingSoon": "Yakında",
+    "disclaimer": "Bu özellik yalnızca genel bilgi sağlar ve tıbbi teşhis değildir.",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "Sıradaki yenilikleri keşfedin — Çok yakında"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "emergencyAlert": "⚠️ Bu ciddi bir diş acil durumu gibi görünüyor. Lütfen hemen bir diş hekimine başvurun."
+  }
+}

@@ -1,0 +1,240 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "אפליקציה חכמה למרפאות שיניים ומטופלים",
+    "selectLanguage": "בחר שפה",
+    "forClinicOwners": "לבעלי מרפאות",
+    "forPatients": "למטופלים",
+    "existingClinic": "מרפאה קיימת",
+    "existingClinicSub": "התחברות ללוח הבקרה",
+    "newClinic": "מרפאה חדשה",
+    "newClinicSub": "התחל תקופת ניסיון של 30 יום",
+    "patientAccess": "גישת מטופל",
+    "patientAccessSub": "צפה בתוכנית הטיפול שלך"
+  },
+  "home": {
+    "chooseLanguage": "בחר שפה",
+    "primaryActions": {
+      "myClinic": {
+        "title": "המרפאה שלי",
+        "subtitle": "כניסה חכמה: התחלה, הגדרה או דשבורד"
+      },
+      "patient": {
+        "title": "מטופל",
+        "subtitle": "גישה למטופל עם קוד או חשבון"
+      },
+      "ai": {
+        "title": "שאל את העוזר הבינה 🧠",
+        "subtitle": "שאל שאלות בתחום רפואת השיניים"
+      },
+      "upload": {
+        "title": "העלה קבצים",
+        "subtitle": "העלה תמונות או מסמכים למרפאה או למטופל"
+      }
+    }
+  },
+  "tabs": {
+    "timeline": "ציר זמן טיפול",
+    "chatPatient": "צ'אט עם מטופל",
+    "chatClinic": "צ'אט עם המרפאה",
+    "messages": "הודעות"
+  },
+  "clinic": {
+    "sessionType": "סוג טיפול (לדוגמה ניקוי)",
+    "description": "תיאור",
+    "doctorName": "שם רופא (אופציונלי)",
+    "addSession": "הוסף טיפול",
+    "addPhoto": "הוסף תמונה",
+    "noPatients": "אין מטופלים עדיין",
+    "code": "קוד",
+    "name": "שם",
+    "age": "גיל",
+    "gender": "מגדר",
+    "male": "זכר",
+    "female": "נקבה"
+  },
+  "patient": {
+    "logout": "התנתק",
+    "noSessions": "אין עדיין טיפולים.",
+    "enterCode": "הזן את קוד המטופל שלך",
+    "login": "כניסת מטופל",
+    "code": "קוד מטופל",
+    "codeNotFound": "לא נמצא קוד מטופל. בדוק את הקוד ונסה שוב."
+  },
+  "chat": {
+    "placeholder": "כתוב הודעה...",
+    "send": "שלח"
+  },
+  "auth": {
+    "email": "דוא״ל",
+    "password": "סיסמה",
+    "firstName": "שם פרטי",
+    "lastName": "שם משפחה",
+    "phone": "טלפון",
+    "clinicName": "שם המרפאה (איפשרי)",
+    "clinicPhone": "טלפון המרפאה (איפשרי)",
+    "country": "מדינה",
+    "city": "עיר",
+    "signup": "הרשמה",
+    "login": "כניסה",
+    "clinicSignup": "הרשמת מרפאה",
+    "clinicLogin": "כניסה למרפאה"
+  },
+  "createPatient": {
+    "title": "יצירת מטופל",
+    "name": "שם",
+    "age": "גיל",
+    "gender": "מגדר",
+    "male": "זכר",
+    "female": "נקבה",
+    "medication": "תרופות קבועות?",
+    "medicationDetails": "פרטי תרופות",
+    "allergy": "אלרגיה?",
+    "allergyDetails": "פרטי אלרגיה",
+    "yes": "כן",
+    "no": "לא",
+    "photos": "תמונות",
+    "photo": "תמונה",
+    "camera": "מצלמה",
+    "save": "שמור",
+    "selectCountry": "בחר מדינה",
+    "searchCountries": "חפש מדינות...",
+    "noCountriesFound": "לא נמצאו מדינות"
+  },
+  "common": {
+    "loading": "טוען...",
+    "error": "שגיאה",
+    "success": "הצלחה",
+    "cancel": "ביטול",
+    "ok": "אישור",
+    "saved": "נשמר",
+    "validation": "אימות",
+    "required": "שדה חובה",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "דרג קליניקה זו",
+    "title": "דירוג קליניקה",
+    "ratingTitle": "כיצד היית מדרג את הקליניקה הזו?",
+    "feedback": "שתף משוב (אופציונלי)",
+    "feedbackPlaceholder": "ספר לנו על החוויה שלך...",
+    "submit": "שלח דירוג",
+    "cancel": "ביטול",
+    "ratingSubmitted": "תודה על הדירוג שלך!",
+    "validationError": "בחר דירוג בבקשה",
+    "star": "כוכב",
+    "stars": "כוכבים"
+  },
+  "storeRating": {
+    "title": "אתה אוהב את BeSmile AI?",
+    "body": "היינו שמחים לשמוע את דעתך. האם תרצה לדרג את BeSmile AI בחנות האפליקציות?",
+    "cta_rate": "דרג בחנות האפליקציות",
+    "cta_not_now": "לא עכשיו"
+  },
+  "aiAssistant": {
+    "title": "עוזר שיניים חכם",
+    "comingSoon": "בקרוב",
+    "disclaimer": "תכונה זו מספקת מידע כללי בלבד ואינה מהווה אבחנה רפואית.",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "גלו מה מגיע בהמשך — בקרוב"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "title": "עוזר שיניים חכם",
+    "subtitle": "עוזר מידע בלבד, אינו אבחון רפואי",
+    "welcome": "שלום 👋\nאני עוזר בינה מלאכותית לרפואת שיניים.\nמספק מידע כללי בלבד.",
+    "inputPlaceholder": "הקלד שאלה...",
+    "footer": "לא מחליף ייעוץ רפואי מקצועי",
+    "send": "שלח",
+    "back": "חזור",
+    "thinking": "חושב על השאלה הדנטלית שלך...",
+    "thinkingHelper": "מכין עבורך תשובה בטוחה ומקצועית.",
+    "responses": {
+      "emergency": "⚠️ נשמע חירום. פנה מיד לרופא שיניים או למוקד חירום.",
+      "nonDental": "אני יכול לעזור רק בנושאים דנטליים. שאל על בריאות הפה או רפואת שיניים.",
+      "ambiguousDental": "אני ממוקד בהכוונה דנטלית. לאבחון מדויק, התייעץ עם רופא שיניים מורשה.",
+      "dentalGeneral1": "לכל בעיה דנטלית, קבע תור עם רופא שיניים מורשה לבדיקה ואבחון מתאימים.",
+      "dentalGeneral2": "צחצוח, חוט דנטלי וניקויים מקצועיים קבועים חשובים לבריאות הפה.",
+      "dentalGeneral3": "בעיות שיניים שונות מאדם לאדם. רופא יכול לתת ייעוץ מותאם לך.",
+      "dentalGeneral4": "אם יש אי נוחות, פנה מהר לרופא שיניים להערכה וטיפול.",
+      "fallback": "אנא התייעץ עם רופא שיניים לטיפול מותאם. לא הצלחתי לעבד את הבקשה כעת.",
+      "empty": "הקלד שאלה דנטלית כדי שאוכל לעזור."
+    },
+    "labels": {
+      "emergency": "אזהרת חירום דנטלית",
+      "warning": "הכוונה דנטלית",
+      "dental": "מידע דנטלי"
+    }
+  },
+    "clinicProfile": {
+      "title": "פרופיל המרפאה",
+      "subtitle": "גלה מרפאות מהימנות",
+      "pro": "Pro",
+      "follow": "עקוב",
+      "contact": "צור קשר",
+      "about": "אודות",
+      "services": "שירותים",
+      "hours": "שעות פעילות",
+      "location": "מיקום",
+      "stories": "סיפורים",
+      "media": "גלריה",
+      "footerNote": "פרופיל זה למטרות מידע בלבד.",
+      "nav": {
+        "home": "בית",
+        "reels": "Reels",
+        "discover": "גלה",
+        "profile": "פרופיל",
+        "add": "הוסף"
+      }
+    },
+    "discover": {
+      "storiesTitle": "מרפאות מומלצות",
+      "addFavorite": "הוסף למועדפים",
+      "addedFavorite": "נוסף למועדפים",
+      "viewProfile": "צפה בפרופיל",
+      "visitClinic": "בקר",
+      "viewDetails": "צפה בפרטים",
+      "searchPlaceholder": "חפש מרפאה או עיר",
+      "nearMe": "קרוב אלי",
+      "on": "פעיל",
+      "off": "כבוי",
+      "enableLocation": "הפעל מיקום כדי להציג מרפאות קרובות",
+      "filterBySpecialty": "סנן לפי התמחות",
+      "specialty": {
+        "all": "כל ההתמחויות",
+        "general": "רפואת שיניים כללית",
+        "orthodontics": "יישור שיניים",
+        "cosmetic": "רפואת שיניים אסתטית",
+        "pediatric": "רפואת שיניים לילדים",
+        "surgery": "כירורגיה אוראלית",
+        "endodontics": "אנדודונטיה",
+        "periodontics": "פריודונטיה",
+        "prosthodontics": "פרוסטודונטיה"
+      }
+    },
+    "rating": "דירוג",
+    "reviews": "ביקורות",
+    "noRating": "אין דירוגים עדיין"
+  }
+

@@ -1,0 +1,29 @@
+{
+  "landing": {
+    "selectLanguage": "בחר שפה",
+    "dentist": "I'm a dentist / clinic",
+    "dentistSub": "Manage clinic and patients",
+    "patient": "I'm a patient",
+    "patientSub": "View my treatment"
+  },
+  "tabs": {
+    "timeline": "ציר זמן טיפול",
+    "chatPatient": "צ'אט עם מטופל",
+    "chatClinic": "צ'אט עם המרפאה",
+    "messages": "הודעות"
+  },
+  "clinic": {
+    "sessionType": "סוג טיפול (למשל ניקוי)",
+    "description": "תיאור",
+    "addSession": "הוסף טיפול",
+    "addPhoto": "הוסף תמונה"
+  },
+  "patient": {
+    "logout": "התנתק",
+    "noSessions": "אין עדיין טיפולים."
+  },
+  "chat": {
+    "placeholder": "כתוב הודעה...",
+    "send": "שלח"
+  }
+}

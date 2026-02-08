@@ -1,0 +1,184 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "歯科クリニックと患者のためのスマートアプリ",
+    "selectLanguage": "言語を選択",
+    "forClinicOwners": "クリニックオーナー向け",
+    "forPatients": "患者向け",
+    "existingClinic": "既存のクリニック",
+    "existingClinicSub": "ダッシュボードにサインイン",
+    "newClinic": "新規クリニック",
+    "newClinicSub": "30日間の無料トライアルを開始",
+    "patientAccess": "患者アクセス",
+    "patientAccessSub": "治療計画を表示"
+  },
+  "home": {
+    "chooseLanguage": "言語を選択",
+    "primaryActions": {
+      "myClinic": {
+        "title": "マイクリニック",
+        "subtitle": "スマートログイン：開始・設定・ダッシュボード"
+      },
+      "patient": {
+        "title": "患者",
+        "subtitle": "コードまたはアカウントで患者アクセス"
+      },
+      "ai": {
+        "title": "AIアシスタントに聞く 🧠",
+        "subtitle": "歯科の質問をどうぞ"
+      },
+      "upload": {
+        "title": "ファイルをアップロード",
+        "subtitle": "クリニックや患者向けに画像/文書を追加"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "治療タイムライン",
+    "chatPatient": "患者とチャット",
+    "chatClinic": "クリニックとチャット",
+    "messages": "メッセージ"
+  },
+  "clinic": {
+    "title": "歯科AIアシスタント",
+    "subtitle": "学習目的の情報のみで、医療診断ではありません",
+    "welcome": "こんにちは 👋\n歯科AIアシスタントです。\n一般的な情報だけをお伝えします。",
+    "inputPlaceholder": "質問を入力してください...",
+    "footer": "専門の医療助言の代わりにはなりません",
+    "send": "送信",
+    "back": "戻る",
+    "thinking": "歯科のご質問を考えています...",
+    "thinkingHelper": "安全で専門的な回答を準備しています。",
+    "responses": {
+      "emergency": "⚠️ 緊急の可能性があります。すぐに歯科医または救急サービスに連絡してください。",
+      "nonDental": "歯科に関する内容のみお手伝いできます。口腔ケアや歯科について質問してください。",
+      "ambiguousDental": "歯科の案内に特化しています。正確な診断は歯科医にご相談ください。",
+      "dentalGeneral1": "歯の問題がある場合は、検査と診断のため歯科医の受診を予約してください。",
+      "dentalGeneral2": "定期的なブラッシング、フロス、プロのクリーニングが口腔健康の鍵です。",
+      "dentalGeneral3": "歯科の状況は人それぞれです。歯科医が個別の助言を提供できます。",
+      "dentalGeneral4": "不快感があるときは、早めに歯科医に相談して評価とケアを受けてください。",
+      "fallback": "個別のケアは歯科医にご相談ください。今はリクエストを処理できませんでした。",
+      "empty": "お手伝いするために歯科に関する質問を入力してください。"
+    },
+    "labels": {
+      "emergency": "緊急の歯科注意",
+      "warning": "歯科ガイド",
+      "dental": "歯科情報"
+    },
+    "code": "コード",
+    "name": "名前",
+    "age": "年齢",
+    "gender": "性別",
+    "male": "男性",
+    "female": "女性"
+  },
+  "patient": {
+    "logout": "ログアウト",
+    "noSessions": "まだセッションがありません。",
+    "enterCode": "患者コードを入力してください",
+    "login": "ログイン",
+    "code": "患者コード"
+  },
+  "chat": {
+    "placeholder": "メッセージを書く...",
+    "send": "送信"
+  },
+  "auth": {
+    "email": "メール",
+    "password": "パスワード",
+    "firstName": "名",
+    "lastName": "姓",
+    "phone": "電話",
+    "clinicName": "診穀名(会社名)選択的",
+    "clinicPhone": "診穀電話選択的",
+    "country": "国",
+    "city": "都市",
+    "signup": "サインアップ",
+    "login": "ログイン",
+    "clinicSignup": "クリニック登録",
+    "clinicLogin": "クリニックログイン"
+  },
+  "createPatient": {
+    "title": "患者を作成",
+    "name": "名前",
+    "age": "年齢",
+    "gender": "性別",
+    "male": "男性",
+    "female": "女性",
+    "medication": "定期的な薬？",
+    "medicationDetails": "薬の詳細",
+    "allergy": "アレルギー？",
+    "allergyDetails": "アレルギーの詳細",
+    "yes": "はい",
+    "no": "いいえ",
+    "photos": "写真",
+    "photo": "写真",
+    "camera": "カメラ",
+    "save": "保存",
+    "selectCountry": "国を選択",
+    "searchCountries": "国を検索...",
+    "noCountriesFound": "国が見つかりません"
+  },
+  "common": {
+    "loading": "読み込み中...",
+    "error": "エラー",
+    "success": "成功",
+    "cancel": "キャンセル",
+    "ok": "OK",
+    "saved": "保存されました",
+    "validation": "検証",
+    "required": "この項目は必須です",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "このクリニックを評価する",
+    "title": "クリニック評価",
+    "ratingTitle": "このクリニックをどのように評価しますか？",
+    "feedback": "フィードバックを共有する(オプション)",
+    "feedbackPlaceholder": "あなたの経験を教えてください...",
+    "submit": "評価を送信",
+    "cancel": "キャンセル",
+    "ratingSubmitted": "評価をいただきありがとうございます!",
+    "validationError": "評価を選択してください",
+    "star": "星",
+    "stars": "つ星"
+  },
+  "storeRating": {
+    "title": "BeSmile AI は満足していますか？",
+    "body": "あなたの意見をお聞かせください。App Store で BeSmile AI を評価していただけますか？",
+    "cta_rate": "App Store で評価する",
+    "cta_not_now": "後で"
+  },
+  "aiAssistant": {
+    "title": "歯科AIアシスタント",
+    "comingSoon": "近日公開",
+    "disclaimer": "この機能は一般的な情報のみを提供し、医療診断ではありません。",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "次に来るものを確認 — 近日公開"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "emergencyAlert": "⚠️ これは深刻な歯科医療上の緊急事態のようです。すぐに歯科医に連絡してください。"
+  }
+}

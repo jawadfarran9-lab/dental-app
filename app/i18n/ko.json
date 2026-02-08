@@ -1,0 +1,184 @@
+{
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "치과 클리닉과 환자를 위한 스마트 앱",
+    "selectLanguage": "언어 선택",
+    "forClinicOwners": "클리닉 소유주를 위해",
+    "forPatients": "환자를 위해",
+    "existingClinic": "기존 클리닉",
+    "existingClinicSub": "대시보드에 로그인하세요",
+    "newClinic": "새 클리닉",
+    "newClinicSub": "30일 무료 평가판을 시작하세요",
+    "patientAccess": "환자 액세스",
+    "patientAccessSub": "치료 계획 보기"
+  },
+  "home": {
+    "chooseLanguage": "언어 선택",
+    "primaryActions": {
+      "myClinic": {
+        "title": "내 클리닉",
+        "subtitle": "스마트 로그인: 시작, 설정 또는 대시보드"
+      },
+      "patient": {
+        "title": "환자",
+        "subtitle": "코드 또는 계정으로 환자 접속"
+      },
+      "ai": {
+        "title": "AI 도우미에게 질문 🧠",
+        "subtitle": "치과 질문을 해보세요"
+      },
+      "upload": {
+        "title": "파일 업로드",
+        "subtitle": "클리닉 또는 환자용 이미지/문서 추가"
+      }
+    },
+  },
+  "tabs": {
+    "timeline": "치료 타임라인",
+    "chatPatient": "환자와 채팅",
+    "chatClinic": "클리닉과 채팅",
+    "messages": "메시지"
+  },
+  "clinic": {
+    "title": "치과 AI 도우미",
+    "subtitle": "교육용 정보만 제공하며 의료 진단은 아닙니다",
+    "welcome": "안녕하세요 👋\n치과 AI 도우미입니다.\n일반적인 정보만 안내합니다.",
+    "inputPlaceholder": "질문을 입력하세요...",
+    "footer": "전문 의료 조언을 대체하지 않습니다",
+    "send": "보내기",
+    "back": "뒤로",
+    "thinking": "치과 관련 질문을 생각하고 있어요...",
+    "thinkingHelper": "안전하고 전문적인 답변을 준비 중입니다.",
+    "responses": {
+      "emergency": "⚠️ 긴급해 보입니다. 즉시 치과의사나 응급 서비스에 연락하세요.",
+      "nonDental": "치과 관련 주제만 도와드릴 수 있습니다. 구강 건강이나 치과에 대해 질문해 주세요.",
+      "ambiguousDental": "치과 안내에 집중하고 있습니다. 정확한 진단은 치과의사에게 상담하세요.",
+      "dentalGeneral1": "치과 문제가 있으면 검진과 진단을 위해 치과의사 예약을 잡으세요.",
+      "dentalGeneral2": "규칙적인 양치, 치실, 전문 클리닝이 구강 건강의 핵심입니다.",
+      "dentalGeneral3": "치과 문제는 개인마다 다릅니다. 치과의사가 맞춤 조언을 제공할 수 있습니다.",
+      "dentalGeneral4": "불편함이 있다면 빠르게 치과의사를 찾아 평가와 치료를 받으세요.",
+      "fallback": "맞춤 케어를 위해 치과 전문의와 상담하세요. 지금은 요청을 처리하지 못했습니다.",
+      "empty": "도움을 드리려면 치과 관련 질문을 입력해주세요."
+    },
+    "labels": {
+      "emergency": "긴급 치과 경고",
+      "warning": "치과 안내",
+      "dental": "치과 정보"
+    },
+    "code": "코드",
+    "name": "이름",
+    "age": "나이",
+    "gender": "성별",
+    "male": "남성",
+    "female": "여성"
+  },
+  "patient": {
+    "logout": "로그아웃",
+    "noSessions": "아직 세션이 없습니다.",
+    "enterCode": "환자 코드를 입력하세요",
+    "login": "로그인",
+    "code": "환자 코드"
+  },
+  "chat": {
+    "placeholder": "메시지를 작성하세요...",
+    "send": "보내기"
+  },
+  "auth": {
+    "email": "이메일",
+    "password": "비밀번호",
+    "firstName": "이름",
+    "lastName": "성",
+    "phone": "전화번호",
+    "clinicName": "진료소 이름(선택)",
+    "clinicPhone": "진료소 전화(선택)",
+    "country": "국가",
+    "city": "도시",
+    "signup": "가입하기",
+    "login": "로그인",
+    "clinicSignup": "클리닉 등록",
+    "clinicLogin": "클리닉 로그인"
+  },
+  "createPatient": {
+    "title": "환자 생성",
+    "name": "이름",
+    "age": "나이",
+    "gender": "성별",
+    "male": "남성",
+    "female": "여성",
+    "medication": "정기 약물?",
+    "medicationDetails": "약물 세부정보",
+    "allergy": "알레르기?",
+    "allergyDetails": "알레르기 세부정보",
+    "yes": "예",
+    "no": "아니오",
+    "photos": "사진",
+    "photo": "사진",
+    "camera": "카메라",
+    "save": "저장",
+    "selectCountry": "국가 선택",
+    "searchCountries": "국가 검색...",
+    "noCountriesFound": "국가를 찾을 수 없습니다"
+  },
+  "common": {
+    "loading": "로딩 중...",
+    "error": "오류",
+    "success": "성공",
+    "cancel": "취소",
+    "ok": "확인",
+    "saved": "저장됨",
+    "validation": "검증",
+    "required": "이 필드는 필수입니다",
+    "submit": "Submit",
+    "skip": "Skip"
+  },
+  "clinicRating": {
+    "rateClinic": "이 클리닉 평가하기",
+    "title": "클리닉 평가",
+    "ratingTitle": "이 클리닉을 어떻게 평가하시겠습니까?",
+    "feedback": "피드백 공유(선택사항)",
+    "feedbackPlaceholder": "당신의 경험을 알려주세요...",
+    "submit": "평가 제출",
+    "cancel": "취소",
+    "ratingSubmitted": "평가해주셔서 감사합니다!",
+    "validationError": "평가를 선택해주세요",
+    "star": "별",
+    "stars": "개별"
+  },
+  "storeRating": {
+    "title": "BeSmile AI이 마음에 드세요?",
+    "body": "당신의 의견을 듣고 싶습니다. App Store에서 BeSmile AI을 평가해주시겠습니까?",
+    "cta_rate": "App Store에서 평가",
+    "cta_not_now": "나중에"
+  },
+  "aiAssistant": {
+    "title": "치과 AI 도우미",
+    "comingSoon": "곧 출시",
+    "disclaimer": "이 기능은 일반적인 정보만 제공하며 의학적 진단이 아닙니다.",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "다음 기능을 확인하세요 — 곧 출시"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "clinicAI": {
+    "emergencyAlert": "⚠️ 이것은 심각한 치과 응급 상황처럼 보입니다. 즉시 치과의사에게 연락하세요."
+  }
+}

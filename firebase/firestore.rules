@@ -1,0 +1,176 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Utility: Validate authenticated user and fetch common context
+    function isAuthed() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    // Utility: Extract role & clinicId from token claims (must be set by backend)
+    function userRole() {
+      return request.auth.token.role;
+    }
+    function userClinic() {
+      return request.auth.token.clinicId;
+    }
+    function isOwner() {
+      return isAuthed() && userRole() == 'OWNER_ADMIN';
+    }
+    function isDoctor() {
+      return isAuthed() && userRole() == 'DOCTOR';
+    }
+    function isPatient() {
+      return isAuthed() && userRole() == 'PATIENT';
+    }
+
+    // Enforce clinicId-based scoping for all requests (deny UID-only access)
+    function sameClinic(resourceClinicId) {
+      return isAuthed() && userClinic() == resourceClinicId;
+    }
+
+    // ----------------------------------------------------------------------
+    // Clinics collection: metadata; readable to members of same clinic
+    // Owner can update certain config fields; others are read-only
+    // ----------------------------------------------------------------------
+    match /clinics/{clinicId} {
+      allow read: if isAuthed() && sameClinic(clinicId);
+      allow update: if isOwner() && sameClinic(clinicId);
+      allow create, delete: if false; // Managed by backend only
+    }
+
+    // ----------------------------------------------------------------------
+    // Members collection: staff/patients; OWNER_ADMIN manages; role-scoped reads
+    // Path: clinics/{clinicId}/members/{memberId}
+    // ----------------------------------------------------------------------
+    match /clinics/{clinicId}/members/{memberId} {
+      // Read rules:
+      // - Owner: full read within clinic
+      // - Doctor/Admin/Staff: read within clinic (no cross-clinic)
+      // - Patient: can read self only
+      allow read: if sameClinic(clinicId) && (
+        isOwner() || (isDoctor()) || (userRole() in ['ADMIN','ASSISTANT','RECEPTION']) || (isPatient() && request.auth.uid == memberId)
+      );
+
+      // Write rules:
+      // - Owner-only for invites, role changes, status changes, removals
+      allow create, update, delete: if isOwner() && sameClinic(clinicId);
+    }
+
+    // ----------------------------------------------------------------------
+    // Sessions collection: patient sessions; role-scoped
+    // Path: clinics/{clinicId}/patients/{patientId}/sessions/{sessionId}
+    // ----------------------------------------------------------------------
+    match /clinics/{clinicId}/patients/{patientId}/sessions/{sessionId} {
+      // Owner/Doctor: read/write sessions of patients within their clinic
+      allow read: if sameClinic(clinicId) && (
+        isOwner() || isDoctor() || (isPatient() && request.auth.uid == patientId)
+      );
+
+      allow write: if sameClinic(clinicId) && (
+        isOwner() || isDoctor()
+      );
+    }
+
+    // ----------------------------------------------------------------------
+    // Audit logs collection: OWNER-only read; backend writes
+    // Path: clinics/{clinicId}/auditLogs/{logId}
+    // ----------------------------------------------------------------------
+    match /clinics/{clinicId}/auditLogs/{logId} {
+      allow read: if isOwner() && sameClinic(clinicId);
+      allow write: if false; // Writes via server-side only
+    }
+
+    // ----------------------------------------------------------------------
+    // Branding collection: OWNER-only updates; readable to same-clinic members
+    // Path: clinics/{clinicId}/branding/{docId}
+    // ----------------------------------------------------------------------
+    match /clinics/{clinicId}/branding/{docId} {
+      allow read: if sameClinic(clinicId);
+      allow write: if isOwner() && sameClinic(clinicId);
+    }
+
+    // ----------------------------------------------------------------------
+    // Public files: read-only; write disabled
+    // Path: public/{docId}
+    // ----------------------------------------------------------------------
+    match /public/{docId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ----------------------------------------------------------------------
+    // PHASE C: Public Clinics Directory (clinics_public)
+    // Public, unauthenticated readable ONLY when isPublished == true.
+    // Writes restricted to Owner-only where doc.ownerId == request.auth.uid.
+    // Safe fields only; no sensitive clinic data.
+    // ----------------------------------------------------------------------
+    match /clinics_public/{publicId} {
+      allow read: if resource.data.isPublished == true || (isOwner() && request.auth.uid == resource.data.ownerId);
+
+      allow create, update, delete: if isOwner() &&
+        request.resource.data.ownerId == request.auth.uid &&
+        request.resource.data.clinicId != null &&
+        request.resource.data.name is string &&
+        request.resource.data.country is string &&
+        request.resource.data.city is string &&
+        (request.resource.data.address == null || request.resource.data.address is string) &&
+        (request.resource.data.phone == null || request.resource.data.phone is string) &&
+        (request.resource.data.whatsapp == null || request.resource.data.whatsapp is string) &&
+        (request.resource.data.heroImage == null || request.resource.data.heroImage is string) &&
+        (request.resource.data.geo == null || (request.resource.data.geo.lat is number && request.resource.data.geo.lng is number)) &&
+        (request.resource.data.geohash == null || request.resource.data.geohash is string) &&
+        (request.resource.data.isPublished is bool);
+    }
+    
+    // CLINIC AUTHENTICATION & BASIC DATA
+    match /clinics/{clinicId} {
+      allow read, write: if request.auth != null && 
+                          get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+      
+      // PATIENT RECORDS
+      match /patients/{patientId} {
+        allow read: if request.auth != null && 
+                       get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+        allow create, update: if request.auth != null && 
+                               get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+        
+        // PATIENT MEDIA (Images)
+        match /media/{mediaId} {
+          // Clinic: Full access (read, create, update, delete)
+          allow read, create, update, delete: if request.auth != null && 
+                                               get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+          
+          // Patient: Read-only (view images)
+          // Note: Patient can view their own images
+          allow read: if true; // Simplified for development - restrict in production
+          
+          // Annotations subcollection
+          match /annotations/{annotationId} {
+            allow read: if request.auth != null;
+            allow create, update, delete: if request.auth != null && 
+                                           get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+          }
+        }
+        
+        // SESSIONS
+        match /sessions/{sessionId} {
+          allow read, create, update, delete: if request.auth != null && 
+                                               get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+          allow read: if true; // Patient can view sessions
+        }
+        
+        // TIMELINE
+        match /timeline/{entryId} {
+          allow read, create, update, delete: if request.auth != null && 
+                                               get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+          allow read: if true; // Patient can view timeline
+        }
+      }
+    }
+    
+    // Deny any other unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

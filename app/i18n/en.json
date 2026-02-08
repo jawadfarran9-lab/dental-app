@@ -1,0 +1,388 @@
+{
+  "app": {
+    "name": "BeSmile AI"
+  },
+  "landing": {
+    "appName": "BeSmile AI",
+    "tagline": "Smart dental clinic & patient app",
+    "selectLanguage": "Select Language",
+    "forClinicOwners": "For Clinic Owners",
+    "forPatients": "For Patients",
+    "existingClinic": "Existing Clinic",
+    "existingClinicSub": "Sign in to your dashboard",
+    "newClinic": "New Clinic",
+    "newClinicSub": "Start your 30-day free trial",
+    "patientAccess": "Patient Access",
+    "patientAccessSub": "View your treatment plan"
+  },
+  "home": {
+    "chooseLanguage": "Choose Language",
+    "explore": "Explore",
+    "primaryActions": {
+      "myClinic": {
+        "title": "My Clinic",
+        "subtitle": "Smart entry: login, setup, or dashboard"
+      },
+      "patient": {
+        "title": "Patient",
+        "subtitle": "Patient login via code or account"
+      },
+      "ai": {
+        "title": "Ask the AI Assistant 🧠",
+        "subtitle": "Ask your dentistry-related questions"
+      },
+      "upload": {
+        "title": "Upload Files",
+        "subtitle": "Upload images or documents for your clinic or patient"
+      }
+    },
+    "feedTitle": "Feed",
+    "pro": "Pro",
+    "addFavorite": "Add to favorites",
+    "addedFavorite": "Added to favorites",
+    "viewProfile": "View profile",
+    "watchAgain": "Watch again",
+    "watchMoreReels": "Watch more reels",
+    "newPost": "New Post",
+    "share": "Share",
+    "selectPhoto": "Tap to select photo",
+    "caption": "Caption",
+    "captionPlaceholder": "Write a caption...",
+    "addMusic": "Add music",
+    "tagPeople": "Tag people",
+    "addLocation": "Add location"
+  },
+  "tabs": {
+    "timeline": "Treatment Timeline",
+    "chatPatient": "Chat with patient",
+    "chatClinic": "Chat with clinic",
+    "messages": "Messages",
+    "clinic": "Clinic",
+    "home": "Home",
+    "subscription": "Subscription",
+    "aiPro": "AI Pro",
+    "clinics": "Clinics"
+  },
+  "clinic": {
+    "sessionType": "Session type (e.g. Cleaning)",
+    "description": "Description",
+    "doctorName": "Doctor name (optional)",
+    "addSession": "Add Session",
+    "addPhoto": "Add Photo",
+    "noPatients": "No patients yet",
+    "code": "Code",
+    "name": "Name",
+    "age": "Age",
+    "gender": "Gender",
+    "male": "Male",
+    "female": "Female"
+  },
+  "patient": {
+    "logout": "Log out",
+    "noSessions": "No sessions yet.",
+    "enterCode": "Enter your patient code",
+    "login": "Patient Login",
+    "code": "Patient Code",
+    "codeNotFound": "Patient code not found. Please check the code and try again."
+  },
+  "chat": {
+    "placeholder": "Write a message...",
+    "send": "Send"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "firstName": "First Name *",
+    "lastName": "Last Name *",
+    "phone": "Phone",
+    "clinicName": "Clinic Name (optional)",
+    "clinicPhone": "Clinic Phone (optional)",
+    "country": "Country",
+    "city": "City",
+    "signup": "Sign Up",
+    "login": "Log in",
+    "clinicSignup": "Clinic Sign Up",
+    "clinicLogin": "Clinic Login",
+    "loginSubtitle": "Sign in to manage your patients",
+    "invalidCredentials": "Invalid email or password",
+    "createSubscription": "Create Subscription",
+    "clinicSubscription": "Clinic Subscription",
+    "enterDetails": "Enter your details",
+    "personalInfo": "Personal Information",
+    "accountDetails": "Account Details",
+    "contactOptional": "Contact (Optional)",
+    "selectCountry": "Country (tap to select)",
+    "countrySelectionError": "Please select a country from the list",
+    "startSubscription": "Start Subscription",
+    "alreadySubscribed": "Already subscribed? Log in",
+    "signupError": "Something went wrong. Please try again.",
+    "emailInUse": "Email already registered. Please use a different email or log in.",
+    "weakPassword": "Password should be at least 6 characters.",
+    "invalidEmail": "Invalid email format."
+  },
+  "createPatient": {
+    "title": "Create Patient",
+    "name": "Patient name *",
+    "phone": "Phone",
+    "email": "Email (optional, for notifications)",
+    "dateOfBirth": "Date of Birth",
+    "gender": "Gender",
+    "male": "Male",
+    "female": "Female",
+    "other": "Other",
+    "regularMedication": "Takes regular medication?",
+    "medicationDetails": "Medication details",
+    "hasAllergy": "Has allergy?",
+    "allergyDetails": "Allergy details",
+    "notes": "Notes",
+    "create": "Create Patient",
+    "nameRequired": "Patient name is required",
+    "clinicIdError": "Clinic ID not available. Please log in again.",
+    "created": "Patient Created",
+    "code": "Patient code",
+    "shareCode": "Share this code with the patient for login.",
+    "failed": "Failed to create patient",
+    "yes": "Yes",
+    "no": "No",
+    "photos": "Photos",
+    "photo": "Photo",
+    "camera": "Camera",
+    "save": "Save",
+    "selectCountry": "Select Country",
+    "searchCountries": "Search countries...",
+    "noCountriesFound": "No countries found"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "ok": "OK",
+    "saved": "Saved",
+    "validation": "Validation",
+    "required": "This field is required",
+    "back": "Back",
+    "backToHome": "Back to Home",
+    "goHome": "Go to home screen",
+    "modal": "This is a modal",
+    "replay": "Replay",
+    "or": "or",
+    "yes": "Yes",
+    "no": "No",
+    "loadMore": "Load more",
+    "light": "Light",
+    "dark": "Dark",
+    "language": "Language",
+    "attention": "Attention",
+    "submit": "Submit",
+    "skip": "Skip",
+    "exit": "Exit",
+    "subscriptionInactive": "Clinic subscription is inactive. Please complete your subscription first."
+  },
+  "subscription": {
+    "title": "Clinic Subscription",
+    "subtitle": "Secure & private patient management",
+    "unlimitedPatients": "Unlimited patients",
+    "secureCodes": "Secure patient codes",
+    "hipaaStorage": "HIPAA-compliant storage",
+    "photoDoc": "Photo documentation",
+    "privateChat": "Private patient chat",
+    "priceNew": "$29.99",
+    "priceOld": "$40",
+    "promoLine": "First month free, then $29.99/month",
+    "priceLabel": "/ month",
+    "priceNote": "Cancel anytime, no commitment",
+    "monthly": "Monthly",
+    "yearly": "Yearly (save 15%)",
+    "selectedPlan": "Selected plan",
+    "billingPeriod": "Billing period",
+    "invalidAccess": "Invalid subscription access. Please start from Subscription.",
+    "clinicIdNotFound": "Clinic ID not found. Please restart signup.",
+    "confirmFailed": "Subscription confirmation failed. Try again.",
+    "permissionDenied": "Permission denied. Please re-open the app.",
+    "startButton": "Start Subscription",
+    "alreadyHaveAccount": "Already subscribed? Log in"
+  },
+  "messages": {
+    "title": "Messages",
+    "noConversations": "No conversations yet",
+    "messagesWillAppear": "Messages from your patients will appear here",
+    "notAuthenticated": "Not authenticated",
+    "pleaseLogin": "Please log in to view messages.",
+    "you": "You: "
+  },
+  "patients": {
+    "title": "Patients",
+    "logOut": "Log out",
+    "newPatient": "+ New Patient",
+    "messages": "💬 Messages",
+    "noPatients": "No patients yet.",
+    "notAuthenticated": "Not authenticated",
+    "pleaseLogin": "Please log in to view your patients.",
+    "code": "Code: ",
+    "created": "Created: ",
+    "missingPatientId": "Missing patientId",
+    "noSessionsYet": "No sessions yet."
+  },
+  "clinicRating": {
+    "rateClinic": "Rate this clinic",
+    "title": "Rate Clinic",
+    "ratingTitle": "How would you rate this clinic?",
+    "feedback": "Share your feedback (optional)",
+    "feedbackPlaceholder": "Tell us about your experience...",
+    "submit": "Submit Rating",
+    "cancel": "Cancel",
+    "ratingSubmitted": "Thank you for your rating!",
+    "validationError": "Please select a rating",
+    "star": "Star",
+    "stars": "Stars"
+  },
+  "rating": {
+    "titlePatient": "How would you rate this clinic?",
+    "titleOwner": "Rate Your Clinic",
+    "subtitlePatient": "Your feedback helps us improve",
+    "subtitlePatientWithClinic": "Your feedback about {{clinic}} helps us improve",
+    "subtitleOwner": "Share your clinic's experience",
+    "clinicId": "Clinic ID",
+    "placeholderOptional": "Share your feedback (optional)"
+  },
+  "rateApp": {
+    "title": "Rate the App",
+    "subtitle": "Tell us how the app feels",
+    "placeholder": "Share a comment (optional)"
+  },
+  "storeRating": {
+    "title": "Enjoying BeSmile AI?",
+    "body": "We'd love to hear from you! Would you like to rate BeSmile AI on the app store?",
+    "cta_rate": "Rate on App Store",
+    "cta_not_now": "Not Now"
+  },
+  "aiAssistant": {
+    "title": "Dental AI Assistant",
+    "comingSoon": "Coming soon",
+    "disclaimer": "This feature provides general information only and is not a medical diagnosis.",
+    "proPlusBadge": "Pro+ AI",
+    "entrySubtitle": "Explore what's next — Coming soon"
+  },
+  "entry": {
+    "title": "Welcome",
+    "subtitle": "Choose your path",
+    "doctorClinic": "I'm a Doctor/Clinic",
+    "patient": "I'm a Patient",
+    "language": "Language"
+  },
+  "clinicSetup": {
+    "title": "Clinic Setup",
+    "subtitle": "Set up your basic clinic information",
+    "name": "Clinic / Doctor name",
+    "specialty": "Specialty",
+    "country": "Country",
+    "language": "Language preference",
+    "next": "Next"
+  },
+  "clinicSubscription": {
+    "title": "Subscription",
+    "subtitle": "Choose the plan that fits your clinic",
+    "free": {
+      "name": "Free",
+      "features": [
+        "Public clinic profile",
+        "Reviews visible"
+      ]
+    },
+    "pro": {
+      "name": "Pro",
+      "features": [
+        "Pro badge",
+        "Priority appearance",
+        "Reviews + ratings"
+      ]
+    },
+    "proAI": {
+      "name": "Pro AI",
+      "tag": "Best",
+      "features": [
+        "Everything in Pro",
+        "AI dental assistant (coming soon)"
+      ]
+    },
+    "continue": "Continue"
+  },
+  "clinicAI": {
+    "title": "AI Dental Assistant",
+    "subtitle": "Educational assistant only, not a medical diagnosis tool",
+    "welcome": "Hello 👋\nI'm a dental AI assistant.\nI provide general information and ideas only.",
+    "inputPlaceholder": "Type your question...",
+    "footer": "This assistant does not replace professional medical advice",
+    "send": "Send",
+    "back": "Back",
+    "thinking": "Thinking through your dental question...",
+    "thinkingHelper": "Preparing a safe, professional response for you.",
+    "responses": {
+      "emergency": "⚠️ This sounds urgent. Please contact a licensed dentist or emergency service immediately.",
+      "nonDental": "I can only help with dental topics. Please ask about oral health, teeth, or dentistry.",
+      "ambiguousDental": "I'm focused on dental guidance. For accurate diagnosis, please consult a licensed dentist.",
+      "dentalGeneral1": "For dental concerns, please schedule with a licensed dentist for proper examination and diagnosis.",
+      "dentalGeneral2": "Consistent brushing, flossing, and professional cleanings are key to oral health.",
+      "dentalGeneral3": "Dental issues vary by person. A dentist can tailor advice to your specific case.",
+      "dentalGeneral4": "If you feel discomfort, seek a dentist promptly for evaluation and care.",
+      "fallback": "Please consult a dental professional for personalized care. I couldn't process that request right now.",
+      "empty": "Please enter a dental question so I can help."
+    },
+    "labels": {
+      "emergency": "Urgent dental warning",
+      "warning": "Dental guidance",
+      "dental": "Dental info",
+      "off-topic": "Not dental-related"
+    }
+  },
+  "clinicProfile": {
+    "title": "Clinic Profile",
+    "subtitle": "Discover trusted clinics",
+    "pro": "Pro",
+    "follow": "Follow",
+    "contact": "Contact",
+    "about": "About",
+    "services": "Services",
+    "hours": "Working hours",
+    "location": "Location",
+    "stories": "Stories",
+    "media": "Media",
+    "footerNote": "This profile is for informational purposes only.",
+    "nav": {
+      "home": "Home",
+      "reels": "Reels",
+      "discover": "Discover",
+      "profile": "Profile",
+      "add": "Add"
+    }
+  },
+  "discover": {
+    "storiesTitle": "Clinics spotlight",
+    "addFavorite": "Add to favorites",
+    "addedFavorite": "Added to favorites",
+    "viewProfile": "View profile",
+    "visitClinic": "Visit",
+    "viewDetails": "View details",
+    "searchPlaceholder": "Search clinic or city",
+    "nearMe": "Near me",
+    "on": "On",
+    "off": "Off",
+    "enableLocation": "Enable location to show clinics near you",
+    "filterBySpecialty": "Filter by specialty",
+    "specialty": {
+      "all": "All specialties",
+      "general": "General Dentistry",
+      "orthodontics": "Orthodontics",
+      "cosmetic": "Cosmetic Dentistry",
+      "pediatric": "Pediatric Dentistry",
+      "surgery": "Oral Surgery",
+      "endodontics": "Endodontics",
+      "periodontics": "Periodontics",
+      "prosthodontics": "Prosthodontics"
+    },
+    "rating": "Rating",
+    "reviews": "reviews",
+    "noRating": "No ratings yet"
+  }
+}
