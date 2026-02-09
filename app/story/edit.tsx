@@ -3,6 +3,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image as ExpoImage } from 'expo-image';
+import * as ImageManipulator from 'expo-image-manipulator';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
@@ -136,6 +137,52 @@ type PhotoSticker = {
   scale: number;
   rotation: number;
 };
+
+// ========== Image Editing Types & Constants ==========
+// Story canvas dimensions (9:16 aspect ratio like Instagram)
+const STORY_ASPECT_RATIO = 9 / 16;
+const STORY_WIDTH = SCREEN_WIDTH;
+const STORY_HEIGHT = SCREEN_WIDTH / STORY_ASPECT_RATIO;
+
+// Crop aspect ratio presets
+type CropAspectRatio = 'story' | 'square' | '4:5' | '16:9' | 'free';
+const CROP_PRESETS: { id: CropAspectRatio; name: string; ratio: number | null; icon: string }[] = [
+  { id: 'story', name: 'Story', ratio: 9 / 16, icon: 'phone-portrait-outline' },
+  { id: 'square', name: 'Square', ratio: 1, icon: 'square-outline' },
+  { id: '4:5', name: '4:5', ratio: 4 / 5, icon: 'tablet-portrait-outline' },
+  { id: '16:9', name: '16:9', ratio: 16 / 9, icon: 'tv-outline' },
+  { id: 'free', name: 'Free', ratio: null, icon: 'resize-outline' },
+];
+
+// Instagram-style filter presets
+type FilterPreset = {
+  id: string;
+  name: string;
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  hue?: number;
+  opacity: number;
+  overlay?: string; // Gradient overlay color
+};
+
+const FILTER_PRESETS: FilterPreset[] = [
+  { id: 'original', name: 'Original', opacity: 1 },
+  { id: 'clarendon', name: 'Clarendon', brightness: 1.1, contrast: 1.2, saturation: 1.35, opacity: 1 },
+  { id: 'gingham', name: 'Gingham', brightness: 1.05, contrast: 0.95, saturation: 0.9, opacity: 1, overlay: 'rgba(230, 230, 250, 0.1)' },
+  { id: 'moon', name: 'Moon', brightness: 1.1, contrast: 1.1, saturation: 0, opacity: 1 },
+  { id: 'lark', name: 'Lark', brightness: 1.08, contrast: 0.95, saturation: 1.2, opacity: 1 },
+  { id: 'reyes', name: 'Reyes', brightness: 1.1, contrast: 0.85, saturation: 0.75, opacity: 1, overlay: 'rgba(239, 205, 173, 0.2)' },
+  { id: 'juno', name: 'Juno', brightness: 1.05, contrast: 1.15, saturation: 1.4, opacity: 1, overlay: 'rgba(255, 223, 0, 0.05)' },
+  { id: 'slumber', name: 'Slumber', brightness: 1.05, contrast: 0.9, saturation: 0.85, opacity: 1, overlay: 'rgba(125, 105, 24, 0.1)' },
+  { id: 'crema', name: 'Crema', brightness: 1.05, contrast: 0.95, saturation: 0.9, opacity: 1, overlay: 'rgba(255, 235, 205, 0.15)' },
+  { id: 'ludwig', name: 'Ludwig', brightness: 1.05, contrast: 1.05, saturation: 0.95, opacity: 1, overlay: 'rgba(125, 78, 36, 0.1)' },
+  { id: 'aden', name: 'Aden', brightness: 1.2, contrast: 0.9, saturation: 0.85, opacity: 1, overlay: 'rgba(66, 10, 14, 0.1)' },
+  { id: 'perpetua', name: 'Perpetua', brightness: 1.05, contrast: 1.1, saturation: 1.1, opacity: 1, overlay: 'rgba(0, 91, 154, 0.05)' },
+];
+
+// Editing tool modes
+type EditingToolMode = 'transform' | 'crop' | 'filters' | 'adjust';
 
 // ========== Analog Clock Component (Rolex/Luxury Style) ==========
 const AnalogClock = ({ time, size, variant }: { time: Date; size: number; variant: 'luxury' | 'vintage' }) => {
@@ -1838,6 +1885,958 @@ const DraggablePhotoSticker = ({
   );
 };
 
+// ========== Instagram-Style Image Editing Modal ==========
+const ImageEditingModal = ({
+  visible,
+  imageUri,
+  imageWidth,
+  imageHeight,
+  onCancel,
+  onDone,
+}: {
+  visible: boolean;
+  imageUri: string | null;
+  imageWidth: number;
+  imageHeight: number;
+  onCancel: () => void;
+  onDone: (editedUri: string, width: number, height: number) => void;
+}) => {
+  // Current editing tool mode
+  const [toolMode, setToolMode] = useState<EditingToolMode>('transform');
+  
+  // Transform state (pan, zoom, rotation)
+  const [imageTransform, setImageTransform] = useState({
+    x: 0,
+    y: 0,
+    scale: 1,
+    rotation: 0,
+  });
+  
+  // Crop state
+  const [cropAspectRatio, setCropAspectRatio] = useState<CropAspectRatio>('story');
+  
+  // Filter state
+  const [selectedFilter, setSelectedFilter] = useState<string>('original');
+  
+  // Adjustment slider values
+  const [adjustments, setAdjustments] = useState({
+    brightness: 1,
+    contrast: 1,
+    saturation: 1,
+  });
+  
+  // Processing state
+  const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Animation values
+  const pan = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const rotation = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  
+  // Gesture tracking refs
+  const lastOffset = useRef({ x: 0, y: 0 });
+  const lastScale = useRef(1);
+  const lastRotation = useRef(0);
+  const initialDistance = useRef(0);
+  const initialAngle = useRef(0);
+  const initialCenter = useRef({ x: 0, y: 0 });
+  const isPinching = useRef(false);
+  
+  // Reset state when modal opens with new image
+  useEffect(() => {
+    if (visible && imageUri) {
+      // Reset all transform values
+      pan.setValue({ x: 0, y: 0 });
+      scale.setValue(1);
+      rotation.setValue(0);
+      lastOffset.current = { x: 0, y: 0 };
+      lastScale.current = 1;
+      lastRotation.current = 0;
+      setImageTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
+      setCropAspectRatio('story');
+      setSelectedFilter('original');
+      setAdjustments({ brightness: 1, contrast: 1, saturation: 1 });
+      setToolMode('transform');
+      
+      // Fade in animation
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [visible, imageUri, pan, scale, rotation, fadeAnim]);
+  
+  // Calculate canvas and image dimensions
+  const canvasPadding = 20;
+  const canvasWidth = SCREEN_WIDTH - canvasPadding * 2;
+  const canvasHeight = SCREEN_HEIGHT * 0.6;
+  
+  // Calculate crop frame dimensions based on selected aspect ratio
+  const getCropFrameDimensions = useCallback(() => {
+    const preset = CROP_PRESETS.find(p => p.id === cropAspectRatio);
+    const ratio = preset?.ratio || (imageWidth / imageHeight);
+    
+    let frameWidth: number;
+    let frameHeight: number;
+    
+    if (ratio >= canvasWidth / canvasHeight) {
+      // Width-constrained
+      frameWidth = canvasWidth;
+      frameHeight = canvasWidth / ratio;
+    } else {
+      // Height-constrained
+      frameHeight = canvasHeight;
+      frameWidth = canvasHeight * ratio;
+    }
+    
+    return { frameWidth, frameHeight };
+  }, [cropAspectRatio, canvasWidth, canvasHeight, imageWidth, imageHeight]);
+  
+  const { frameWidth, frameHeight } = getCropFrameDimensions();
+  
+  // Calculate initial image scale to fit within frame
+  const getInitialImageScale = useCallback(() => {
+    const imgAspectRatio = imageWidth / imageHeight;
+    const frameAspectRatio = frameWidth / frameHeight;
+    
+    if (imgAspectRatio > frameAspectRatio) {
+      // Image is wider - fit to width, allow vertical overflow for movement
+      return (frameWidth / imageWidth) * 1.2;
+    } else {
+      // Image is taller - fit to height, allow horizontal overflow
+      return (frameHeight / imageHeight) * 1.2;
+    }
+  }, [imageWidth, imageHeight, frameWidth, frameHeight]);
+  
+  // Calculate displayed image dimensions
+  const baseScale = getInitialImageScale();
+  const displayedWidth = imageWidth * baseScale;
+  const displayedHeight = imageHeight * baseScale;
+  
+  // Gesture helpers
+  const getDistance = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+  
+  const getAngle = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[1].pageX - touches[0].pageX;
+    const dy = touches[1].pageY - touches[0].pageY;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  };
+  
+  const getCenter = (touches: any[]) => {
+    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
+    return {
+      x: (touches[0].pageX + touches[1].pageX) / 2,
+      y: (touches[0].pageY + touches[1].pageY) / 2,
+    };
+  };
+  
+  // PanResponder for image manipulation
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => toolMode === 'transform',
+    onMoveShouldSetPanResponder: () => toolMode === 'transform',
+    onPanResponderGrant: (evt) => {
+      const touches = evt.nativeEvent.touches;
+      if (touches.length >= 2) {
+        isPinching.current = true;
+        initialDistance.current = getDistance(touches);
+        initialAngle.current = getAngle(touches);
+        initialCenter.current = getCenter(touches);
+      } else {
+        isPinching.current = false;
+      }
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const touches = evt.nativeEvent.touches;
+      
+      if (touches.length >= 2) {
+        if (!isPinching.current) {
+          isPinching.current = true;
+          initialDistance.current = getDistance(touches);
+          initialAngle.current = getAngle(touches);
+          initialCenter.current = getCenter(touches);
+        }
+        
+        // Scale (pinch to zoom)
+        const currentDistance = getDistance(touches);
+        if (initialDistance.current > 0) {
+          const scaleFactor = currentDistance / initialDistance.current;
+          const newScale = Math.max(0.5, Math.min(5, lastScale.current * scaleFactor));
+          scale.setValue(newScale);
+        }
+        
+        // Rotation (two finger rotate)
+        const currentAngle = getAngle(touches);
+        const angleDiff = currentAngle - initialAngle.current;
+        rotation.setValue(lastRotation.current + angleDiff);
+        
+        // Pan while pinching
+        const currentCenter = getCenter(touches);
+        const centerDx = currentCenter.x - initialCenter.current.x;
+        const centerDy = currentCenter.y - initialCenter.current.y;
+        pan.setValue({
+          x: lastOffset.current.x + centerDx,
+          y: lastOffset.current.y + centerDy,
+        });
+      } else if (!isPinching.current) {
+        // Single finger drag
+        pan.setValue({
+          x: lastOffset.current.x + gestureState.dx,
+          y: lastOffset.current.y + gestureState.dy,
+        });
+      }
+    },
+    onPanResponderRelease: () => {
+      // @ts-ignore
+      lastOffset.current = { x: pan.x._value, y: pan.y._value };
+      // @ts-ignore
+      lastScale.current = scale._value || lastScale.current;
+      // @ts-ignore
+      lastRotation.current = rotation._value || lastRotation.current;
+      
+      setImageTransform({
+        x: lastOffset.current.x,
+        y: lastOffset.current.y,
+        scale: lastScale.current,
+        rotation: lastRotation.current,
+      });
+      
+      isPinching.current = false;
+      initialDistance.current = 0;
+    },
+  }), [pan, scale, rotation, toolMode]);
+  
+  // Rotation interpolation
+  const rotateInterpolate = rotation.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+  
+  // Quick rotation buttons (90 degrees)
+  const rotateBy90 = (direction: 'left' | 'right') => {
+    const delta = direction === 'left' ? -90 : 90;
+    const newRotation = lastRotation.current + delta;
+    rotation.setValue(newRotation);
+    lastRotation.current = newRotation;
+    setImageTransform(prev => ({ ...prev, rotation: newRotation }));
+  };
+  
+  // Reset transform
+  const resetTransform = () => {
+    pan.setValue({ x: 0, y: 0 });
+    scale.setValue(1);
+    rotation.setValue(0);
+    lastOffset.current = { x: 0, y: 0 };
+    lastScale.current = 1;
+    lastRotation.current = 0;
+    setImageTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
+  };
+  
+  // Get filter style for preview
+  const getFilterStyle = (filterId: string): object => {
+    const filter = FILTER_PRESETS.find(f => f.id === filterId) || FILTER_PRESETS[0];
+    // Note: React Native doesn't support CSS filters natively
+    // We apply opacity and overlay effects as approximation
+    return {
+      opacity: filter.opacity,
+    };
+  };
+  
+  // Get filter overlay color
+  const getFilterOverlay = (filterId: string): string | null => {
+    const filter = FILTER_PRESETS.find(f => f.id === filterId);
+    return filter?.overlay || null;
+  };
+  
+  // Apply edits and export image
+  const applyEditsAndExport = async () => {
+    if (!imageUri) return;
+    
+    setIsProcessing(true);
+    
+    try {
+      // Get crop dimensions based on selected aspect ratio
+      const { frameWidth: cropWidth, frameHeight: cropHeight } = getCropFrameDimensions();
+      
+      // Build manipulation actions
+      const actions: ImageManipulator.Action[] = [];
+      
+      // Apply rotation if needed
+      if (Math.abs(imageTransform.rotation) > 0.1) {
+        // Normalize rotation to 0-360 range
+        const normalizedRotation = ((imageTransform.rotation % 360) + 360) % 360;
+        // expo-image-manipulator only supports 90, 180, 270 degree rotations
+        const nearestRotation = Math.round(normalizedRotation / 90) * 90;
+        if (nearestRotation > 0 && nearestRotation < 360) {
+          actions.push({ rotate: nearestRotation });
+        }
+      }
+      
+      // Calculate crop region based on transform
+      // For now, we'll resize to fit the story dimensions
+      const storyWidth = 1080; // Instagram story width
+      const storyHeight = 1920; // Instagram story height (9:16)
+      
+      // Resize to story dimensions
+      actions.push({ resize: { width: storyWidth } });
+      
+      // Apply manipulations
+      const result = await ImageManipulator.manipulateAsync(
+        imageUri,
+        actions,
+        {
+          compress: 0.9,
+          format: ImageManipulator.SaveFormat.JPEG,
+        }
+      );
+      
+      setIsProcessing(false);
+      onDone(result.uri, result.width, result.height);
+    } catch (error) {
+      console.error('Error applying image edits:', error);
+      setIsProcessing(false);
+      // Fallback: return original image
+      onDone(imageUri, imageWidth, imageHeight);
+    }
+  };
+  
+  if (!visible || !imageUri) return null;
+  
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="fullScreen"
+      onRequestClose={onCancel}
+    >
+      <Animated.View style={[imageEditStyles.container, { opacity: fadeAnim }]}>
+        <StatusBar barStyle="light-content" backgroundColor="#000" />
+        
+        {/* Header */}
+        <SafeAreaView style={imageEditStyles.header}>
+          <TouchableOpacity onPress={onCancel} style={imageEditStyles.headerButton}>
+            <Ionicons name="close" size={28} color="#FFFFFF" />
+          </TouchableOpacity>
+          
+          <Text style={imageEditStyles.headerTitle}>Edit Photo</Text>
+          
+          <TouchableOpacity 
+            onPress={applyEditsAndExport} 
+            style={imageEditStyles.headerDoneButton}
+            disabled={isProcessing}
+          >
+            {isProcessing ? (
+              <Text style={imageEditStyles.headerDoneText}>...</Text>
+            ) : (
+              <Text style={imageEditStyles.headerDoneText}>Done</Text>
+            )}
+          </TouchableOpacity>
+        </SafeAreaView>
+        
+        {/* Canvas Area */}
+        <View style={imageEditStyles.canvasContainer}>
+          {/* Crop Frame Overlay */}
+          <View style={[imageEditStyles.cropFrame, { width: frameWidth, height: frameHeight }]}>
+            {/* Image with gestures */}
+            <Animated.View
+              {...panResponder.panHandlers}
+              style={[
+                imageEditStyles.imageWrapper,
+                {
+                  width: displayedWidth * imageTransform.scale,
+                  height: displayedHeight * imageTransform.scale,
+                  transform: [
+                    { translateX: pan.x },
+                    { translateY: pan.y },
+                    { scale: scale },
+                    { rotate: rotateInterpolate },
+                  ],
+                },
+              ]}
+            >
+              <ExpoImage
+                source={{ uri: imageUri }}
+                style={[
+                  imageEditStyles.image,
+                  { width: displayedWidth, height: displayedHeight },
+                  getFilterStyle(selectedFilter),
+                ]}
+                contentFit="contain"
+              />
+              
+              {/* Filter overlay */}
+              {getFilterOverlay(selectedFilter) && (
+                <View
+                  style={[
+                    imageEditStyles.filterOverlay,
+                    { backgroundColor: getFilterOverlay(selectedFilter) || 'transparent' },
+                  ]}
+                />
+              )}
+            </Animated.View>
+            
+            {/* Crop frame border */}
+            <View style={imageEditStyles.cropBorder} pointerEvents="none">
+              {/* Corner indicators */}
+              <View style={[imageEditStyles.cropCorner, imageEditStyles.topLeft]} />
+              <View style={[imageEditStyles.cropCorner, imageEditStyles.topRight]} />
+              <View style={[imageEditStyles.cropCorner, imageEditStyles.bottomLeft]} />
+              <View style={[imageEditStyles.cropCorner, imageEditStyles.bottomRight]} />
+              
+              {/* Grid lines (rule of thirds) */}
+              {toolMode === 'transform' && (
+                <>
+                  <View style={[imageEditStyles.gridLineH, { top: '33.33%' }]} />
+                  <View style={[imageEditStyles.gridLineH, { top: '66.66%' }]} />
+                  <View style={[imageEditStyles.gridLineV, { left: '33.33%' }]} />
+                  <View style={[imageEditStyles.gridLineV, { left: '66.66%' }]} />
+                </>
+              )}
+            </View>
+          </View>
+          
+          {/* Transform hint */}
+          {toolMode === 'transform' && (
+            <Text style={imageEditStyles.hintText}>
+              Drag to move • Pinch to zoom • Two fingers to rotate
+            </Text>
+          )}
+        </View>
+        
+        {/* Tool Tabs */}
+        <View style={imageEditStyles.toolTabs}>
+          <TouchableOpacity
+            style={[imageEditStyles.toolTab, toolMode === 'transform' && imageEditStyles.toolTabActive]}
+            onPress={() => setToolMode('transform')}
+          >
+            <Ionicons 
+              name="move-outline" 
+              size={22} 
+              color={toolMode === 'transform' ? '#FFFFFF' : '#8E8E93'} 
+            />
+            <Text style={[imageEditStyles.toolTabText, toolMode === 'transform' && imageEditStyles.toolTabTextActive]}>
+              Transform
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[imageEditStyles.toolTab, toolMode === 'crop' && imageEditStyles.toolTabActive]}
+            onPress={() => setToolMode('crop')}
+          >
+            <Ionicons 
+              name="crop-outline" 
+              size={22} 
+              color={toolMode === 'crop' ? '#FFFFFF' : '#8E8E93'} 
+            />
+            <Text style={[imageEditStyles.toolTabText, toolMode === 'crop' && imageEditStyles.toolTabTextActive]}>
+              Crop
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[imageEditStyles.toolTab, toolMode === 'filters' && imageEditStyles.toolTabActive]}
+            onPress={() => setToolMode('filters')}
+          >
+            <Ionicons 
+              name="color-wand-outline" 
+              size={22} 
+              color={toolMode === 'filters' ? '#FFFFFF' : '#8E8E93'} 
+            />
+            <Text style={[imageEditStyles.toolTabText, toolMode === 'filters' && imageEditStyles.toolTabTextActive]}>
+              Filters
+            </Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity
+            style={[imageEditStyles.toolTab, toolMode === 'adjust' && imageEditStyles.toolTabActive]}
+            onPress={() => setToolMode('adjust')}
+          >
+            <Ionicons 
+              name="options-outline" 
+              size={22} 
+              color={toolMode === 'adjust' ? '#FFFFFF' : '#8E8E93'} 
+            />
+            <Text style={[imageEditStyles.toolTabText, toolMode === 'adjust' && imageEditStyles.toolTabTextActive]}>
+              Adjust
+            </Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Tool Options Panel */}
+        <View style={imageEditStyles.toolPanel}>
+          {/* Transform Tools */}
+          {toolMode === 'transform' && (
+            <View style={imageEditStyles.transformTools}>
+              <TouchableOpacity 
+                style={imageEditStyles.transformButton}
+                onPress={() => rotateBy90('left')}
+              >
+                <Ionicons name="arrow-undo" size={24} color="#FFFFFF" />
+                <Text style={imageEditStyles.transformButtonText}>Rotate Left</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={imageEditStyles.transformButton}
+                onPress={() => rotateBy90('right')}
+              >
+                <Ionicons name="arrow-redo" size={24} color="#FFFFFF" />
+                <Text style={imageEditStyles.transformButtonText}>Rotate Right</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={imageEditStyles.transformButton}
+                onPress={resetTransform}
+              >
+                <Ionicons name="refresh" size={24} color="#FFFFFF" />
+                <Text style={imageEditStyles.transformButtonText}>Reset</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          {/* Crop Aspect Ratio Options */}
+          {toolMode === 'crop' && (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={imageEditStyles.cropOptions}
+            >
+              {CROP_PRESETS.map((preset) => (
+                <TouchableOpacity
+                  key={preset.id}
+                  style={[
+                    imageEditStyles.cropPreset,
+                    cropAspectRatio === preset.id && imageEditStyles.cropPresetActive,
+                  ]}
+                  onPress={() => setCropAspectRatio(preset.id)}
+                >
+                  <Ionicons 
+                    name={preset.icon as any} 
+                    size={24} 
+                    color={cropAspectRatio === preset.id ? '#FFFFFF' : '#8E8E93'} 
+                  />
+                  <Text 
+                    style={[
+                      imageEditStyles.cropPresetText,
+                      cropAspectRatio === preset.id && imageEditStyles.cropPresetTextActive,
+                    ]}
+                  >
+                    {preset.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          
+          {/* Filter Options */}
+          {toolMode === 'filters' && (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={imageEditStyles.filterOptions}
+            >
+              {FILTER_PRESETS.map((filter) => (
+                <TouchableOpacity
+                  key={filter.id}
+                  style={[
+                    imageEditStyles.filterPreset,
+                    selectedFilter === filter.id && imageEditStyles.filterPresetActive,
+                  ]}
+                  onPress={() => setSelectedFilter(filter.id)}
+                >
+                  <View style={imageEditStyles.filterPreview}>
+                    <ExpoImage
+                      source={{ uri: imageUri }}
+                      style={[imageEditStyles.filterPreviewImage, getFilterStyle(filter.id)]}
+                      contentFit="cover"
+                    />
+                    {filter.overlay && (
+                      <View
+                        style={[
+                          imageEditStyles.filterPreviewOverlay,
+                          { backgroundColor: filter.overlay },
+                        ]}
+                      />
+                    )}
+                  </View>
+                  <Text 
+                    style={[
+                      imageEditStyles.filterPresetText,
+                      selectedFilter === filter.id && imageEditStyles.filterPresetTextActive,
+                    ]}
+                  >
+                    {filter.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+          
+          {/* Adjustment Sliders */}
+          {toolMode === 'adjust' && (
+            <View style={imageEditStyles.adjustOptions}>
+              {/* Brightness */}
+              <View style={imageEditStyles.adjustRow}>
+                <View style={imageEditStyles.adjustLabelRow}>
+                  <Ionicons name="sunny-outline" size={20} color="#FFFFFF" />
+                  <Text style={imageEditStyles.adjustLabel}>Brightness</Text>
+                </View>
+                <View style={imageEditStyles.sliderContainer}>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, brightness: Math.max(0.5, prev.brightness - 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="remove" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <View style={imageEditStyles.sliderTrack}>
+                    <View style={[imageEditStyles.sliderFill, { width: `${((adjustments.brightness - 0.5) / 1) * 100}%` }]} />
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, brightness: Math.min(1.5, prev.brightness + 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="add" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Contrast */}
+              <View style={imageEditStyles.adjustRow}>
+                <View style={imageEditStyles.adjustLabelRow}>
+                  <Ionicons name="contrast-outline" size={20} color="#FFFFFF" />
+                  <Text style={imageEditStyles.adjustLabel}>Contrast</Text>
+                </View>
+                <View style={imageEditStyles.sliderContainer}>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, contrast: Math.max(0.5, prev.contrast - 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="remove" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <View style={imageEditStyles.sliderTrack}>
+                    <View style={[imageEditStyles.sliderFill, { width: `${((adjustments.contrast - 0.5) / 1) * 100}%` }]} />
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, contrast: Math.min(1.5, prev.contrast + 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="add" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Saturation */}
+              <View style={imageEditStyles.adjustRow}>
+                <View style={imageEditStyles.adjustLabelRow}>
+                  <Ionicons name="color-palette-outline" size={20} color="#FFFFFF" />
+                  <Text style={imageEditStyles.adjustLabel}>Saturation</Text>
+                </View>
+                <View style={imageEditStyles.sliderContainer}>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, saturation: Math.max(0, prev.saturation - 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="remove" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                  <View style={imageEditStyles.sliderTrack}>
+                    <View style={[imageEditStyles.sliderFill, { width: `${(adjustments.saturation / 2) * 100}%` }]} />
+                  </View>
+                  <TouchableOpacity 
+                    onPress={() => setAdjustments(prev => ({ ...prev, saturation: Math.min(2, prev.saturation + 0.1) }))}
+                    style={imageEditStyles.sliderButton}
+                  >
+                    <Ionicons name="add" size={18} color="#FFFFFF" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Reset button */}
+              <TouchableOpacity 
+                style={imageEditStyles.resetAdjustButton}
+                onPress={() => setAdjustments({ brightness: 1, contrast: 1, saturation: 1 })}
+              >
+                <Ionicons name="refresh" size={18} color="#0095F6" />
+                <Text style={imageEditStyles.resetAdjustText}>Reset Adjustments</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Animated.View>
+    </Modal>
+  );
+};
+
+// ========== Image Editing Modal Styles ==========
+const imageEditStyles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#000000',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#000000',
+  },
+  headerButton: {
+    padding: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  headerDoneButton: {
+    backgroundColor: '#0095F6',
+    paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  headerDoneText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  canvasContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1C1C1E',
+  },
+  cropFrame: {
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#000000',
+  },
+  imageWrapper: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  image: {
+    // Dimensions set dynamically
+  },
+  filterOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: 'none',
+  },
+  cropBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+  },
+  cropCorner: {
+    position: 'absolute',
+    width: 20,
+    height: 20,
+    borderColor: '#FFFFFF',
+  },
+  topLeft: {
+    top: -1,
+    left: -1,
+    borderTopWidth: 3,
+    borderLeftWidth: 3,
+  },
+  topRight: {
+    top: -1,
+    right: -1,
+    borderTopWidth: 3,
+    borderRightWidth: 3,
+  },
+  bottomLeft: {
+    bottom: -1,
+    left: -1,
+    borderBottomWidth: 3,
+    borderLeftWidth: 3,
+  },
+  bottomRight: {
+    bottom: -1,
+    right: -1,
+    borderBottomWidth: 3,
+    borderRightWidth: 3,
+  },
+  gridLineH: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  gridLineV: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  hintText: {
+    position: 'absolute',
+    bottom: 20,
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
+    textAlign: 'center',
+  },
+  toolTabs: {
+    flexDirection: 'row',
+    backgroundColor: '#1C1C1E',
+    borderTopWidth: 0.5,
+    borderTopColor: '#2C2C2E',
+    paddingVertical: 8,
+  },
+  toolTab: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  toolTabActive: {
+    borderBottomWidth: 2,
+    borderBottomColor: '#0095F6',
+  },
+  toolTabText: {
+    fontSize: 12,
+    color: '#8E8E93',
+    marginTop: 4,
+  },
+  toolTabTextActive: {
+    color: '#FFFFFF',
+  },
+  toolPanel: {
+    backgroundColor: '#000000',
+    paddingVertical: 16,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    minHeight: 140,
+  },
+  transformTools: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 20,
+  },
+  transformButton: {
+    alignItems: 'center',
+    padding: 12,
+  },
+  transformButtonText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  cropOptions: {
+    paddingHorizontal: 16,
+    gap: 16,
+  },
+  cropPreset: {
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: '#1C1C1E',
+    minWidth: 70,
+  },
+  cropPresetActive: {
+    backgroundColor: '#0095F6',
+  },
+  cropPresetText: {
+    color: '#8E8E93',
+    fontSize: 12,
+    marginTop: 6,
+  },
+  cropPresetTextActive: {
+    color: '#FFFFFF',
+  },
+  filterOptions: {
+    paddingHorizontal: 16,
+    gap: 12,
+  },
+  filterPreset: {
+    alignItems: 'center',
+  },
+  filterPresetActive: {
+    // Active state handled by border
+  },
+  filterPreview: {
+    width: 70,
+    height: 70,
+    borderRadius: 8,
+    overflow: 'hidden',
+    marginBottom: 6,
+  },
+  filterPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  filterPreviewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filterPresetText: {
+    color: '#8E8E93',
+    fontSize: 11,
+  },
+  filterPresetTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  adjustOptions: {
+    paddingHorizontal: 20,
+  },
+  adjustRow: {
+    marginBottom: 16,
+  },
+  adjustLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  adjustLabel: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  sliderButton: {
+    padding: 8,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 8,
+  },
+  sliderTrack: {
+    flex: 1,
+    height: 4,
+    backgroundColor: '#2C2C2E',
+    borderRadius: 2,
+    marginHorizontal: 12,
+    overflow: 'hidden',
+  },
+  sliderFill: {
+    height: '100%',
+    backgroundColor: '#0095F6',
+    borderRadius: 2,
+  },
+  resetAdjustButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    marginTop: 8,
+  },
+  resetAdjustText: {
+    color: '#0095F6',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+});
+
 export default function EditStoryScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
@@ -1934,6 +2933,14 @@ export default function EditStoryScreen() {
   // ========== Photo Sticker States ==========
   const [photoStickers, setPhotoStickers] = useState<PhotoSticker[]>([]);
   const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
+  
+  // ========== Image Editing Modal State ==========
+  const [imageEditingVisible, setImageEditingVisible] = useState(false);
+  const [pendingEditImage, setPendingEditImage] = useState<{
+    uri: string;
+    width: number;
+    height: number;
+  } | null>(null);
   
   // ========== Text Editing State ==========
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
@@ -2344,9 +3351,15 @@ export default function EditStoryScreen() {
       console.log('Picker result assets count:', result.assets?.length || 0);
       
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        console.log('Processing selected photo...');
-        // Add selected photo as sticker overlay
-        addPhotoSticker(result.assets[0]);
+        console.log('Processing selected photo - Opening editing modal...');
+        const asset = result.assets[0];
+        // Store the selected image and open the editing modal
+        setPendingEditImage({
+          uri: asset.uri,
+          width: asset.width || 1080,
+          height: asset.height || 1920,
+        });
+        setImageEditingVisible(true);
       } else {
         console.log('User cancelled or no photo selected');
       }
@@ -2359,7 +3372,34 @@ export default function EditStoryScreen() {
       );
     }
     console.log('=== openPhotoPicker END ===');
-  }, [addPhotoSticker]);
+  }, []);
+
+  // Handler for when image editing is complete
+  const handleImageEditingDone = useCallback((editedUri: string, width: number, height: number) => {
+    console.log('Image editing done, adding to story...');
+    // Add the edited photo as a sticker
+    const newSticker: PhotoSticker = {
+      id: `photo-${Date.now()}`,
+      uri: editedUri,
+      width: width,
+      height: height,
+      x: SCREEN_WIDTH / 2 - 75,
+      y: SCREEN_HEIGHT / 2 - 75,
+      scale: 1,
+      rotation: 0,
+    };
+    
+    setPhotoStickers(prev => [...prev, newSticker]);
+    setImageEditingVisible(false);
+    setPendingEditImage(null);
+  }, []);
+
+  // Handler for canceling image editing
+  const handleImageEditingCancel = useCallback(() => {
+    console.log('Image editing cancelled');
+    setImageEditingVisible(false);
+    setPendingEditImage(null);
+  }, []);
 
   const updatePhotoStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
     setPhotoStickers(prev => prev.map(sticker => 
@@ -3869,6 +4909,16 @@ export default function EditStoryScreen() {
       {renderMoreMenu()}
       {renderMusicPicker()}
       {renderLocationStickerSheet()}
+      
+      {/* Image Editing Modal */}
+      <ImageEditingModal
+        visible={imageEditingVisible}
+        imageUri={pendingEditImage?.uri || null}
+        imageWidth={pendingEditImage?.width || 1080}
+        imageHeight={pendingEditImage?.height || 1920}
+        onCancel={handleImageEditingCancel}
+        onDone={handleImageEditingDone}
+      />
     </View>
   );
 }
