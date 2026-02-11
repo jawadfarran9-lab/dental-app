@@ -1901,6 +1901,14 @@ const ImageEditingModal = ({
   onCancel: () => void;
   onDone: (editedUri: string, width: number, height: number) => void;
 }) => {
+  // Debug logging
+  useEffect(() => {
+    console.log('=== ImageEditingModal Props Changed ===');
+    console.log('visible:', visible);
+    console.log('imageUri:', imageUri ? 'set' : 'null');
+    console.log('dimensions:', imageWidth, 'x', imageHeight);
+  }, [visible, imageUri, imageWidth, imageHeight]);
+  
   // Current editing tool mode
   const [toolMode, setToolMode] = useState<EditingToolMode>('transform');
   
@@ -2209,15 +2217,22 @@ const ImageEditingModal = ({
     }
   };
   
-  if (!visible || !imageUri) return null;
-  
+  // Always render the Modal but conditionally show content
+  // This fixes timing issues between visible state and imageUri
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
       onRequestClose={onCancel}
+      statusBarTranslucent={true}
     >
+      {!imageUri ? (
+        // Loading state while image is being prepared
+        <View style={[imageEditStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={{ color: '#FFFFFF', fontSize: 16 }}>Loading...</Text>
+        </View>
+      ) : (
       <Animated.View style={[imageEditStyles.container, { opacity: fadeAnim }]}>
         <StatusBar barStyle="light-content" backgroundColor="#000" />
         
@@ -2570,6 +2585,7 @@ const ImageEditingModal = ({
           )}
         </View>
       </Animated.View>
+      )}
     </Modal>
   );
 };
@@ -3317,6 +3333,9 @@ export default function EditStoryScreen() {
 
   const openPhotoPicker = useCallback(async () => {
     console.log('=== openPhotoPicker START ===');
+    // Determine if we already have a background image
+    const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
+    console.log('Already has background:', alreadyHasBackground);
     try {
       // Request permission using the direct expo-image-picker method
       // This ensures proper native picker is launched
@@ -3351,15 +3370,32 @@ export default function EditStoryScreen() {
       console.log('Picker result assets count:', result.assets?.length || 0);
       
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        console.log('Processing selected photo - Opening editing modal...');
         const asset = result.assets[0];
-        // Store the selected image and open the editing modal
-        setPendingEditImage({
-          uri: asset.uri,
-          width: asset.width || 1080,
-          height: asset.height || 1920,
-        });
-        setImageEditingVisible(true);
+        console.log('Selected photo URI:', asset.uri);
+        console.log('Selected photo dimensions:', asset.width, 'x', asset.height);
+        
+        if (alreadyHasBackground) {
+          // Background already exists — add new photo as a draggable sticker on top
+          console.log('Adding photo as sticker layer on top of background');
+          addPhotoSticker(asset);
+        } else {
+          // No background yet — open editing modal, first photo becomes background
+          const imageData = {
+            uri: asset.uri,
+            width: asset.width || 1080,
+            height: asset.height || 1920,
+          };
+          
+          console.log('Setting pendingEditImage:', JSON.stringify(imageData));
+          setPendingEditImage(imageData);
+          
+          // Then show the modal (with a small delay to ensure state is set)
+          console.log('Opening editing modal...');
+          setTimeout(() => {
+            console.log('Setting imageEditingVisible to true');
+            setImageEditingVisible(true);
+          }, 100);
+        }
       } else {
         console.log('User cancelled or no photo selected');
       }
@@ -3372,27 +3408,35 @@ export default function EditStoryScreen() {
       );
     }
     console.log('=== openPhotoPicker END ===');
-  }, []);
+  }, [params.uri, backgroundImageUri, addPhotoSticker]);
 
   // Handler for when image editing is complete
   const handleImageEditingDone = useCallback((editedUri: string, width: number, height: number) => {
-    console.log('Image editing done, adding to story...');
-    // Add the edited photo as a sticker
-    const newSticker: PhotoSticker = {
-      id: `photo-${Date.now()}`,
-      uri: editedUri,
-      width: width,
-      height: height,
-      x: SCREEN_WIDTH / 2 - 75,
-      y: SCREEN_HEIGHT / 2 - 75,
-      scale: 1,
-      rotation: 0,
-    };
+    const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
     
-    setPhotoStickers(prev => [...prev, newSticker]);
+    if (!alreadyHasBackground) {
+      // First photo — set as the main background canvas
+      console.log('Image editing done, setting as background...');
+      setBackgroundImageUri(editedUri);
+    } else {
+      // Subsequent photos — add as draggable sticker layer
+      console.log('Image editing done, adding as sticker layer...');
+      const newSticker: PhotoSticker = {
+        id: `photo-${Date.now()}`,
+        uri: editedUri,
+        width: width,
+        height: height,
+        x: SCREEN_WIDTH / 2 - 75,
+        y: SCREEN_HEIGHT / 2 - 75,
+        scale: 1,
+        rotation: 0,
+      };
+      setPhotoStickers(prev => [...prev, newSticker]);
+    }
+    
     setImageEditingVisible(false);
     setPendingEditImage(null);
-  }, []);
+  }, [params.uri, backgroundImageUri]);
 
   // Handler for canceling image editing
   const handleImageEditingCancel = useCallback(() => {
@@ -3595,11 +3639,11 @@ export default function EditStoryScreen() {
     if (stickerId === 'photo') {
       console.log('Photo sticker selected! Closing tray...');
       closeStickerTray();
-      console.log('Tray closed, will open picker in 200ms...');
+      console.log('Tray closed, will open picker in 500ms...');
       setTimeout(() => {
         console.log('Calling openPhotoPicker now!');
         openPhotoPicker();
-      }, 200);
+      }, 500);
       return;
     }
     
@@ -4108,7 +4152,12 @@ export default function EditStoryScreen() {
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-5deg' }] }]} onPress={() => {
                   console.log('Photo button pressed!');
                   closeStickerTray();
-                  setTimeout(() => openPhotoPicker(), 300);
+                  // Increased delay to ensure sticker tray modal is fully closed before opening picker
+                  // This prevents modal conflicts on iOS
+                  setTimeout(() => {
+                    console.log('Delay complete, calling openPhotoPicker...');
+                    openPhotoPicker();
+                  }, 500);
                 }}>
                   <Ionicons name="images-outline" size={14} color="#22C55E" />
                   <Text style={styles.featurePillText}>Photo</Text>
