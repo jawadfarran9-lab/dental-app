@@ -18,6 +18,7 @@ export type ClinicData = {
   createdAt?: number;
   accountCreatedAt?: number;
   status?: string;
+  clinicType?: string; // 'dental' | 'laser' | 'beauty' etc.
 };
 
 /**
@@ -54,6 +55,7 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
       createdAt: data?.createdAt,
       accountCreatedAt: data?.accountCreatedAt,
       status: data?.status,
+      clinicType: data?.clinicType,
     };
 
     if (clinicData.imageUrl) {
