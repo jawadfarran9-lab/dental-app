@@ -1,10 +1,10 @@
 import { STICKER_COMPONENTS } from '@/src/components/stickers';
+import { BEAUTY_STICKER_DESIGNS } from '@/src/components/stickers/BeautyStickers';
+import { BEAUTY_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/BeautyStickersExtended';
 import { CLINIC_NAME_STICKER_DESIGNS } from '@/src/components/stickers/ClinicNameStickers';
 import { CLINIC_NAME_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/ClinicNameStickersExtended';
 import { COMBO_STICKER_DESIGNS } from '@/src/components/stickers/ComboStickers';
 import { COMBO_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/ComboStickersExtended';
-import { BEAUTY_STICKER_DESIGNS } from '@/src/components/stickers/BeautyStickers';
-import { BEAUTY_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/BeautyStickersExtended';
 import { DENTAL_STICKER_DESIGNS } from '@/src/components/stickers/DentalStickers';
 import { DENTAL_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/DentalStickersExtended';
 import { LASER_STICKER_DESIGNS } from '@/src/components/stickers/LaserStickers';
