@@ -1,6 +1,6 @@
 import React from 'react';
 import { Platform, View } from 'react-native';
-import Svg, { ClipPath, Defs, Image as SvgImage, Path } from 'react-native-svg';
+import Svg, { ClipPath, Defs, Path, Image as SvgImage } from 'react-native-svg';
 
 /**
  * Generates a smooth 5-pointed star SVG path with rounded corners

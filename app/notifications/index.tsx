@@ -2,20 +2,20 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  FlatList,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useClinic } from '@/src/context/ClinicContext';
 import {
-  fetchQuestionResponses,
-  markQuestionResponseRead,
+    fetchQuestionResponses,
+    markQuestionResponseRead,
 } from '@/src/services/questionResponseService';
 import { QuestionResponse } from '@/src/types/questionResponse';
 

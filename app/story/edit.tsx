@@ -1,3 +1,4 @@
+import StarAvatar from '@/src/components/StarAvatar';
 import { STICKER_COMPONENTS } from '@/src/components/stickers';
 import { BEAUTY_STICKER_DESIGNS } from '@/src/components/stickers/BeautyStickers';
 import { BEAUTY_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/BeautyStickersExtended';
@@ -14,7 +15,6 @@ import { PHONE_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/PhoneS
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { markQuestionResponseRead } from '@/src/services/questionResponseService';
-import StarAvatar from '@/src/components/StarAvatar';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';

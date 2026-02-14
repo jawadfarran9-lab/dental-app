@@ -1,15 +1,15 @@
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-  updateDoc,
-  where,
-} from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 import { QuestionResponse } from '@/src/types/questionResponse';
+import {
+    addDoc,
+    collection,
+    doc,
+    getDocs,
+    orderBy,
+    query,
+    updateDoc,
+    where,
+} from 'firebase/firestore';
 
 // ─── Collection helper ───
 const responsesCollection = (clinicId: string) =>
