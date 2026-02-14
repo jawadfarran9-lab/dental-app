@@ -5,6 +5,7 @@ node_modules/
 
 # JDK cache
 .jdk/
+.jdks/
 
 # Expo
 .expo/
