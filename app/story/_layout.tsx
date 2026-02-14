@@ -13,6 +13,7 @@ export default function StoryLayout() {
       <Stack.Screen name="camera" />
       <Stack.Screen name="edit" />
       <Stack.Screen name="text-editor" />
+      <Stack.Screen name="frame-editor" />
       <Stack.Screen name="boomerang" />
     </Stack>
   );

@@ -22,7 +22,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Animated,
@@ -96,7 +96,6 @@ const STICKER_CATEGORIES = [
   { id: 'music', name: 'Music', icon: 'musical-notes' as const, color: '#FF2D55' },
   { id: 'photo', name: 'Photo', icon: 'images-outline' as const, color: '#34C759' },
   { id: 'gif', name: 'GIF', icon: 'search' as const, color: '#00D4AA' },
-  { id: 'addyours', name: 'Add Yours', icon: 'camera-outline' as const, color: '#FF9500' },
   { id: 'frames', name: 'Frames', icon: 'image-outline' as const, color: '#007AFF' },
   { id: 'questions', name: 'Questions', icon: 'help-circle-outline' as const, color: '#AF52DE' },
   { id: 'cutouts', name: 'Cutouts', icon: 'cut-outline' as const, color: '#5AC8FA' },
@@ -212,6 +211,20 @@ type BeautyStickerOnCanvas = {
   y: number;
   scale: number;
   rotation: number;
+};
+
+// ========== Frame Sticker on Canvas Type ==========
+type FrameStickerOnCanvas = {
+  id: string;
+  imageUri: string;
+  caption: string;
+  username: string;
+  time: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+  shape: 'square' | 'circle';
 };
 
 // ========== Image Editing Types & Constants ==========
@@ -3417,6 +3430,363 @@ const DraggableBeautySticker = ({
   );
 };
 
+// ========== Draggable Frame Sticker Component ==========
+const DraggableFrameStickerInner = ({
+  sticker,
+  onTransformUpdate,
+  onRemove,
+  onToggleShape,
+  onDragStateChange,
+}: {
+  sticker: FrameStickerOnCanvas;
+  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
+  onRemove: (id: string) => void;
+  onToggleShape: (id: string) => void;
+  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
+}) => {
+  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
+  const scale = useRef(new Animated.Value(sticker.scale)).current;
+  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const popAnim = useRef(new Animated.Value(0.8)).current;
+
+  // Stable callback refs — prevent panResponder recreation on prop changes
+  const onTransformUpdateRef = useRef(onTransformUpdate);
+  const onRemoveRef = useRef(onRemove);
+  const onToggleShapeRef = useRef(onToggleShape);
+  const onDragStateChangeRef = useRef(onDragStateChange);
+  const stickerIdRef = useRef(sticker.id);
+  onTransformUpdateRef.current = onTransformUpdate;
+  onRemoveRef.current = onRemove;
+  onToggleShapeRef.current = onToggleShape;
+  onDragStateChangeRef.current = onDragStateChange;
+  stickerIdRef.current = sticker.id;
+
+  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
+  const lastScale = useRef(sticker.scale);
+  const lastRotation = useRef(sticker.rotation);
+  const initialDistance = useRef(0);
+  const initialAngle = useRef(0);
+  const initialCenter = useRef({ x: 0, y: 0 });
+  const isPinching = useRef(false);
+  const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tapCount = useRef(0);
+  const hasMoved = useRef(false);
+  const lastPageY = useRef(0);
+  const lastDragCallTime = useRef(0);
+
+  const FRAME_MIN_SCALE = 0.5;
+  const FRAME_MAX_SCALE = 3;
+  const SNAP_THRESHOLD = 4; // degrees
+  const SNAP_ANGLES = [0, 90, 180, 270, -90, -180, -270];
+
+  const snapRotation = (angle: number) => {
+    for (const snap of SNAP_ANGLES) {
+      if (Math.abs(angle - snap) <= SNAP_THRESHOLD) return snap;
+    }
+    return angle;
+  };
+
+  const combinedScale = useMemo(() => Animated.multiply(scale, popAnim), [scale, popAnim]);
+
+  const getDistance = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getAngle = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[1].pageX - touches[0].pageX;
+    const dy = touches[1].pageY - touches[0].pageY;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  };
+
+  const getCenter = (touches: any[]) => {
+    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
+    return {
+      x: (touches[0].pageX + touches[1].pageX) / 2,
+      y: (touches[0].pageY + touches[1].pageY) / 2,
+    };
+  };
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
+    onPanResponderGrant: (evt) => {
+      hasMoved.current = false;
+      lastDragCallTime.current = 0;
+      const touches = evt.nativeEvent.touches;
+      if (touches.length >= 2) {
+        isPinching.current = true;
+        initialDistance.current = getDistance(touches);
+        initialAngle.current = getAngle(touches);
+        initialCenter.current = getCenter(touches);
+      } else {
+        isPinching.current = false;
+      }
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const touches = evt.nativeEvent.touches;
+
+      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
+        if (!hasMoved.current) {
+          hasMoved.current = true;
+          onDragStateChangeRef.current?.(true);
+        }
+      }
+
+      if (touches.length >= 2) {
+        if (!hasMoved.current) {
+          hasMoved.current = true;
+          onDragStateChangeRef.current?.(true);
+        }
+        if (!isPinching.current) {
+          isPinching.current = true;
+          initialDistance.current = getDistance(touches);
+          initialAngle.current = getAngle(touches);
+          initialCenter.current = getCenter(touches);
+        }
+
+        const currentDistance = getDistance(touches);
+        if (initialDistance.current > 0) {
+          const scaleFactor = currentDistance / initialDistance.current;
+          const newScale = Math.max(FRAME_MIN_SCALE, Math.min(FRAME_MAX_SCALE, lastScale.current * scaleFactor));
+          scale.setValue(newScale);
+        }
+
+        const currentAngle = getAngle(touches);
+        const angleDiff = currentAngle - initialAngle.current;
+        const rawRotation = lastRotation.current + angleDiff;
+        rotation.setValue(snapRotation(rawRotation));
+
+        const currentCenter = getCenter(touches);
+        const centerDx = currentCenter.x - initialCenter.current.x;
+        const centerDy = currentCenter.y - initialCenter.current.y;
+        pan.setValue({
+          x: lastOffset.current.x + centerDx,
+          y: lastOffset.current.y + centerDy,
+        });
+      } else if (!isPinching.current) {
+        pan.setValue({
+          x: lastOffset.current.x + gestureState.dx,
+          y: lastOffset.current.y + gestureState.dy,
+        });
+      }
+
+      lastPageY.current = evt.nativeEvent.pageY;
+      if (hasMoved.current) {
+        const now = Date.now();
+        if (now - lastDragCallTime.current > 50) {
+          lastDragCallTime.current = now;
+          onDragStateChangeRef.current?.(true, evt.nativeEvent.pageY);
+        }
+      }
+    },
+    onPanResponderRelease: () => {
+      if (hasMoved.current) {
+        onDragStateChangeRef.current?.(false);
+      } else if (!isPinching.current) {
+        // Single tap (no drag, no pinch) — toggle shape
+        onToggleShapeRef.current(stickerIdRef.current);
+      }
+
+      // @ts-ignore
+      lastOffset.current = { x: pan.x._value, y: pan.y._value };
+      // @ts-ignore
+      lastScale.current = scale._value || lastScale.current;
+      // @ts-ignore
+      lastRotation.current = rotation._value || lastRotation.current;
+
+      onTransformUpdateRef.current(stickerIdRef.current, {
+        x: lastOffset.current.x,
+        y: lastOffset.current.y,
+        scale: lastScale.current,
+        rotation: lastRotation.current,
+      });
+
+      // Trash zone detection — delete if released over trash area
+      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
+      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
+        onRemoveRef.current(stickerIdRef.current);
+      }
+
+      hasMoved.current = false;
+      isPinching.current = false;
+      initialDistance.current = 0;
+    },
+  }), [pan, scale, rotation]); // Stable deps only — callbacks use refs
+
+  const rotateInterpolate = rotation.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(popAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, popAnim]);
+
+  const FRAME_SIZE = 180;
+  const isCircle = sticker.shape === 'circle';
+
+  // Square layout: 8 (top) + 150 (image) + 22 (info) = 180
+  const SQ_TOP = 8;
+  const SQ_IMG = 150;
+  const SQ_SIDE = (FRAME_SIZE - SQ_IMG) / 2; // 15
+
+  // Circle layout: 8 (top) + 140 (image) + 32 (info) = 180
+  const CR_TOP = 8;
+  const CR_IMG = 140;
+
+  // Precomputed memoized styles — no inline object recreation per render
+  const outerFrameStyle = useMemo(() => ({
+    width: FRAME_SIZE,
+    height: FRAME_SIZE,
+    backgroundColor: '#000000' as const,
+    borderRadius: isCircle ? FRAME_SIZE / 2 : 10,
+    overflow: 'hidden' as const,
+  }), [isCircle]);
+
+  const circleImageContainerStyle = useMemo(() => ({
+    width: CR_IMG,
+    height: CR_IMG,
+    borderRadius: CR_IMG / 2,
+    overflow: 'hidden' as const,
+    marginTop: CR_TOP,
+    alignSelf: 'center' as const,
+  }), []);
+
+  const circleImageStyle = useMemo(() => ({
+    width: CR_IMG,
+    height: CR_IMG,
+  }), []);
+
+  const squareImageContainerStyle = useMemo(() => ({
+    marginTop: SQ_TOP,
+    marginHorizontal: SQ_SIDE,
+    borderRadius: 6,
+    overflow: 'hidden' as const,
+    width: SQ_IMG,
+    height: SQ_IMG,
+  }), []);
+
+  const squareImageStyle = useMemo(() => ({
+    width: SQ_IMG,
+    height: SQ_IMG,
+  }), []);
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.photoStickerContainer,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { scale: combinedScale },
+            { rotate: rotateInterpolate },
+          ],
+        },
+      ]}
+    >
+      <View style={outerFrameStyle}>
+        {isCircle ? (
+          /* ---- Circle layout ---- */
+          <>
+            <View style={circleImageContainerStyle}>
+              <ExpoImage
+                source={{ uri: sticker.imageUri }}
+                style={circleImageStyle}
+                contentFit="cover"
+              />
+            </View>
+            <View style={frameCircleInfoRow}>
+              <Text style={frameCircleUsernameText} numberOfLines={1}>
+                {sticker.username}
+              </Text>
+              <Text style={frameCircleDotText}>•</Text>
+              <Text style={frameCircleTimeText}>
+                {sticker.time}
+              </Text>
+            </View>
+          </>
+        ) : (
+          /* ---- Square layout ---- */
+          <>
+            <View style={squareImageContainerStyle}>
+              <ExpoImage
+                source={{ uri: sticker.imageUri }}
+                style={squareImageStyle}
+                contentFit="cover"
+              />
+            </View>
+            <View style={frameSquareInfoContainer}>
+              <View style={frameSquareInfoRow}>
+                <Text style={frameSquareUsernameText} numberOfLines={1}>
+                  {sticker.username}
+                </Text>
+                <Text style={frameSquareTimeText}>
+                  {sticker.time}
+                </Text>
+              </View>
+              {sticker.caption ? (
+                <Text style={frameSquareCaptionText} numberOfLines={1} ellipsizeMode="tail">
+                  {sticker.caption.length > 150 ? sticker.caption.slice(0, 150) + '…' : sticker.caption}
+                </Text>
+              ) : null}
+            </View>
+          </>
+        )}
+      </View>
+    </Animated.View>
+  );
+};
+
+// Static styles hoisted outside component — zero GC pressure
+const frameCircleInfoRow = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4, paddingHorizontal: 12 };
+const frameCircleUsernameText = { fontSize: 8, fontWeight: '700' as const, color: '#FFFFFF' };
+const frameCircleDotText = { fontSize: 7, color: 'rgba(255,255,255,0.4)', marginHorizontal: 3 };
+const frameCircleTimeText = { fontSize: 8, color: 'rgba(255,255,255,0.5)' };
+const frameSquareInfoContainer = { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 6, flex: 1 };
+const frameSquareInfoRow = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
+const frameSquareUsernameText = { fontSize: 9, fontWeight: '700' as const, color: '#FFFFFF', flexShrink: 1 };
+const frameSquareTimeText = { fontSize: 8, color: 'rgba(255,255,255,0.5)', marginLeft: 6 };
+const frameSquareCaptionText = { fontSize: 7, color: 'rgba(255,255,255,0.7)', marginTop: 2 };
+
+// React.memo with custom comparator — only re-render when sticker data actually changes
+const DraggableFrameSticker = React.memo(DraggableFrameStickerInner, (prevProps, nextProps) => {
+  const prev = prevProps.sticker;
+  const next = nextProps.sticker;
+  return (
+    prev.id === next.id &&
+    prev.shape === next.shape &&
+    prev.imageUri === next.imageUri &&
+    prev.username === next.username &&
+    prev.time === next.time &&
+    prev.caption === next.caption &&
+    prev.x === next.x &&
+    prev.y === next.y &&
+    prev.scale === next.scale &&
+    prev.rotation === next.rotation
+  );
+});
+
 // ========== Instagram-Style Image Editing Modal ==========
 const ImageEditingModal = ({
   visible,
@@ -4388,6 +4758,10 @@ export default function EditStoryScreen() {
     mediaType: string;
     showLocationSticker?: string;
     captureTime?: string; // ISO timestamp of when image was captured
+    frameImageUri?: string;
+    frameCaption?: string;
+    frameTime?: string;
+    frameClinicName?: string;
   }>();
 
   // ========== Capture Time ==========
@@ -4497,6 +4871,8 @@ export default function EditStoryScreen() {
   const [photoStickers, setPhotoStickers] = useState<PhotoSticker[]>([]);
   const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
   const pendingPhotoPickerOpen = useRef(false);
+  const pendingFramePickerOpen = useRef(false);
+  const frameImageUriProcessed = useRef<string | null>(null);
 
   // ========== Phone Sticker States ==========
   const [phoneStickersOnCanvas, setPhoneStickersOnCanvas] = useState<PhoneStickerOnCanvas[]>([]);
@@ -4518,6 +4894,9 @@ export default function EditStoryScreen() {
 
   // ========== Beauty Sticker States ==========
   const [beautyStickersOnCanvas, setBeautyStickersOnCanvas] = useState<BeautyStickerOnCanvas[]>([]);
+
+  // ========== Frame Sticker States ==========
+  const [frameStickersOnCanvas, setFrameStickersOnCanvas] = useState<FrameStickerOnCanvas[]>([]);
 
   // ========== Trash Zone State ==========
   const [isDraggingStickerToTrash, setIsDraggingStickerToTrash] = useState(false);
@@ -4566,6 +4945,25 @@ export default function EditStoryScreen() {
       }, 300);
     }
   }, [params.showLocationSticker]);
+
+  // ========== Handle Return from Frame Editor Screen ==========
+  useEffect(() => {
+    if (params.frameImageUri && params.frameImageUri !== frameImageUriProcessed.current) {
+      frameImageUriProcessed.current = params.frameImageUri;
+      const returnedClinicName = params.frameClinicName || clinicName;
+      if (!returnedClinicName || returnedClinicName === 'My Clinic') {
+        console.warn('[FrameSticker] clinicName unavailable or default — using best available:', returnedClinicName);
+      }
+      setTimeout(() => {
+        addFrameStickerToCanvas(
+          params.frameImageUri!,
+          params.frameCaption || '',
+          params.frameTime || '',
+          returnedClinicName,
+        );
+      }, 200);
+    }
+  }, [params.frameImageUri]);
 
   // Animation refs
   const toolbarAnim = useRef(new Animated.Value(1)).current;
@@ -4993,6 +5391,55 @@ export default function EditStoryScreen() {
     console.log('=== openPhotoPicker END ===');
   }, [params.uri, backgroundImageUri, addPhotoSticker]);
 
+  // Open image picker for Frames sticker (called after Modal is fully dismissed)
+  const openFramePicker = useCallback(async () => {
+    console.log('=== openFramePicker START ===');
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission Required',
+          'Please allow access to your photo library to use Frames.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      console.log('Frame picker: launching image library...');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: false,
+        allowsEditing: false,
+        quality: 1,
+        exif: false,
+        base64: false,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        console.log('Frame picker: image selected, navigating to frame-editor');
+        router.push({
+          pathname: '/story/frame-editor',
+          params: {
+            imageUri: result.assets[0].uri,
+            editUri: params.uri || '',
+            editWidth: params.width || '',
+            editHeight: params.height || '',
+            editMediaType: params.mediaType || '',
+            clinicName: clinicName,
+          },
+        });
+      } else {
+        console.log('Frame picker: user cancelled');
+      }
+    } catch (error) {
+      console.error('Error opening image picker for Frames:', error);
+      Alert.alert(
+        'Error',
+        'Failed to open photo library. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+    console.log('=== openFramePicker END ===');
+  }, [router, params.uri, params.width, params.height, params.mediaType, clinicName]);
+
   // Handler for when image editing is complete
   const handleImageEditingDone = useCallback((editedUri: string, width: number, height: number) => {
     const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
@@ -5189,6 +5636,42 @@ export default function EditStoryScreen() {
 
   const removeBeautyStickerFromCanvas = useCallback((id: string) => {
     setBeautyStickersOnCanvas(prev => prev.filter(s => s.id !== id));
+  }, []);
+
+  // ========== Frame Sticker Handlers ==========
+  const addFrameStickerToCanvas = useCallback((imageUri: string, caption: string, time: string, username: string) => {
+    // Smart initial scale: frame sticker is 180px wide, target ~45% of canvas width
+    const frameStickerBaseSize = 180;
+    const targetWidth = SCREEN_WIDTH * 0.45;
+    const smartScale = Math.max(0.5, Math.min(1.5, targetWidth / frameStickerBaseSize));
+
+    const newSticker: FrameStickerOnCanvas = {
+      id: `frame-${Date.now()}`,
+      imageUri,
+      caption: caption.length > 150 ? caption.slice(0, 150) : caption,
+      username,
+      time,
+      x: SCREEN_WIDTH / 2 - (frameStickerBaseSize * smartScale) / 2,
+      y: SCREEN_HEIGHT / 2 - (frameStickerBaseSize * smartScale) / 2,
+      scale: smartScale,
+      rotation: 0,
+      shape: 'square',
+    };
+    setFrameStickersOnCanvas(prev => [...prev, newSticker]);
+  }, []);
+
+  const updateFrameStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
+    setFrameStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  }, []);
+
+  const removeFrameStickerFromCanvas = useCallback((id: string) => {
+    setFrameStickersOnCanvas(prev => prev.filter(s => s.id !== id));
+  }, []);
+
+  const toggleFrameStickerShape = useCallback((id: string) => {
+    setFrameStickersOnCanvas(prev => prev.map(s =>
+      s.id === id ? { ...s, shape: s.shape === 'square' ? 'circle' as const : 'square' as const } : s
+    ));
   }, []);
 
   // ========== Trash Zone Handler (optimized — only setState on actual transitions) ==========
@@ -5395,12 +5878,17 @@ export default function EditStoryScreen() {
   const handleStickerTrayDismiss = useCallback(() => {
     if (pendingPhotoPickerOpen.current) {
       pendingPhotoPickerOpen.current = false;
-      // Small delay to ensure the native modal system is fully clear
       setTimeout(() => {
         openPhotoPicker();
       }, 150);
     }
-  }, [openPhotoPicker]);
+    if (pendingFramePickerOpen.current) {
+      pendingFramePickerOpen.current = false;
+      setTimeout(() => {
+        openFramePicker();
+      }, 150);
+    }
+  }, [openPhotoPicker, openFramePicker]);
 
   // Android fallback: onDismiss doesn't fire on Android, so use useEffect
   useEffect(() => {
@@ -5410,7 +5898,13 @@ export default function EditStoryScreen() {
         openPhotoPicker();
       }, 300);
     }
-  }, [stickerTrayVisible, openPhotoPicker]);
+    if (!stickerTrayVisible && pendingFramePickerOpen.current && Platform.OS === 'android') {
+      pendingFramePickerOpen.current = false;
+      setTimeout(() => {
+        openFramePicker();
+      }, 300);
+    }
+  }, [stickerTrayVisible, openPhotoPicker, openFramePicker]);
 
   // Close location sticker sheet
   const closeLocationStickerSheet = useCallback(() => {
@@ -5485,6 +5979,14 @@ export default function EditStoryScreen() {
     if (stickerId === 'gif') {
       closeStickerTray();
       setTimeout(() => setGifPickerVisible(true), 300);
+      return;
+    }
+
+    // Handle Frames sticker – set pending flag, open picker after Modal fully dismisses
+    if (stickerId === 'frames') {
+      console.log('Frames sticker selected! Setting pending flag and closing tray...');
+      pendingFramePickerOpen.current = true;
+      closeStickerTray();
       return;
     }
 
@@ -6032,7 +6534,7 @@ export default function EditStoryScreen() {
                   <Text style={styles.featurePillText}>Music</Text>
                 </TouchableOpacity>
 
-                {/* Row 2: Photo, GIF, Add Yours */}
+                {/* Row 2: Photo, GIF */}
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-5deg' }] }]} onPress={() => {
                   console.log('Photo button pressed! Setting pending flag and closing tray...');
                   pendingPhotoPickerOpen.current = true;
@@ -6045,11 +6547,6 @@ export default function EditStoryScreen() {
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-7deg' }] }]} onPress={() => handleStickerSelect('gif')}>
                   <Ionicons name="search" size={12} color="#10B981" />
                   <Text style={[styles.featurePillText, { color: '#10B981', fontWeight: '700' }]}>GIF</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-4deg' }] }]} onPress={() => handleStickerSelect('addyours')}>
-                  <Ionicons name="camera-outline" size={14} color="#F97316" />
-                  <Text style={styles.featurePillText}>Add Yours</Text>
                 </TouchableOpacity>
 
                 {/* Row 3: Frames, Questions, Cutouts */}
@@ -7373,6 +7870,18 @@ export default function EditStoryScreen() {
           sticker={sticker}
           onTransformUpdate={updateBeautyStickerTransform}
           onRemove={removeBeautyStickerFromCanvas}
+          onDragStateChange={handlePhoneStickerDragState}
+        />
+      ))}
+
+      {/* Frame Stickers */}
+      {frameStickersOnCanvas.map(sticker => (
+        <DraggableFrameSticker
+          key={sticker.id}
+          sticker={sticker}
+          onTransformUpdate={updateFrameStickerTransform}
+          onRemove={removeFrameStickerFromCanvas}
+          onToggleShape={toggleFrameStickerShape}
           onDragStateChange={handlePhoneStickerDragState}
         />
       ))}
