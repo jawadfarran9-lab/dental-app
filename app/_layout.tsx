@@ -51,6 +51,7 @@ function RootNavigator() {
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
       <Stack.Screen name="settings" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="story" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
+      <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="public/clinics" options={{ headerShown: false }} />
     </Stack>
   );

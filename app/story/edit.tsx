@@ -13,6 +13,8 @@ import { PHONE_STICKER_DESIGNS } from '@/src/components/stickers/PhoneStickers';
 import { PHONE_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/PhoneStickersExtended';
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { markQuestionResponseRead } from '@/src/services/questionResponseService';
+import StarAvatar from '@/src/components/StarAvatar';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -226,6 +228,27 @@ type FrameStickerOnCanvas = {
   rotation: number;
   shape: 'square' | 'circle';
 };
+
+// ========== Question Sticker on Canvas Type ==========
+type QuestionStickerOnCanvas = {
+  id: string;
+  questionText: string;
+  backgroundColor: string;
+  profileImageUrl: string;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+};
+
+// ========== Question Color Brightness Helper ==========
+function isQuestionColorDark(hex: string): boolean {
+  const c = hex.replace('#', '');
+  const r = parseInt(c.substring(0, 2), 16);
+  const g = parseInt(c.substring(2, 4), 16);
+  const b = parseInt(c.substring(4, 6), 16);
+  return r * 0.299 + g * 0.587 + b * 0.114 < 140;
+}
 
 // ========== Image Editing Types & Constants ==========
 // Story canvas dimensions (9:16 aspect ratio like Instagram)
@@ -3787,6 +3810,293 @@ const DraggableFrameSticker = React.memo(DraggableFrameStickerInner, (prevProps,
   );
 });
 
+// ========== Draggable Question Sticker Component ==========
+const QUESTION_STICKER_SIZE = 180;
+const Q_PROFILE_SIZE = 36;
+
+const DraggableQuestionStickerInner = ({
+  sticker,
+  onTransformUpdate,
+  onRemove,
+  onDragStateChange,
+}: {
+  sticker: QuestionStickerOnCanvas;
+  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
+  onRemove: (id: string) => void;
+  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
+}) => {
+  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
+  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
+  const rotationAnim = useRef(new Animated.Value(sticker.rotation)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const popAnim = useRef(new Animated.Value(0.8)).current;
+
+  const onTransformUpdateRef = useRef(onTransformUpdate);
+  const onRemoveRef = useRef(onRemove);
+  const onDragStateChangeRef = useRef(onDragStateChange);
+  const stickerIdRef = useRef(sticker.id);
+  onTransformUpdateRef.current = onTransformUpdate;
+  onRemoveRef.current = onRemove;
+  onDragStateChangeRef.current = onDragStateChange;
+  stickerIdRef.current = sticker.id;
+
+  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
+  const lastScale = useRef(sticker.scale);
+  const lastRotation = useRef(sticker.rotation);
+  const initialDistance = useRef(0);
+  const initialAngle = useRef(0);
+  const initialCenter = useRef({ x: 0, y: 0 });
+  const isPinching = useRef(false);
+  const hasMoved = useRef(false);
+  const lastPageY = useRef(0);
+  const lastDragCallTime = useRef(0);
+
+  const Q_MIN_SCALE = 0.5;
+  const Q_MAX_SCALE = 3;
+  const SNAP_THRESHOLD = 4;
+  const SNAP_ANGLES = [0, 90, 180, 270, -90, -180, -270];
+
+  const snapRotation = (angle: number) => {
+    for (const snap of SNAP_ANGLES) {
+      if (Math.abs(angle - snap) <= SNAP_THRESHOLD) return snap;
+    }
+    return angle;
+  };
+
+  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
+
+  const getDistance = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].pageX - touches[1].pageX;
+    const dy = touches[0].pageY - touches[1].pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const getAngle = (touches: any[]) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[1].pageX - touches[0].pageX;
+    const dy = touches[1].pageY - touches[0].pageY;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+  };
+
+  const getCenter = (touches: any[]) => {
+    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
+    return {
+      x: (touches[0].pageX + touches[1].pageX) / 2,
+      y: (touches[0].pageY + touches[1].pageY) / 2,
+    };
+  };
+
+  const panResponder = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
+    onPanResponderGrant: (evt) => {
+      hasMoved.current = false;
+      lastDragCallTime.current = 0;
+      const touches = evt.nativeEvent.touches;
+      if (touches.length >= 2) {
+        isPinching.current = true;
+        initialDistance.current = getDistance(touches);
+        initialAngle.current = getAngle(touches);
+        initialCenter.current = getCenter(touches);
+      } else {
+        isPinching.current = false;
+      }
+    },
+    onPanResponderMove: (evt, gestureState) => {
+      const touches = evt.nativeEvent.touches;
+
+      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
+        if (!hasMoved.current) {
+          hasMoved.current = true;
+          onDragStateChangeRef.current?.(true);
+        }
+      }
+
+      if (touches.length >= 2) {
+        if (!hasMoved.current) {
+          hasMoved.current = true;
+          onDragStateChangeRef.current?.(true);
+        }
+        if (!isPinching.current) {
+          isPinching.current = true;
+          initialDistance.current = getDistance(touches);
+          initialAngle.current = getAngle(touches);
+          initialCenter.current = getCenter(touches);
+        }
+
+        const currentDistance = getDistance(touches);
+        if (initialDistance.current > 0) {
+          const scaleFactor = currentDistance / initialDistance.current;
+          const newScale = Math.max(Q_MIN_SCALE, Math.min(Q_MAX_SCALE, lastScale.current * scaleFactor));
+          scaleAnim.setValue(newScale);
+        }
+
+        const currentAngle = getAngle(touches);
+        const angleDiff = currentAngle - initialAngle.current;
+        const rawRotation = lastRotation.current + angleDiff;
+        rotationAnim.setValue(snapRotation(rawRotation));
+
+        const currentCenter = getCenter(touches);
+        const centerDx = currentCenter.x - initialCenter.current.x;
+        const centerDy = currentCenter.y - initialCenter.current.y;
+        pan.setValue({
+          x: lastOffset.current.x + centerDx,
+          y: lastOffset.current.y + centerDy,
+        });
+      } else if (!isPinching.current) {
+        pan.setValue({
+          x: lastOffset.current.x + gestureState.dx,
+          y: lastOffset.current.y + gestureState.dy,
+        });
+      }
+
+      lastPageY.current = evt.nativeEvent.pageY;
+      if (hasMoved.current) {
+        const now = Date.now();
+        if (now - lastDragCallTime.current > 50) {
+          lastDragCallTime.current = now;
+          onDragStateChangeRef.current?.(true, evt.nativeEvent.pageY);
+        }
+      }
+    },
+    onPanResponderRelease: () => {
+      if (hasMoved.current) {
+        onDragStateChangeRef.current?.(false);
+      }
+
+      // @ts-ignore
+      lastOffset.current = { x: pan.x._value, y: pan.y._value };
+      // @ts-ignore
+      lastScale.current = scaleAnim._value || lastScale.current;
+      // @ts-ignore
+      lastRotation.current = rotationAnim._value || lastRotation.current;
+
+      onTransformUpdateRef.current(stickerIdRef.current, {
+        x: lastOffset.current.x,
+        y: lastOffset.current.y,
+        scale: lastScale.current,
+        rotation: lastRotation.current,
+      });
+
+      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
+      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
+        onRemoveRef.current(stickerIdRef.current);
+      }
+
+      hasMoved.current = false;
+      isPinching.current = false;
+      initialDistance.current = 0;
+    },
+  }), [pan, scaleAnim, rotationAnim]);
+
+  const rotateInterpolate = rotationAnim.interpolate({
+    inputRange: [-360, 360],
+    outputRange: ['-360deg', '360deg'],
+  });
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(popAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, popAnim]);
+
+  const dark = isQuestionColorDark(sticker.backgroundColor);
+  const qTextColor = dark ? '#FFFFFF' : '#000000';
+  const subtleOpacity = dark ? 0.35 : 0.2;
+
+  const cardStyle = useMemo(() => ({
+    width: QUESTION_STICKER_SIZE,
+    backgroundColor: sticker.backgroundColor,
+    borderRadius: 16,
+    paddingTop: Q_PROFILE_SIZE / 2 + 10,
+    paddingBottom: 12,
+    paddingHorizontal: 12,
+    alignItems: 'center' as const,
+  }), [sticker.backgroundColor]);
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        styles.photoStickerContainer,
+        {
+          opacity: fadeAnim,
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+            { scale: combinedScale },
+            { rotate: rotateInterpolate },
+          ],
+        },
+      ]}
+    >
+      <View style={cardStyle}>
+        {/* Profile image */}
+        <View style={qProfileWrapper}>
+          <StarAvatar
+            size={Q_PROFILE_SIZE}
+            uri={sticker.profileImageUrl}
+          />
+        </View>
+
+        {/* Question text */}
+        <Text style={[qQuestionText, { color: qTextColor }]} numberOfLines={3}>
+          {sticker.questionText || 'Ask me a question'}
+        </Text>
+
+        {/* Response box */}
+        <View
+          style={[
+            qResponseBox,
+            {
+              backgroundColor: dark
+                ? `rgba(255,255,255,${subtleOpacity})`
+                : `rgba(0,0,0,${subtleOpacity})`,
+            },
+          ]}
+        >
+          <Text style={[qResponseText, { color: qTextColor }]}>
+            Viewers respond here
+          </Text>
+        </View>
+      </View>
+    </Animated.View>
+  );
+};
+
+// Hoisted static styles for DraggableQuestionSticker
+const qProfileWrapper = { position: 'absolute' as const, top: -(Q_PROFILE_SIZE / 2), alignSelf: 'center' as const };
+const qQuestionText = { fontSize: 12, fontWeight: '600' as const, textAlign: 'center' as const, marginBottom: 8 };
+const qResponseBox = { width: '100%' as const, borderRadius: 8, paddingVertical: 8, alignItems: 'center' as const };
+const qResponseText = { fontSize: 9, fontWeight: '500' as const };
+
+const DraggableQuestionSticker = React.memo(DraggableQuestionStickerInner, (prevProps, nextProps) => {
+  const prev = prevProps.sticker;
+  const next = nextProps.sticker;
+  return (
+    prev.id === next.id &&
+    prev.questionText === next.questionText &&
+    prev.backgroundColor === next.backgroundColor &&
+    prev.profileImageUrl === next.profileImageUrl &&
+    prev.x === next.x &&
+    prev.y === next.y &&
+    prev.scale === next.scale &&
+    prev.rotation === next.rotation
+  );
+});
+
 // ========== Instagram-Style Image Editing Modal ==========
 const ImageEditingModal = ({
   visible,
@@ -4762,6 +5072,12 @@ export default function EditStoryScreen() {
     frameCaption?: string;
     frameTime?: string;
     frameClinicName?: string;
+    questionText?: string;
+    questionBgColor?: string;
+    questionProfileUrl?: string;
+    replyText?: string;
+    questionStickerId?: string;
+    responseId?: string;
   }>();
 
   // ========== Capture Time ==========
@@ -4791,6 +5107,24 @@ export default function EditStoryScreen() {
   const clinicPhoneNumber = clinicData?.clinicPhone ?? clinicData?.phone ?? '';
   const clinicCity = clinicData?.city ?? '';
   const clinicType = clinicData?.clinicType ?? '';
+
+  // ========== Reply Mode State ==========
+  const [isReplyMode, setIsReplyMode] = useState(false);
+  const [replyBannerVisible, setReplyBannerVisible] = useState(false);
+  const replyProcessedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (
+      params.replyText &&
+      params.questionStickerId &&
+      params.responseId &&
+      params.responseId !== replyProcessedRef.current
+    ) {
+      replyProcessedRef.current = params.responseId;
+      setIsReplyMode(true);
+      setReplyBannerVisible(true);
+    }
+  }, [params.replyText, params.questionStickerId, params.responseId]);
 
   // ========== Tool States ==========
   const [activeMode, setActiveMode] = useState<'none' | 'text' | 'draw' | 'stickers'>('none');
@@ -4872,6 +5206,7 @@ export default function EditStoryScreen() {
   const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
   const pendingPhotoPickerOpen = useRef(false);
   const pendingFramePickerOpen = useRef(false);
+  const pendingQuestionEditorOpen = useRef(false);
   const frameImageUriProcessed = useRef<string | null>(null);
 
   // ========== Phone Sticker States ==========
@@ -4897,6 +5232,10 @@ export default function EditStoryScreen() {
 
   // ========== Frame Sticker States ==========
   const [frameStickersOnCanvas, setFrameStickersOnCanvas] = useState<FrameStickerOnCanvas[]>([]);
+
+  // ========== Question Sticker States ==========
+  const [questionStickersOnCanvas, setQuestionStickersOnCanvas] = useState<QuestionStickerOnCanvas[]>([]);
+  const questionStickerProcessed = useRef<string | null>(null);
 
   // ========== Trash Zone State ==========
   const [isDraggingStickerToTrash, setIsDraggingStickerToTrash] = useState(false);
@@ -4964,6 +5303,20 @@ export default function EditStoryScreen() {
       }, 200);
     }
   }, [params.frameImageUri]);
+
+  // ========== Handle Return from Question Editor Screen ==========
+  useEffect(() => {
+    if (params.questionText && params.questionText !== questionStickerProcessed.current) {
+      questionStickerProcessed.current = params.questionText;
+      setTimeout(() => {
+        addQuestionStickerToCanvas(
+          params.questionText!,
+          params.questionBgColor || '#FFFFFF',
+          params.questionProfileUrl || 'https://ui-avatars.com/api/?name=Me&background=888&color=fff&size=112',
+        );
+      }, 200);
+    }
+  }, [params.questionText]);
 
   // Animation refs
   const toolbarAnim = useRef(new Animated.Value(1)).current;
@@ -5233,13 +5586,36 @@ export default function EditStoryScreen() {
     router.replace('/(tabs)/create');
   }, [router]);
 
-  const handleShare = useCallback(() => {
+  const handleShare = useCallback(async () => {
     // TODO: Implement story sharing with all overlays
     console.log('Sharing story with media:', params.uri);
     console.log('AI Label:', aiLabelEnabled);
     console.log('Comments:', commentsEnabled);
     console.log('Text overlays:', textOverlays);
-  }, [params.uri, aiLabelEnabled, commentsEnabled, textOverlays]);
+
+    // Attach reply metadata if in reply mode
+    if (isReplyMode && params.questionStickerId && params.responseId) {
+      console.log('Reply metadata:', {
+        replyToQuestionStickerId: params.questionStickerId,
+        replyToResponseId: params.responseId,
+        replyToText: params.replyText || '',
+      });
+
+      // Mark the response as read after publish
+      if (clinicId) {
+        try {
+          await markQuestionResponseRead(clinicId, params.responseId);
+          console.log('Response marked as read:', params.responseId);
+        } catch (e) {
+          console.error('Failed to mark response as read:', e);
+        }
+      }
+
+      // Clean exit — restore normal edit state
+      setIsReplyMode(false);
+      setReplyBannerVisible(false);
+    }
+  }, [params.uri, aiLabelEnabled, commentsEnabled, textOverlays, isReplyMode, params.questionStickerId, params.responseId, params.replyText, clinicId]);
 
   const handleDownload = useCallback(() => {
     // TODO: Implement download functionality
@@ -5674,6 +6050,33 @@ export default function EditStoryScreen() {
     ));
   }, []);
 
+  // ========== Question Sticker Handlers ==========
+  const addQuestionStickerToCanvas = useCallback((questionText: string, backgroundColor: string, profileImageUrl: string) => {
+    const baseSize = QUESTION_STICKER_SIZE;
+    const targetWidth = SCREEN_WIDTH * 0.45;
+    const smartScale = Math.max(0.5, Math.min(1.5, targetWidth / baseSize));
+
+    const newSticker: QuestionStickerOnCanvas = {
+      id: `question-${Date.now()}`,
+      questionText: questionText.length > 200 ? questionText.slice(0, 200) : questionText,
+      backgroundColor,
+      profileImageUrl,
+      x: SCREEN_WIDTH / 2 - (baseSize * smartScale) / 2,
+      y: SCREEN_HEIGHT / 2 - (baseSize * smartScale) / 2,
+      scale: smartScale,
+      rotation: 0,
+    };
+    setQuestionStickersOnCanvas(prev => [...prev, newSticker]);
+  }, []);
+
+  const updateQuestionStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
+    setQuestionStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+  }, []);
+
+  const removeQuestionStickerFromCanvas = useCallback((id: string) => {
+    setQuestionStickersOnCanvas(prev => prev.filter(s => s.id !== id));
+  }, []);
+
   // ========== Trash Zone Handler (optimized — only setState on actual transitions) ==========
   const handlePhoneStickerDragState = useCallback((isDragging: boolean, pageY?: number) => {
     // Only update dragging state when it actually changes
@@ -5881,30 +6284,56 @@ export default function EditStoryScreen() {
       setTimeout(() => {
         openPhotoPicker();
       }, 150);
-    }
-    if (pendingFramePickerOpen.current) {
+    } else if (pendingFramePickerOpen.current) {
       pendingFramePickerOpen.current = false;
       setTimeout(() => {
         openFramePicker();
       }, 150);
+    } else if (pendingQuestionEditorOpen.current) {
+      pendingQuestionEditorOpen.current = false;
+      setTimeout(() => {
+        router.push({
+          pathname: '/story/question-editor',
+          params: {
+            editUri: params.uri || '',
+            editWidth: params.width || '',
+            editHeight: params.height || '',
+            editMediaType: params.mediaType || '',
+          },
+        });
+      }, 150);
     }
-  }, [openPhotoPicker, openFramePicker]);
+  }, [openPhotoPicker, openFramePicker, router, params.uri, params.width, params.height, params.mediaType]);
 
   // Android fallback: onDismiss doesn't fire on Android, so use useEffect
   useEffect(() => {
-    if (!stickerTrayVisible && pendingPhotoPickerOpen.current && Platform.OS === 'android') {
-      pendingPhotoPickerOpen.current = false;
-      setTimeout(() => {
-        openPhotoPicker();
-      }, 300);
+    if (!stickerTrayVisible && Platform.OS === 'android') {
+      if (pendingPhotoPickerOpen.current) {
+        pendingPhotoPickerOpen.current = false;
+        setTimeout(() => {
+          openPhotoPicker();
+        }, 300);
+      } else if (pendingFramePickerOpen.current) {
+        pendingFramePickerOpen.current = false;
+        setTimeout(() => {
+          openFramePicker();
+        }, 300);
+      } else if (pendingQuestionEditorOpen.current) {
+        pendingQuestionEditorOpen.current = false;
+        setTimeout(() => {
+          router.push({
+            pathname: '/story/question-editor',
+            params: {
+              editUri: params.uri || '',
+              editWidth: params.width || '',
+              editHeight: params.height || '',
+              editMediaType: params.mediaType || '',
+            },
+          });
+        }, 300);
+      }
     }
-    if (!stickerTrayVisible && pendingFramePickerOpen.current && Platform.OS === 'android') {
-      pendingFramePickerOpen.current = false;
-      setTimeout(() => {
-        openFramePicker();
-      }, 300);
-    }
-  }, [stickerTrayVisible, openPhotoPicker, openFramePicker]);
+  }, [stickerTrayVisible, openPhotoPicker, openFramePicker, router, params.uri, params.width, params.height, params.mediaType]);
 
   // Close location sticker sheet
   const closeLocationStickerSheet = useCallback(() => {
@@ -5986,6 +6415,14 @@ export default function EditStoryScreen() {
     if (stickerId === 'frames') {
       console.log('Frames sticker selected! Setting pending flag and closing tray...');
       pendingFramePickerOpen.current = true;
+      closeStickerTray();
+      return;
+    }
+
+    // Handle Questions sticker – set pending flag, open editor after Modal fully dismisses
+    if (stickerId === 'questions') {
+      console.log('Questions sticker selected! Setting pending flag and closing tray...');
+      pendingQuestionEditorOpen.current = true;
       closeStickerTray();
       return;
     }
@@ -7886,6 +8323,17 @@ export default function EditStoryScreen() {
         />
       ))}
 
+      {/* Question Stickers */}
+      {questionStickersOnCanvas.map(sticker => (
+        <DraggableQuestionSticker
+          key={sticker.id}
+          sticker={sticker}
+          onTransformUpdate={updateQuestionStickerTransform}
+          onRemove={removeQuestionStickerFromCanvas}
+          onDragStateChange={handlePhoneStickerDragState}
+        />
+      ))}
+
       {/* Trash Zone — visible while dragging a phone sticker */}
       {isDraggingStickerToTrash && (
         <View style={{
@@ -7938,6 +8386,27 @@ export default function EditStoryScreen() {
           </View>
         )}
       </SafeAreaView>
+
+      {/* ========== Reply Banner (visible in reply mode) ========== */}
+      {replyBannerVisible && isReplyMode && params.replyText && (
+        <SafeAreaView style={styles.replyBannerSafe} pointerEvents="box-none">
+          <View style={styles.replyBanner}>
+            <View style={styles.replyBannerContent}>
+              <Text style={styles.replyBannerLabel}>Replying to:</Text>
+              <Text style={styles.replyBannerText} numberOfLines={2}>
+                "{params.replyText}"
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.replyBannerClose}
+              onPress={() => setReplyBannerVisible(false)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.6)" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )}
 
       {/* ========== Drag Guide: Clinic Name + Dashed Line (only while dragging) ========== */}
       {isDraggingStickerToTrash && (
@@ -8375,6 +8844,47 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     zIndex: 20,
     elevation: 20,
+  },
+  // Reply Banner
+  replyBannerSafe: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 100 : 80,
+    left: 0,
+    right: 0,
+    zIndex: 18,
+    elevation: 18,
+    alignItems: 'center',
+  },
+  replyBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    maxWidth: '85%',
+  },
+  replyBannerContent: {
+    flex: 1,
+    marginRight: 8,
+  },
+  replyBannerLabel: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 11,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  replyBannerText: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '500',
+    fontStyle: 'italic',
+  },
+  replyBannerClose: {
+    width: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Drag Guide (only while dragging)
   dragGuideContainer: {
