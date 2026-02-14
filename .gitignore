@@ -3,11 +3,17 @@
 # dependencies
 node_modules/
 
+# JDK cache
+.jdk/
+
 # Expo
 .expo/
 dist/
 web-build/
 expo-env.d.ts
+
+# Build outputs
+build/
 
 # Native
 .kotlin/
