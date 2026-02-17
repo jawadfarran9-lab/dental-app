@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
-import i18n from '@/i18n';
+import GlassCard from '@/src/components/GlassCard';
+import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { SUBSCRIPTION_PRICING } from '@/src/types/subscription';
@@ -8,9 +9,15 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Alert, BackHandler, InteractionManager, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, useColorScheme, View } from 'react-native';
+import { Alert, Animated, BackHandler, InteractionManager, KeyboardAvoidingView, LayoutChangeEvent, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+
+// ── Brand accent palette (matches Clinics / Subscription screens) ──
+const ACCENT = '#3D9EFF';
+const ACCENT_SOFT = 'rgba(61,158,255,0.12)';
+const ACCENT_BORDER = 'rgba(61,158,255,0.35)';
+const ACCENT_BORDER_LIGHT = 'rgba(61,158,255,0.18)';
 
 type PlanFeature = {
   key: string;
@@ -33,9 +40,7 @@ export default function UpgradeScreen() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const colorScheme = useColorScheme();
   const { clinicId } = useAuth();
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
   
   // Handle hardware back button
   useFocusEffect(
@@ -53,9 +58,9 @@ export default function UpgradeScreen() {
   );
 
   // State management
-  const [currentPlanId, setCurrentPlanId] = useState<'standard' | 'pro' | null>(null);
   const [selectedPlan, setSelectedPlan] = useState<'standard' | 'pro'>('pro');
   const [includeAIPro, setIncludeAIPro] = useState(false);
+  const [storedAIPro, setStoredAIPro] = useState(false); // persisted value from Firestore — used only for Hero left card
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
@@ -75,6 +80,7 @@ export default function UpgradeScreen() {
           // Check if they have AI Pro add-on
           const hasAIPro = data.includeAIPro === true;
           setIncludeAIPro(hasAIPro);
+          setStoredAIPro(hasAIPro);
           // Default selection is Pro if not already subscribed
           setSelectedPlan('pro');
         }
@@ -93,24 +99,23 @@ export default function UpgradeScreen() {
     const router = useRouter();
     
     return (
-      <SafeAreaView style={{ backgroundColor: '#fff' }}>
-        <View style={{
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          paddingHorizontal: 16,
-          height: 60
-        }}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={{ fontSize: 18 }}>{'<'} Back</Text>
-          </TouchableOpacity>
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        height: 56,
+      }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+          <Ionicons name="chevron-back" size={22} color={textPrimary} />
+          <Text style={{ fontSize: 16, fontWeight: '600', color: textPrimary }}>Back</Text>
+        </TouchableOpacity>
 
-          <Text style={{ fontSize: 20, fontWeight: 'bold' }}>BeSmile AI</Text>
+        <Text style={{ fontSize: 18, fontWeight: '700', color: textPrimary }}>BeSmile AI</Text>
 
-          {/* Spacer to balance header layout */}
-          <View style={{ width: 50 }} />
-        </View>
-      </SafeAreaView>
+        {/* Spacer to balance header layout */}
+        <View style={{ width: 50 }} />
+      </View>
     );
   }
   const plans: Plan[] = [
@@ -286,144 +291,262 @@ export default function UpgradeScreen() {
   const muted = isDark ? '#9ca3af' : '#6b7280';
   const textPrimary = isDark ? '#f9fafb' : '#0f172a';
 
+  // ── Segmented Control (extracted for clean JSX) ──
+  function SegmentedControl({
+    plans: segPlans,
+    selectedPlan: selPlan,
+    onSelect,
+    isDark: dk,
+    textPrimary: tp,
+    muted: mt,
+    t: tFn,
+  }: {
+    plans: Plan[];
+    selectedPlan: 'standard' | 'pro';
+    onSelect: (id: 'standard' | 'pro') => void;
+    isDark: boolean;
+    textPrimary: string;
+    muted: string;
+    t: (key: string, fallback: string) => string;
+  }) {
+    const pillX = useRef(new Animated.Value(selPlan === 'pro' ? 1 : 0)).current;
+    const [segWidth, setSegWidth] = useState(0);
+
+    const handleLayout = (e: LayoutChangeEvent) => {
+      setSegWidth(e.nativeEvent.layout.width);
+    };
+
+    const handleSelect = (id: 'standard' | 'pro') => {
+      Animated.timing(pillX, {
+        toValue: id === 'pro' ? 1 : 0,
+        duration: 140,
+        useNativeDriver: false,
+      }).start();
+      onSelect(id);
+    };
+
+    const pillWidth = segWidth > 0 ? (segWidth - 8) / 2 : 0;
+    const translateX = pillX.interpolate({
+      inputRange: [0, 1],
+      outputRange: [4, pillWidth + 4],
+    });
+
+    return (
+      <GlassCard
+        intensity={48}
+        tint={dk ? 'dark' : 'light'}
+        borderRadius={16}
+        style={[styles.segmentedGlass, { borderColor: dk ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
+      >
+        <View style={styles.segmentedTrack} onLayout={handleLayout}>
+          {/* Animated Pill */}
+          {segWidth > 0 && (
+            <Animated.View
+              style={[
+                styles.segmentedPill,
+                {
+                  width: pillWidth,
+                  transform: [{ translateX }],
+                  backgroundColor: ACCENT,
+                },
+              ]}
+            />
+          )}
+          {segPlans.map((plan) => {
+            const isActive = selPlan === plan.id;
+            const label = plan.id === 'standard' ? tFn('upgrade.monthlyName', 'Monthly') : tFn('upgrade.yearlyName', 'Yearly');
+            return (
+              <TouchableOpacity
+                key={plan.id}
+                activeOpacity={0.8}
+                style={styles.segmentedItem}
+                onPress={() => handleSelect(plan.id)}
+              >
+                <Text
+                  style={[
+                    styles.segmentedLabel,
+                    { color: isActive ? '#fff' : tp, fontWeight: isActive ? '700' : '600' },
+                  ]}
+                >
+                  {label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      </GlassCard>
+    );
+  }
+
   if (loadingPlan) {
     return (
-      <View style={[styles.container, { backgroundColor: isDark ? '#111' : '#fff' }]}>
-        <Text style={{ color: textPrimary }}>Loading...</Text>
+      <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+        <Text style={{ color: textPrimary, textAlign: 'center', marginTop: 48 }}>Loading...</Text>
       </View>
     );
   }
 
   return (
-    <SafeAreaView style={[{ backgroundColor: colors.background }, { flex: 1 }]}>
+    <View style={{ flex: 1 }}>
+      <PremiumGradientBackground isDark={isDark} showSparkles={!isDark} />
+      <SafeAreaView style={{ flex: 1, backgroundColor: 'transparent' }}>
       <ScrollView 
-        style={[styles.container, { backgroundColor: isDark ? '#111' : '#fff' }]} 
+        style={[styles.container, { backgroundColor: 'transparent' }]} 
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         bounces={false}
         overScrollMode="never"
       >
-        {/* Clean Header (Exact component as requested) */}
+        {/* Clean Header */}
         <UpgradeHeader />
 
-      {/* Plan Comparison */}
-      <View style={styles.comparisonContainer}>
-        {/* Current Plan (Left) */}
-        <View style={[styles.planColumn, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-          <Text style={[styles.columnTitle, { color: muted }]}>
-            {t('upgrade.currentPlanLabel', 'Current Plan')}
-          </Text>
-          <Text style={[styles.columnPlanName, { color: textPrimary }]}>
-            {t('upgrade.monthlyName', 'Monthly')}
-          </Text>
-          <Text style={[styles.columnPrice, { color: textPrimary }]}>
-            ${(SUBSCRIPTION_PRICING.monthly + (includeAIPro ? SUBSCRIPTION_PRICING.aiPro : 0)).toFixed(2)}
-          </Text>
-          <Text style={[styles.columnPeriod, { color: muted }]}>/month</Text>
-          {includeAIPro && (
-            <Text style={[styles.columnBreakdown, { color: muted }]}>
-              ${SUBSCRIPTION_PRICING.monthly.toFixed(2)} + ${SUBSCRIPTION_PRICING.aiPro.toFixed(2)} AI Pro
+      {/* ── Upgrade Hero ── */}
+      <GlassCard
+        intensity={58}
+        tint={isDark ? 'dark' : 'light'}
+        borderRadius={24}
+        style={[styles.heroGlass, { borderColor: isDark ? ACCENT_BORDER : ACCENT_BORDER_LIGHT }]}
+      >
+        {/* Savings badge — only visible when yearly is selected */}
+        {selectedPlan === 'pro' && SUBSCRIPTION_PRICING.savingsAmount > 0 && (
+          <View style={styles.savingsBadge}>
+            <Ionicons name="pricetag" size={12} color={ACCENT} style={{ marginRight: 4 }} />
+            <Text style={styles.savingsBadgeText}>
+              {t('upgrade.saveBadge', 'Save ${{amount}}/yr ({{pct}}%)', {
+                amount: SUBSCRIPTION_PRICING.savingsAmount.toFixed(2),
+                pct: SUBSCRIPTION_PRICING.savingsPercent,
+              })}
             </Text>
-          )}
-        </View>
+          </View>
+        )}
 
-        {/* Arrow */}
-        <View style={styles.arrowContainer}>
-          <Ionicons name="arrow-forward" size={24} color={textPrimary} />
-        </View>
-
-        {/* Target Plan (Right) */}
-        <View 
-          style={[
-            styles.planColumn, 
-            { 
-              backgroundColor: cardBg, 
-              borderColor: selectedPlan === 'pro' ? '#D4AF37' : cardBorder,
-              borderWidth: selectedPlan === 'pro' ? 2 : 1,
-            }
-          ]}
-        >
-          <Text style={[styles.columnTitle, { color: muted }]}>
-            {t('upgrade.targetPlanLabel', 'Upgrade to')}
-          </Text>
-          <View style={styles.targetPlanRow}>
-            <Text style={[styles.columnPlanName, { color: selectedPlan === 'pro' ? '#D4AF37' : textPrimary }]}>
-              {selectedPlan === 'pro' ? t('upgrade.yearlyName', 'Yearly') : t('upgrade.monthlyName', 'Monthly')}
+        <View style={styles.comparisonContainer}>
+          {/* Current Plan (Left) — reflects persisted subscription only */}
+          <View style={[styles.planColumn, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+            <Text style={[styles.columnTitle, { color: muted }]}>
+              {t('upgrade.currentPlanLabel', 'Current Plan')}
             </Text>
-            {selectedPlan === 'pro' && (
-              <View style={styles.proPill}>
-                <Text style={styles.proPillText}>YEARLY</Text>
-              </View>
+            <Text style={[styles.columnPlanName, { color: textPrimary }]}>
+              {t('upgrade.monthlyName', 'Monthly')}
+            </Text>
+            <Text style={[styles.columnPrice, { color: textPrimary }]}>
+              ${(SUBSCRIPTION_PRICING.monthly + (storedAIPro ? SUBSCRIPTION_PRICING.aiPro : 0)).toFixed(2)}
+            </Text>
+            <Text style={[styles.columnPeriod, { color: muted }]}>/month</Text>
+            {storedAIPro && (
+              <Text style={[styles.columnBreakdown, { color: muted }]}>
+                ${SUBSCRIPTION_PRICING.monthly.toFixed(2)} + ${SUBSCRIPTION_PRICING.aiPro.toFixed(2)} AI Pro
+              </Text>
             )}
           </View>
-          <Text style={[styles.columnPrice, { color: textPrimary }]}>
-            ${(selectedPlan === 'pro' ? SUBSCRIPTION_PRICING.yearly : SUBSCRIPTION_PRICING.monthly + (includeAIPro ? SUBSCRIPTION_PRICING.aiPro : 0)).toFixed(2)}
-          </Text>
-          <Text style={[styles.columnPeriod, { color: muted }]}>{selectedPlan === 'pro' ? '/year' : '/month'}</Text>
-          {includeAIPro && (
-            <Text style={[styles.columnBreakdown, { color: muted }]}>
-              ${(selectedPlan === 'pro' ? SUBSCRIPTION_PRICING.yearly : SUBSCRIPTION_PRICING.monthly).toFixed(2)} + ${SUBSCRIPTION_PRICING.aiPro.toFixed(2)} AI Pro
+
+          {/* Arrow */}
+          <View style={styles.arrowContainer}>
+            <View style={styles.arrowCircle}>
+              <Ionicons name="arrow-forward" size={18} color="#fff" />
+            </View>
+          </View>
+
+          {/* Target Plan (Right) */}
+          <View 
+            style={[
+              styles.planColumn, 
+              { 
+                borderColor: selectedPlan === 'pro' ? ACCENT_BORDER : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'),
+                borderWidth: selectedPlan === 'pro' ? 1.5 : 1,
+              }
+            ]}
+          >
+            <Text style={[styles.columnTitle, { color: muted }]}>
+              {t('upgrade.targetPlanLabel', 'Upgrade to')}
             </Text>
-          )}
-        </View>
-      </View>
-
-      {/* Plan Selection Tabs */}
-      <View style={styles.planTabs}>
-        {plans.map((plan) => {
-          const displayName = plan.id === 'standard' ? t('upgrade.monthlyName', 'Monthly') : t('upgrade.yearlyName', 'Yearly');
-          return (
-            <TouchableOpacity
-              key={plan.id}
-              style={[
-                styles.planTab,
-                {
-                  backgroundColor: selectedPlan === plan.id 
-                    ? (plan.isPro ? '#D4AF37' : '#2563eb')
-                    : cardBg,
-                  borderColor: selectedPlan === plan.id 
-                    ? (plan.isPro ? '#D4AF37' : '#2563eb')
-                    : cardBorder,
-                }
-              ]}
-              onPress={() => setSelectedPlan(plan.id)}
-            >
-              <Text 
-                style={[
-                  styles.planTabText,
-                  { 
-                    color: selectedPlan === plan.id ? '#fff' : textPrimary,
-                    fontWeight: selectedPlan === plan.id ? '700' : '600',
-                  }
-                ]}
-              >
-                {displayName}
+            <View style={styles.targetPlanRow}>
+              <Text style={[styles.columnPlanName, { color: selectedPlan === 'pro' ? ACCENT : textPrimary }]}>
+                {selectedPlan === 'pro' ? t('upgrade.yearlyName', 'Yearly') : t('upgrade.monthlyName', 'Monthly')}
               </Text>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
+              {selectedPlan === 'pro' && (
+                <View style={styles.proPill}>
+                  <Text style={styles.proPillText}>YEARLY</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.columnPrice, { color: textPrimary }]}>
+              ${calculatePrice().toFixed(2)}
+            </Text>
+            <Text style={[styles.columnPeriod, { color: muted }]}>{selectedPlan === 'pro' ? '/year' : '/month'}</Text>
+            {includeAIPro && (
+              <Text style={[styles.columnBreakdown, { color: muted }]}>
+                ${(selectedPlan === 'pro' ? SUBSCRIPTION_PRICING.yearly : SUBSCRIPTION_PRICING.monthly).toFixed(2)} + ${(selectedPlan === 'pro' ? SUBSCRIPTION_PRICING.aiProYearly : SUBSCRIPTION_PRICING.aiPro).toFixed(2)} AI Pro
+              </Text>
+            )}
+          </View>
+        </View>
 
-      {/* AI Pro Toggle */}
-      <View style={[styles.aiProSection, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+        {/* Delta savings indicator — visible when yearly is selected */}
+        {selectedPlan === 'pro' && (() => {
+          const currentMonthly = SUBSCRIPTION_PRICING.monthly + (storedAIPro ? SUBSCRIPTION_PRICING.aiPro : 0);
+          const currentAnnualized = currentMonthly * 12;
+          const newYearly = calculatePrice();
+          const delta = currentAnnualized - newYearly;
+          if (delta > 0) {
+            return (
+              <View style={styles.deltaRow}>
+                <Ionicons name="trending-down-outline" size={14} color={ACCENT} />
+                <Text style={[styles.deltaText, { color: ACCENT }]}>
+                  {t('upgrade.deltaSavings', 'You save ${{amount}}/yr vs monthly', {
+                    amount: delta.toFixed(2),
+                  })}
+                </Text>
+              </View>
+            );
+          }
+          return null;
+        })()}
+      </GlassCard>
+
+      {/* ── Premium Segmented Control ── */}
+      <SegmentedControl
+        plans={plans}
+        selectedPlan={selectedPlan}
+        onSelect={setSelectedPlan}
+        isDark={isDark}
+        textPrimary={textPrimary}
+        muted={muted}
+        t={t}
+      />
+
+      {/* AI Pro Toggle — wrapped in GlassCard */}
+      <GlassCard
+        intensity={includeAIPro ? 55 : 45}
+        tint={isDark ? 'dark' : 'light'}
+        borderRadius={22}
+        style={[styles.glassSection, {
+          borderColor: includeAIPro ? ACCENT : (isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)'),
+          borderWidth: includeAIPro ? 1.5 : StyleSheet.hairlineWidth,
+        }]}
+      >
         <View style={styles.aiProHeader}>
           <View>
             <Text style={[styles.aiProTitle, { color: textPrimary }]}>
               {t('upgrade.aiProTitle', 'AI Pro Add-on')}
             </Text>
             <Text style={[styles.aiProSubtitle, { color: muted }]}>
-                {selectedPlan === 'pro' 
-                  ? `+$${SUBSCRIPTION_PRICING.aiProYearly.toFixed(2)}/year` 
-                  : `+$${SUBSCRIPTION_PRICING.aiPro.toFixed(2)}/month`}
+                {`+$${SUBSCRIPTION_PRICING.aiPro.toFixed(2)}/month`}
             </Text>
+            {selectedPlan === 'pro' && (
+              <Text style={[styles.aiProBilledLabel, { color: muted }]}>
+                {t('upgrade.billedAnnually', 'Billed annually')}
+              </Text>
+            )}
           </View>
           <TouchableOpacity
             style={[
               styles.aiProToggle,
               {
-                backgroundColor: includeAIPro ? '#D4AF37' : '#e5e7eb',
-                borderColor: includeAIPro ? '#D4AF37' : '#d1d5db',
+                backgroundColor: includeAIPro ? ACCENT : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'),
+                borderColor: includeAIPro ? ACCENT : (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.12)'),
               }
             ]}
             onPress={() => setIncludeAIPro(!includeAIPro)}
@@ -431,19 +554,24 @@ export default function UpgradeScreen() {
             <Ionicons 
               name={includeAIPro ? 'checkmark' : 'close'} 
               size={16} 
-              color={includeAIPro ? '#1a1513' : muted}
+              color={includeAIPro ? '#fff' : muted}
             />
           </TouchableOpacity>
         </View>
         <Text style={[styles.aiProDescription, { color: muted }]}>
           {t('upgrade.aiProDesc', 'Advanced AI templates, automations, and priority support')}
         </Text>
-      </View>
+      </GlassCard>
 
       {/* Payment Form wrapped to avoid keyboard overlap */}
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'ios' ? 120 : 0} style={{ flex: 1 }}>
-      {/* Payment Card Section */}
-      <View style={[styles.paymentCard, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+      {/* Payment Card Section — wrapped in GlassCard */}
+      <GlassCard
+        intensity={50}
+        tint={isDark ? 'dark' : 'light'}
+        borderRadius={24}
+        style={[styles.glassSection, { borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)' }]}
+      >
         <Text style={[styles.paymentTitle, { color: textPrimary }]}>
           {t('upgrade.paymentDetails', 'Payment Information')}
         </Text>
@@ -459,13 +587,13 @@ export default function UpgradeScreen() {
               style={[
                 styles.paymentMethodBtn,
                 {
-                  backgroundColor: paymentMethod === 'card' ? (isDark ? '#1e40af' : '#dbeafe') : cardBg,
-                  borderColor: paymentMethod === 'card' ? '#3b82f6' : cardBorder,
+                  backgroundColor: paymentMethod === 'card' ? ACCENT_SOFT : 'transparent',
+                  borderColor: paymentMethod === 'card' ? ACCENT : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'),
                 }
               ]}
               onPress={() => setPaymentMethod('card')}
             >
-              <Ionicons name="card" size={24} color={paymentMethod === 'card' ? '#3b82f6' : muted} />
+              <Ionicons name="card" size={24} color={paymentMethod === 'card' ? ACCENT : muted} />
               <Text style={[styles.paymentMethodText, { color: paymentMethod === 'card' ? textPrimary : muted }]}>
                 Card
               </Text>
@@ -476,13 +604,13 @@ export default function UpgradeScreen() {
               style={[
                 styles.paymentMethodBtn,
                 {
-                  backgroundColor: paymentMethod === 'apple' ? (isDark ? '#1e293b' : '#f1f5f9') : cardBg,
-                  borderColor: paymentMethod === 'apple' ? '#0f172a' : cardBorder,
+                  backgroundColor: paymentMethod === 'apple' ? ACCENT_SOFT : 'transparent',
+                  borderColor: paymentMethod === 'apple' ? ACCENT : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'),
                 }
               ]}
               onPress={() => setPaymentMethod('apple')}
             >
-              <Ionicons name="logo-apple" size={24} color={paymentMethod === 'apple' ? '#0f172a' : muted} />
+              <Ionicons name="logo-apple" size={24} color={paymentMethod === 'apple' ? ACCENT : muted} />
               <Text style={[styles.paymentMethodText, { color: paymentMethod === 'apple' ? textPrimary : muted }]}>
                 Apple Pay
               </Text>
@@ -493,13 +621,13 @@ export default function UpgradeScreen() {
               style={[
                 styles.paymentMethodBtn,
                 {
-                  backgroundColor: paymentMethod === 'paypal' ? (isDark ? '#1e3a8a' : '#dbeafe') : cardBg,
-                  borderColor: paymentMethod === 'paypal' ? '#0070ba' : cardBorder,
+                  backgroundColor: paymentMethod === 'paypal' ? ACCENT_SOFT : 'transparent',
+                  borderColor: paymentMethod === 'paypal' ? ACCENT : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'),
                 }
               ]}
               onPress={() => setPaymentMethod('paypal')}
             >
-              <Ionicons name="logo-paypal" size={24} color={paymentMethod === 'paypal' ? '#0070ba' : muted} />
+              <Ionicons name="logo-paypal" size={24} color={paymentMethod === 'paypal' ? ACCENT : muted} />
               <Text style={[styles.paymentMethodText, { color: paymentMethod === 'paypal' ? textPrimary : muted }]}>
                 PayPal
               </Text>
@@ -510,13 +638,13 @@ export default function UpgradeScreen() {
               style={[
                 styles.paymentMethodBtn,
                 {
-                  backgroundColor: paymentMethod === 'google' ? (isDark ? '#1e3a1e' : '#dcfce7') : cardBg,
-                  borderColor: paymentMethod === 'google' ? '#16a34a' : cardBorder,
+                  backgroundColor: paymentMethod === 'google' ? ACCENT_SOFT : 'transparent',
+                  borderColor: paymentMethod === 'google' ? ACCENT : (isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)'),
                 }
               ]}
               onPress={() => setPaymentMethod('google')}
             >
-              <Ionicons name="logo-google" size={24} color={paymentMethod === 'google' ? '#16a34a' : muted} />
+              <Ionicons name="logo-google" size={24} color={paymentMethod === 'google' ? ACCENT : muted} />
               <Text style={[styles.paymentMethodText, { color: paymentMethod === 'google' ? textPrimary : muted }]}>
                 Google Pay
               </Text>
@@ -633,8 +761,8 @@ export default function UpgradeScreen() {
         
         {/* Show message for other payment methods */}
         {paymentMethod !== 'card' && (
-          <View style={styles.paymentMethodInfo}>
-            <Ionicons name="information-circle" size={20} color="#3b82f6" />
+          <View style={[styles.paymentMethodInfo, { backgroundColor: ACCENT_SOFT }]}>
+            <Ionicons name="information-circle" size={20} color={ACCENT} />
             <Text style={[styles.paymentMethodInfoText, { color: textPrimary }]}>
               {paymentMethod === 'apple' && t('upgrade.applePayInfo', 'You will be redirected to Apple Pay to complete your purchase.')}
               {paymentMethod === 'paypal' && t('upgrade.paypalInfo', 'You will be redirected to PayPal to complete your purchase.')}
@@ -642,26 +770,32 @@ export default function UpgradeScreen() {
             </Text>
           </View>
         )}
-      </View>
+      </GlassCard>
 
       </KeyboardAvoidingView>
       </ScrollView>
 
       {/* Bottom Bar: Keep confirm button visible */}
-      <View style={[styles.bottomBar, { backgroundColor: isDark ? '#111' : '#fff', borderTopColor: cardBorder }]}> 
+      <View style={[styles.bottomBar, { backgroundColor: 'transparent', borderTopColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}> 
         <TouchableOpacity
           style={[
             styles.changePlanBtn,
             {
-              backgroundColor: (paymentMethod === 'card' ? cardValid() : true) ? '#D4AF37' : '#d1d5db',
-              opacity: (paymentMethod === 'card' ? cardValid() : true) ? 1 : 0.6,
+              backgroundColor: (paymentMethod === 'card' ? cardValid() : true) ? ACCENT : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'),
+              opacity: (paymentMethod === 'card' ? cardValid() : true) ? 1 : 0.5,
             }
           ]}
           onPress={handleUpgrade}
           disabled={(paymentMethod === 'card' && !cardValid()) || saving}
         >
-          <Text style={[styles.changePlanBtnText, { color: '#1a1513' }]}> 
-            {saving ? t('common.loading', 'Processing...') : t('upgrade.changePlanButton', 'Confirm Plan Change')}
+          <Text style={[styles.changePlanBtnText, { color: '#fff' }]}> 
+            {saving
+              ? t('common.loading', 'Processing...')
+              : `${selectedPlan === 'pro'
+                  ? t('upgrade.upgradeToYearly', 'Upgrade to Yearly')
+                  : t('upgrade.switchToMonthly', 'Switch to Monthly')
+                } — $${calculatePrice().toFixed(2)}`
+            }
           </Text>
         </TouchableOpacity>
 
@@ -669,96 +803,129 @@ export default function UpgradeScreen() {
           {t('upgrade.disclaimer', 'Your plan change will be effective immediately after confirmation.')}
         </Text>
       </View>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 16, paddingBottom: 32 },
+  content: { padding: 16, paddingBottom: 40 },
+
+  // Shared GlassCard section wrapper
+  glassSection: {
+    padding: 16,
+    marginBottom: 24,
+  },
+
+  // ── Upgrade Hero ──
+  heroGlass: {
+    padding: 18,
+    marginBottom: 24,
+  },
+  savingsBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'center',
+    backgroundColor: ACCENT_SOFT,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: 20,
+    marginBottom: 14,
+  },
+  savingsBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: ACCENT,
+  },
+  arrowCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  // ── Segmented Control ──
+  segmentedGlass: {
+    padding: 0,
+    marginBottom: 24,
+  },
+  segmentedTrack: {
+    flexDirection: 'row',
+    height: 48,
+    borderRadius: 14,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  segmentedPill: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    borderRadius: 11,
+  },
+  segmentedItem: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+  },
+  segmentedLabel: {
+    fontSize: 14,
+    letterSpacing: 0.2,
+  },
 
   // Bottom bar to anchor confirm button
   bottomBar: {
-    borderTopWidth: 1,
+    borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 16,
+    paddingTop: 14,
+    paddingBottom: 18,
   },
-  
-  // Clean Header (legacy styles removed; using provided component)
-  
-  // Old Header (keep for compatibility)
-  header: { 
-    marginBottom: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backBtn: { 
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  backBtnText: { 
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-
-  // Title
-  titleBlock: { marginBottom: 24 },
-  title: { fontSize: 28, fontWeight: '800', marginBottom: 4 },
-  subtitle: { fontSize: 14, fontWeight: '500' },
 
   // Comparison
   comparisonContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 24,
   },
   planColumn: {
     flex: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     padding: 14,
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
-  columnTitle: { fontSize: 12, fontWeight: '600', marginBottom: 4 },
-  columnPlanName: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  columnTitle: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  columnPlanName: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   columnPrice: { fontSize: 16, fontWeight: '700' },
   columnPeriod: { fontSize: 12, fontWeight: '500', marginTop: 2 },
   columnBreakdown: { fontSize: 10, fontWeight: '400', marginTop: 4 },
-  arrowContainer: { marginHorizontal: 12, marginTop: -8 },
-  targetPlanRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  arrowContainer: { marginHorizontal: 12 },
+  targetPlanRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
   proPill: {
-    backgroundColor: '#D4AF37',
+    backgroundColor: ACCENT,
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 6,
   },
-  proPillText: { color: '#1a1513', fontSize: 10, fontWeight: '800' },
+  proPillText: { color: '#fff', fontSize: 10, fontWeight: '800' },
 
-  // Plan Tabs
-  planTabs: { 
+  // Delta savings row
+  deltaRow: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  planTab: {
-    flex: 1,
-    paddingVertical: 12,
-    borderRadius: 10,
-    borderWidth: 1,
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: 14,
   },
-  planTabText: { fontSize: 14, fontWeight: '700' },
+  deltaText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
 
   // AI Pro Section
-  aiProSection: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 20,
-  },
   aiProHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -767,6 +934,7 @@ const styles = StyleSheet.create({
   },
   aiProTitle: { fontSize: 16, fontWeight: '700' },
   aiProSubtitle: { fontSize: 12, fontWeight: '500', marginTop: 2 },
+  aiProBilledLabel: { fontSize: 11, fontWeight: '500', marginTop: 2, fontStyle: 'italic' },
   aiProToggle: {
     width: 40,
     height: 40,
@@ -777,13 +945,7 @@ const styles = StyleSheet.create({
   },
   aiProDescription: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
 
-  // Payment Card
-  paymentCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 20,
-  },
+  // Payment
   paymentTitle: { fontSize: 16, fontWeight: '700', marginBottom: 16 },
   
   // Payment Methods
@@ -799,8 +961,8 @@ const styles = StyleSheet.create({
   paymentMethodBtn: {
     width: '23%',
     aspectRatio: 1,
-    borderRadius: 10,
-    borderWidth: 2,
+    borderRadius: 12,
+    borderWidth: 1.5,
     padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -815,9 +977,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    backgroundColor: '#eff6ff',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 10,
     marginTop: 12,
   },
   paymentMethodInfoText: {
@@ -831,7 +992,7 @@ const styles = StyleSheet.create({
   inputGroup: { marginBottom: 14 },
   inputLabel: { fontSize: 12, fontWeight: '600', marginBottom: 6 },
   input: {
-    borderRadius: 8,
+    borderRadius: 10,
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 12,
@@ -842,8 +1003,8 @@ const styles = StyleSheet.create({
 
   // Change Plan Button
   changePlanBtn: {
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 15,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 12,
