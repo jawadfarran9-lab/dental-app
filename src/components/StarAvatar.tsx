@@ -1,13 +1,13 @@
 import React from 'react';
 import { Platform, StyleSheet, Text, View } from 'react-native';
 import Svg, {
-  ClipPath,
-  Defs,
-  LinearGradient,
-  Path,
-  Rect,
-  Stop,
-  Image as SvgImage,
+    ClipPath,
+    Defs,
+    LinearGradient,
+    Path,
+    Rect,
+    Stop,
+    Image as SvgImage,
 } from 'react-native-svg';
 import StarIconOverlay from './StarIconOverlay';
 

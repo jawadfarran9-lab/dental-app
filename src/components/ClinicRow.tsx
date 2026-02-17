@@ -1,15 +1,15 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useCallback, useRef } from 'react';
 import {
-  Animated,
-  Easing,
-  StyleSheet,
-  Text,
-  TouchableWithoutFeedback,
-  View,
+    Animated,
+    Easing,
+    StyleSheet,
+    Text,
+    TouchableWithoutFeedback,
+    View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import StarAvatar from './StarAvatar';
 import GlassCard from './GlassCard';
+import StarAvatar from './StarAvatar';
 
 // ─── Types ──────────────────────────────────────────────────────────
 

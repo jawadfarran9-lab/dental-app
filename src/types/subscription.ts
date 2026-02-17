@@ -1,6 +1,6 @@
 // Phase V: Subscription Plan Types
 
-export type SubscriptionPlan = 'MONTHLY' | 'YEARLY';
+export type SubscriptionPlan = 'MONTHLY' | 'ANNUAL';
 
 export interface SubscriptionPricing {
   monthly: number;

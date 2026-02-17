@@ -91,7 +91,7 @@ export default function ClinicPayment() {
       } else {
         const planId = (map.pendingSubscriptionPlan || 'MONTHLY').toUpperCase();
         const planName = map.pendingSubscriptionPlanName || planId;
-        const billingText = planId === 'YEARLY' ? t('subscription.yearly', 'Yearly') : t('subscription.monthly', 'Monthly');
+        const billingText = planId === 'ANNUAL' ? t('subscription.yearly', 'Yearly') : t('subscription.monthly', 'Monthly');
         setPlanLabelText(planName);
         setBillingLabelText(billingText);
         const amount = map.pendingSubscriptionPriceWithAIPro || map.pendingSubscriptionPrice || '19.99';
@@ -330,7 +330,7 @@ export default function ClinicPayment() {
         actorName: 'Owner',
         payload: {
           clinicName: clinicNameValue,
-          plan: plan as 'MONTHLY' | 'YEARLY',
+          plan: plan as 'MONTHLY' | 'ANNUAL',
           amount,
           method: (selectedPaymentMethod?.toUpperCase() || 'CARD') as 'PAYPAL' | 'CARD' | 'BANK',
           includeAIPro: aiPro,

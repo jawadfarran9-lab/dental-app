@@ -459,9 +459,9 @@ export default function AIChatScreen() {
 							</Text>
 						</TouchableOpacity>
 
-						{userRole === 'clinic' && tier === 'PRO' && (
+						{userRole === 'clinic' && tier && !hasAIAccess && (
 							<Text style={[styles.currentPlanText, { color: colors.textSecondary }]}>
-								{t('ai.upgradeRequired.currentPlan') || 'You\'re on PRO plan. Upgrade to PRO_AI to access AI'}
+								{t('ai.upgradeRequired.currentPlan') || 'Add AI Pro to your plan to unlock AI features'}
 							</Text>
 						)}
 					</View>

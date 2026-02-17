@@ -140,12 +140,12 @@ export default function ClinicSignup() {
           
           // If still no price from AsyncStorage, use the derived price
           if (!finalPrice || finalPrice === 'null') {
-            const derivedPrice = planId === 'YEARLY' ? '230.88' : '19.99';
+            const derivedPrice = planId === 'ANNUAL' ? '230.88' : '19.99';
             console.log('[SIGNUP] No price in AsyncStorage, using derived:', derivedPrice);
             finalPrice = derivedPrice;
           }
           
-          const finalName = planName || (planId === 'YEARLY' ? 'Annual' : 'Monthly');
+          const finalName = planName || (planId === 'ANNUAL' ? 'Annual' : 'Monthly');
           
           console.log('[SIGNUP] Setting UI state:', { name: finalName, price: finalPrice });
           setPlanLabel(finalName);

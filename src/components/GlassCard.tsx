@@ -1,6 +1,6 @@
-import React from 'react';
-import { Platform, StyleSheet, StyleProp, View, ViewStyle } from 'react-native';
 import { BlurView } from 'expo-blur';
+import React from 'react';
+import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 
 type GlassCardProps = {
   children: React.ReactNode;

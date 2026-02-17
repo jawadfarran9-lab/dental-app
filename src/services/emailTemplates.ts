@@ -2,7 +2,7 @@
 
 export interface ReceiptEmailPayload {
   clinicName?: string;
-  plan: 'MONTHLY' | 'YEARLY';
+  plan: 'MONTHLY' | 'ANNUAL';
   amount: number;
   method: 'PAYPAL' | 'CARD' | 'BANK';
   includeAIPro?: boolean;

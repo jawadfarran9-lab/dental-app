@@ -3,13 +3,13 @@
 export type PaymentMethod = 'PAYPAL' | 'CARD' | 'BANK';
 
 export interface PaymentPlanOption {
-  plan: 'MONTHLY' | 'YEARLY';
+  plan: 'MONTHLY' | 'ANNUAL';
   amount: number;
   currency: 'USD';
 }
 
 export interface PaymentDraft {
-  plan: 'MONTHLY' | 'YEARLY';
+  plan: 'MONTHLY' | 'ANNUAL';
   method: PaymentMethod;
   amount: number;
   currency: 'USD';

@@ -2,7 +2,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 
-export type SubscriptionTier = 'BASIC' | 'PRO' | 'PRO_AI' | null;
+export type SubscriptionTier = 'MONTHLY' | 'ANNUAL' | null;
 
 export interface SubscriptionStatus {
   isSubscribed: boolean;
@@ -35,7 +35,7 @@ export function useSubscriptionStatus(): SubscriptionStatus {
         if (userRole === 'patient') {
           setStatus({
             isSubscribed: true,
-            tier: 'PRO_AI',
+            tier: 'MONTHLY',
             hasAIAccess: true,
             isLoading: false,
             error: null,
@@ -45,21 +45,18 @@ export function useSubscriptionStatus(): SubscriptionStatus {
 
         // For clinic users, check stored subscription
         if (userRole === 'clinic' && clinicId) {
-          const storedPlan = await AsyncStorage.getItem('clinicSubscriptionPlan');
+          const [storedPlan, aiProFlag] = await AsyncStorage.multiGet([
+            'clinicSubscriptionPlan',
+            'clinicIncludeAIPro',
+          ]);
+          const plan = storedPlan[1];
+          const aiProEnabled = aiProFlag[1] === 'true';
 
-          if (storedPlan === 'PRO_AI') {
+          if (plan === 'MONTHLY' || plan === 'ANNUAL') {
             setStatus({
               isSubscribed: true,
-              tier: 'PRO_AI',
-              hasAIAccess: true,
-              isLoading: false,
-              error: null,
-            });
-          } else if (storedPlan === 'PRO') {
-            setStatus({
-              isSubscribed: true,
-              tier: 'PRO',
-              hasAIAccess: false,
+              tier: plan as SubscriptionTier,
+              hasAIAccess: aiProEnabled,
               isLoading: false,
               error: null,
             });

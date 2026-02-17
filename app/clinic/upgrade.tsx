@@ -175,7 +175,7 @@ export default function UpgradeScreen() {
       }
 
       const totalPrice = calculatePrice();
-      const planIdentifier = selectedPlan === 'pro' ? 'YEARLY' : 'MONTHLY';
+      const planIdentifier = selectedPlan === 'pro' ? 'ANNUAL' : 'MONTHLY';
 
       // Store payment details in AsyncStorage for next step
       await AsyncStorage.multiSet([

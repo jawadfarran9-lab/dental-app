@@ -1,7 +1,7 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
-import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { useTheme } from '@/src/context/ThemeContext';
+import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -302,7 +302,7 @@ BeSmile AI Team
       await setDoc(doc(db, 'clinics', clinicId), {
         subscribed: true,
         subscriptionConfirmedAt: Date.now(),
-        subscriptionPlan: planLabel.includes('Annual') ? 'YEARLY' : 'MONTHLY',
+        subscriptionPlan: planLabel.includes('Annual') ? 'ANNUAL' : 'MONTHLY',
         appliedCoupon: appliedCoupon || null,
         finalPrice: parseFloat(finalPrice),
         basePrice: parseFloat(basePrice),
