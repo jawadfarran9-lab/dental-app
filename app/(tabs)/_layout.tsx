@@ -1,10 +1,8 @@
-import { isClinicOwner } from '@/src/utils/roleUtils';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { Tabs } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Animated, Easing, StyleSheet, useColorScheme, View } from 'react-native';
+import { useEffect, useRef } from 'react';
+import { Animated, Easing, Platform, StyleSheet, useColorScheme, View } from 'react-native';
 
 // ========== Orbiting Stars Component ==========
 const OrbitingStars: React.FC<{ active: boolean }> = ({ active }) => {
@@ -144,17 +142,6 @@ const TabIcon: React.FC<{
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const { t } = useTranslation();
-  const [isClinic, setIsClinic] = useState(false);
-
-  // Check role on mount only
-  useEffect(() => {
-    const checkRole = async () => {
-      const clinic = await isClinicOwner();
-      setIsClinic(clinic);
-    };
-    checkRole();
-  }, []);
 
   // Premium glassmorphism colors
   const activeColor = '#3D9EFF'; // Bright blue
@@ -168,55 +155,47 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: inactiveColor,
           tabBarStyle: {
             position: 'absolute',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            height: 80,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            borderBottomLeftRadius: 0,
-            borderBottomRightRadius: 0,
+            bottom: 14,
+            left: 16,
+            right: 16,
+            height: 72,
+            borderRadius: 28,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             borderWidth: 0,
-            paddingBottom: 16,
+            paddingBottom: 10,
             paddingTop: 8,
             paddingHorizontal: 4,
-            // Soft glow shadow
-            shadowColor: '#3D9EFF',
-            shadowOpacity: 0.25,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: -4 },
-            elevation: 20,
+            ...Platform.select({
+              ios: {
+                shadowColor: '#0D1B2A',
+                shadowOpacity: 0.18,
+                shadowRadius: 20,
+                shadowOffset: { width: 0, height: 8 },
+              },
+              android: { elevation: 12 },
+            }),
           },
           tabBarBackground: () => (
             <View style={styles.tabBarBackground}>
-              {/* Sky blue gradient matching app background */}
-              <LinearGradient
-                colors={isDark 
-                  ? ['rgba(30, 50, 80, 0.95)', 'rgba(25, 45, 75, 0.98)']
-                  : ['#E8F4FC', '#DCF0FC', '#D6EFFF']
-                }
-                locations={isDark ? [0, 1] : [0, 0.5, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
+              <BlurView
+                intensity={Platform.OS === 'ios' ? (isDark ? 55 : 65) : 0}
+                tint={isDark ? 'dark' : 'light'}
                 style={StyleSheet.absoluteFillObject}
               />
-              {/* Subtle inner glow overlay */}
-              <LinearGradient
-                colors={isDark
-                  ? ['rgba(100, 150, 220, 0.1)', 'rgba(80, 130, 200, 0.05)']
-                  : ['rgba(255, 255, 255, 0.6)', 'rgba(255, 255, 255, 0.2)', 'rgba(255, 255, 255, 0)']
-                }
-                locations={isDark ? [0, 1] : [0, 0.4, 1]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 0, y: 1 }}
-                style={StyleSheet.absoluteFillObject}
-              />
-              {/* Soft border effect */}
+              {/* Solid fallback for Android / tint overlay */}
+              <View style={[
+                StyleSheet.absoluteFillObject,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(25, 40, 65, 0.82)'
+                    : 'rgba(235, 245, 255, 0.78)',
+                },
+              ]} />
+              {/* Subtle border */}
               <View style={[
                 styles.tabBarBorder,
-                { borderColor: isDark ? 'rgba(100, 140, 200, 0.3)' : 'rgba(180, 215, 245, 0.8)' }
+                { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.50)' },
               ]} />
             </View>
           ),
@@ -288,7 +267,7 @@ export default function TabsLayout() {
           options={{
             title: 'Clinics',
             tabBarIcon: ({ color, focused }) => (
-              <TabIcon name="grid" focused={focused} color={color} isDark={isDark} />
+              <TabIcon name="medical" focused={focused} color={color} isDark={isDark} />
             ),
           }}
         />
@@ -308,16 +287,13 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 28,
     overflow: 'hidden',
   },
   tabBarBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    borderWidth: 1,
-    borderBottomWidth: 0,
+    borderRadius: 28,
+    borderWidth: StyleSheet.hairlineWidth,
   },
   iconContainer: {
     width: 64,

@@ -1,6 +1,7 @@
 import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { sendSubscriptionReceiptMock } from '@/src/services/emailServiceMock';
 import { useClinicGuard, useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -302,6 +303,9 @@ export default function ClinicPayment() {
       } catch {
         await setDoc(doc(db, 'clinics', targetClinicId), payload, { merge: true });
       }
+
+      // Auto-publish to clinics directory (fire-and-forget)
+      ensureClinicPublished(targetClinicId).catch(() => {});
 
       // Save to AsyncStorage
       await AsyncStorage.multiSet([

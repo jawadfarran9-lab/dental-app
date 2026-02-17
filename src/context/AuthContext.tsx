@@ -1,4 +1,5 @@
 import { db } from '@/firebaseConfig';
+import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import {
     ensureOwnerMembership,
     fetchMemberProfile,
@@ -77,6 +78,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       
       // Check if clinic details are complete (clinicName required)
       const detailsComplete = !!(clinicData.clinicName && clinicData.clinicName.trim());
+
+      // Auto-sync to public directory (fire-and-forget, non-blocking)
+      if (subscribed && detailsComplete) {
+        ensureClinicPublished(clinicId, clinicData).catch(() => {});
+      }
 
       return { subscribed, detailsComplete };
     } catch (error) {

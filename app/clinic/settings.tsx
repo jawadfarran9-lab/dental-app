@@ -1,4 +1,5 @@
 import { ColorPicker } from '@/app/components/ColorPicker';
+import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -10,9 +11,11 @@ import {
 import { ClinicSettings } from '@/src/types/media';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useTheme as useNavigationTheme } from '@react-navigation/native';
+
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
+import { doc, setDoc } from 'firebase/firestore';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
@@ -31,9 +34,8 @@ type TabType = 'profile' | 'branding' | 'preview';
 export default function ClinicSettingsScreen() {
   useClinicRoleGuard(['owner']);
   const { t } = useTranslation();
-  const navigationTheme = useNavigationTheme();
   const { colors, isDark } = useTheme();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId } = useClinic();
   const { userId } = useAuth();
 
   const [activeTab, setActiveTab] = useState<TabType>('profile');
@@ -53,6 +55,43 @@ export default function ClinicSettingsScreen() {
   const [secondaryColor, setSecondaryColor] = useState('#0B0F1A');
   const [logoUrl, setLogoUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
+
+  // ─── Persist location returned from location-picker ───
+  const { pickedLat, pickedLng, pickedAddress } = useLocalSearchParams<{
+    pickedLat?: string;
+    pickedLng?: string;
+    pickedAddress?: string;
+  }>();
+  const locationSaved = useRef(false);
+
+  useEffect(() => {
+    if (!clinicId || locationSaved.current) return;
+    if (!pickedLat || !pickedLng) return;
+
+    const lat = parseFloat(pickedLat);
+    const lng = parseFloat(pickedLng);
+    if (isNaN(lat) || isNaN(lng)) return;
+
+    locationSaved.current = true;
+
+    (async () => {
+      try {
+        await setDoc(
+          doc(db, 'clinics', clinicId),
+          {
+            location: {
+              latitude: lat,
+              longitude: lng,
+              address: pickedAddress || '',
+            },
+          },
+          { merge: true },
+        );
+      } catch (err) {
+        // Location save is non-critical — swallow silently
+      }
+    })();
+  }, [clinicId, pickedLat, pickedLng, pickedAddress]);
 
   // Load settings on mount
   useEffect(() => {
@@ -170,9 +209,6 @@ export default function ClinicSettingsScreen() {
       fontSize: 18,
       fontWeight: '700',
       color: colors.textPrimary,
-    },
-    closeButton: {
-      padding: 8,
     },
     tabContainer: {
       flexDirection: 'row',

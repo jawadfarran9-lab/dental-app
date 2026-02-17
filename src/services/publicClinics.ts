@@ -18,6 +18,8 @@ export type PublicClinic = {
   averageRating?: number; // Average rating from 1-5
   totalReviews?: number; // Total number of reviews
   specialty?: 'general' | 'orthodontics' | 'cosmetic' | 'pediatric' | 'surgery' | 'endodontics' | 'periodontics' | 'prosthodontics'; // Clinic specialty
+  city?: string;    // From directory sync or public profile
+  country?: string; // From directory sync or public profile
 };
 
 export type DerivedPlace = {

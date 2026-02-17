@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
+import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -310,6 +311,9 @@ BeSmile AI Team
       }, { merge: true });
 
       console.log('[CONFIRM] ✅ SUCCESS: Subscription confirmed in Firestore for clinic:', clinicId);
+
+      // Auto-publish to clinics directory (fire-and-forget)
+      ensureClinicPublished(clinicId).catch(() => {});
 
       // ✅ Store clinicId temporarily for login redirect
       const confirmedClinicId = clinicId;
