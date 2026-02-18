@@ -13,12 +13,18 @@ export type ClinicData = {
   phone?: string;
   clinicPhone?: string;
   imageUrl?: string;
+  profileImageUrl?: string;
   countryCode?: string;
   city?: string;
   createdAt?: number;
   accountCreatedAt?: number;
   status?: string;
   clinicType?: string; // 'dental' | 'laser' | 'beauty' etc.
+  location?: {
+    lat: number;
+    lng: number;
+    address: string;
+  };
 };
 
 /**
@@ -50,12 +56,14 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
       phone: data?.phone,
       clinicPhone: data?.clinicPhone,
       imageUrl: data?.imageUrl,
+      profileImageUrl: data?.profileImageUrl,
       countryCode: data?.countryCode,
       city: data?.city,
       createdAt: data?.createdAt,
       accountCreatedAt: data?.accountCreatedAt,
       status: data?.status,
       clinicType: data?.clinicType,
+      location: data?.location,
     };
 
     if (clinicData.imageUrl) {

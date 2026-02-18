@@ -5,10 +5,10 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import {
   PublicClinic,
-  distanceKm as calcDistanceKm,
   fetchPublishedClinics,
   reverseGeocode,
 } from '@/src/services/publicClinics';
+import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Location from 'expo-location';
@@ -142,6 +142,29 @@ export default function ClinicsListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const locationFetched = useRef(false);
 
+  // ─── Auto-request user GPS on mount (graceful, non-blocking) ───
+  useEffect(() => {
+    if (locationFetched.current) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status === 'granted' && !cancelled) {
+          const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+          if (!cancelled) {
+            const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
+            lastLocation.current = coords;
+            setUserLocation(coords);
+            locationFetched.current = true;
+          }
+        }
+      } catch {
+        // Permission denied or GPS unavailable — silent fallback
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ─── Micro-motion: scroll-based filter depth ───
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isScrolling, setIsScrolling] = useState(false);
@@ -219,7 +242,6 @@ export default function ClinicsListScreen() {
 
   // ─── Request user location (on tap) ───
   const lastLocation = useRef<{ lat: number; lng: number } | null>(null);
-
   const toggleLocation = useCallback(async () => {
     if (userLocation) {
       // Turn off location sorting (keep cached coords for re-enable)
@@ -277,8 +299,8 @@ export default function ClinicsListScreen() {
 
       // Distance sort when location available
       if (userLocation) {
-        const aDist = a.geo ? calcDistanceKm(userLocation, a.geo) : Infinity;
-        const bDist = b.geo ? calcDistanceKm(userLocation, b.geo) : Infinity;
+        const aDist = a.geo ? getDistanceBetween(userLocation, a.geo) : Infinity;
+        const bDist = b.geo ? getDistanceBetween(userLocation, b.geo) : Infinity;
         if (aDist !== bDist) return aDist - bDist;
       }
 
@@ -313,7 +335,7 @@ export default function ClinicsListScreen() {
   const getDistance = useCallback(
     (geo?: { lat: number; lng: number }): number | null => {
       if (!userLocation || !geo) return null;
-      return calcDistanceKm(userLocation, geo);
+      return getDistanceBetween(userLocation, geo);
     },
     [userLocation],
   );

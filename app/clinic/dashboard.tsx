@@ -1,4 +1,4 @@
-import { db, storage } from '@/firebaseConfig';
+import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { collection, doc, getDoc, getDocs, orderBy, query } from 'firebase/firestore';
-import { getDownloadURL, ref } from 'firebase/storage';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -71,25 +70,8 @@ export default function ClinicDashboard() {
         const data = clinicSnap.data();
         setClinicName(data.clinicName || data.name || '');
         
-        // Try to get clinic image from multiple sources
-        let imageUrl = data.clinicImageUrl || data.imageUrl || null;
-        
-        // If no image URL in Firestore, try Firebase Storage
-        if (!imageUrl) {
-          try {
-            const storageRef = ref(storage, `clinics/${clinicId}/clinicImage.jpg`);
-            imageUrl = await getDownloadURL(storageRef);
-          } catch (storageError) {
-            // Try alternative path
-            try {
-              const altStorageRef = ref(storage, `clinics/${clinicId}/profile.jpg`);
-              imageUrl = await getDownloadURL(altStorageRef);
-            } catch {
-              // No image found, use placeholder
-              console.log('[Dashboard] No clinic image found in storage');
-            }
-          }
-        }
+        // Prefer profileImageUrl (single source of truth), then legacy fields
+        const imageUrl = data.profileImageUrl || data.clinicImageUrl || data.imageUrl || null;
         
         setClinicImageUrl(imageUrl);
       }

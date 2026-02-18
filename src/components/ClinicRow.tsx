@@ -154,12 +154,12 @@ const ClinicRow: React.FC<ClinicRowProps> = ({
               </>
             )}
             {distanceLabel != null && (
-              <>
-                <Text style={[rowStyles.dot, { color: mutedFg }]}>•</Text>
-                <Text style={[rowStyles.distance, { color: mutedFg }]}>
+              <View style={[rowStyles.distancePill, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' }]}>
+                <Ionicons name="navigate-outline" size={10} color={accentClr} />
+                <Text style={[rowStyles.distancePillText, { color: accentClr }]}>
                   {distanceLabel}
                 </Text>
-              </>
+              </View>
             )}
           </View>
         </View>
@@ -240,9 +240,18 @@ const rowStyles = StyleSheet.create({
   dot: {
     fontSize: 10,
   },
-  distance: {
-    fontSize: 12,
-    fontWeight: '400',
+  distancePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  distancePillText: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.1,
   },
 });
 

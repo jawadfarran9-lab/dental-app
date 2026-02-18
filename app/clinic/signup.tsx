@@ -8,7 +8,6 @@ import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import CountrySelect from '../components/CountrySelect';
 
@@ -61,9 +60,24 @@ export default function ClinicSignup() {
   const [cardCvcError, setCardCvcError] = useState('');
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const router = useRouter();
-  const { plan, billing } = useLocalSearchParams<{ plan?: string; billing?: string }>();
+  const params = useLocalSearchParams<{
+    plan?: string;
+    billing?: string;
+    pickedLat?: string;
+    pickedLng?: string;
+    pickedAddress?: string;
+  }>();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+
+  // ── Location picker state ──
+  const [clinicLocation, setClinicLocation] = useState<{
+    lat: number;
+    lng: number;
+    address: string;
+  } | null>(null);
+  const locationConsumed = useRef(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // ── Phase 3: Entrance animation ──
   const entranceScale = useRef(new Animated.Value(0.97)).current;
@@ -123,6 +137,29 @@ export default function ClinicSignup() {
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
     }, [loading])
+  );
+
+  // ── Pick up returned location params ──
+  useFocusEffect(
+    React.useCallback(() => {
+      if (
+        params.pickedLat &&
+        params.pickedLng &&
+        params.pickedAddress &&
+        !locationConsumed.current
+      ) {
+        const lat = parseFloat(params.pickedLat);
+        const lng = parseFloat(params.pickedLng);
+        if (!isNaN(lat) && !isNaN(lng)) {
+          setClinicLocation({ lat, lng, address: params.pickedAddress });
+          locationConsumed.current = true;
+        }
+      }
+      return () => {
+        // Reset guard so future returns are captured
+        locationConsumed.current = false;
+      };
+    }, [params.pickedLat, params.pickedLng, params.pickedAddress])
   );
 
   // Clear sensitive inputs when navigating back
@@ -343,12 +380,16 @@ export default function ClinicSignup() {
     // Core fields: firstName, lastName, email, password - ALWAYS required
     const coreFieldsOk = firstName && lastName && emailOk && passwordOk;
     
-    // For FREE subscriptions: Only core fields required (NO payment method needed)
+    // Location is always required
+    const locationOk = !!clinicLocation?.lat && !!clinicLocation?.lng && !!clinicLocation?.address;
+
+    // For FREE subscriptions: Only core fields + location required (NO payment method needed)
     if (isFreeSubscription) {
-      const isValid = Boolean(coreFieldsOk && !loading);
+      const isValid = Boolean(coreFieldsOk && locationOk && !loading);
       console.log('[FORM VALIDATION] Free subscription', {
         clinicType,
         coreFieldsOk,
+        locationOk,
         isValid,
         firstName: !!firstName,
         lastName: !!lastName,
@@ -381,10 +422,11 @@ export default function ClinicSignup() {
       console.log('[FORM VALIDATION] Paid with', selectedPaymentMethod);
     }
     
-    const isValid = Boolean(coreFieldsOk && paymentMethodSelected && paymentOk && !loading);
+    const isValid = Boolean(coreFieldsOk && locationOk && paymentMethodSelected && paymentOk && !loading);
     
     console.log('[FORM VALIDATION] Paid subscription final', {
       coreFieldsOk,
+      locationOk,
       paymentMethodSelected,
       paymentOk,
       isValid,
@@ -394,6 +436,8 @@ export default function ClinicSignup() {
   };
 
   const onSignup = async () => {
+    setSubmitAttempted(true);
+
     // Validation: Clinic type is REQUIRED
     if (!clinicType) {
       return Alert.alert(
@@ -426,6 +470,14 @@ export default function ClinicSignup() {
     // Card validation required only for paid card subscriptions
     if (!isFree && selectedPaymentMethod === 'card' && !isCardValid()) {
       return Alert.alert(t('payment.invalidCard', 'Invalid Card'), t('payment.checkCardDetails', 'Please enter valid card details.'));
+    }
+
+    // Location is required
+    if (!clinicLocation?.lat || !clinicLocation?.lng) {
+      return Alert.alert(
+        'Location Required',
+        'Please select your clinic location before continuing.'
+      );
     }
 
     setLoading(true);
@@ -509,6 +561,11 @@ export default function ClinicSignup() {
         phone: phone || null,
         countryCode: country || null,
         city: city || null,
+        location: {
+          lat: clinicLocation?.lat ?? null,
+          lng: clinicLocation?.lng ?? null,
+          address: clinicLocation?.address ?? null,
+        },
         accountCreatedAt: Date.now(),
         status: 'active', // Mark as fully active
       }, { merge: true });
@@ -690,7 +747,6 @@ export default function ClinicSignup() {
     router.push('/clinic/confirm-subscription' as any);
   };
 
-  const goToLogin = () => router.push('/clinic/login' as any);
   const goBack = () => {
     // Only allow back if not loading
     if (!loading) {
@@ -1027,6 +1083,77 @@ export default function ClinicSignup() {
               editable={!loading} 
             />
           </View>
+        </View>
+
+        {/* ── Clinic Location ── */}
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.50)' }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Clinic Location</Text>
+
+          {clinicLocation ? (
+            <>
+              {/* Static map preview */}
+              <View style={[styles.mapPreview, { backgroundColor: isDark ? 'rgba(61,158,255,0.08)' : 'rgba(61,158,255,0.06)', borderColor: isDark ? 'rgba(61,158,255,0.18)' : 'rgba(61,158,255,0.14)' }]}>
+                <View style={styles.mapPreviewPinRing}>
+                  <Ionicons name="location-sharp" size={26} color={ACCENT} />
+                </View>
+                <Text style={[styles.mapPreviewLabel, { color: colors.textSecondary }]}>Map preview</Text>
+              </View>
+
+              {/* Address */}
+              <View style={styles.locationAddressRow}>
+                <Ionicons name="location" size={16} color={ACCENT} style={{ marginTop: 2 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.locationAddressText, { color: colors.textPrimary }]} numberOfLines={2}>
+                    {clinicLocation.address}
+                  </Text>
+                  <Text style={[styles.locationCoordsText, { color: colors.textSecondary }]}>
+                    {clinicLocation.lat.toFixed(4)}, {clinicLocation.lng.toFixed(4)}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Change button */}
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() =>
+                  router.push({
+                    pathname: '/clinic/location-picker' as any,
+                    params: { lat: String(clinicLocation.lat), lng: String(clinicLocation.lng) },
+                  })
+                }
+                style={[styles.locationBtn, styles.locationBtnOutline, { borderColor: ACCENT }]}
+              >
+                <Ionicons name="navigate-outline" size={16} color={ACCENT} />
+                <Text style={[styles.locationBtnText, { color: ACCENT }]}>Change Location</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              {/* Empty state preview */}
+              <View style={[styles.mapPreviewEmpty, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.025)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' }]}>
+                <Ionicons name="location-outline" size={30} color={isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.12)'} />
+                <Text style={[styles.mapPreviewEmptyLabel, { color: colors.textSecondary }]}>
+                  Choose clinic location on map
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => router.push('/clinic/location-picker' as any)}
+                style={[styles.locationBtn, { backgroundColor: ACCENT }]}
+              >
+                <Ionicons name="navigate-outline" size={16} color="#FFF" />
+                <Text style={[styles.locationBtnText, { color: '#FFF' }]}>Choose Location</Text>
+              </TouchableOpacity>
+
+              {/* Validation hint — shown only after submit attempt */}
+              {submitAttempted && !clinicLocation && (
+                <Text style={[styles.validationHint, { color: '#ef4444', marginTop: 8, marginBottom: 0, marginHorizontal: 0 }]}>
+                  Location is required to complete signup
+                </Text>
+              )}
+            </>
+          )}
         </View>
 
         {/* Payment Method Selection */}
@@ -1415,13 +1542,8 @@ const styles = StyleSheet.create({
     left: 20,
     zIndex: 10,
   },
-  backButtonText: { 
-    marginLeft: 8, 
-    fontWeight: '600' 
-  },
   title: { fontSize: 28, fontWeight: '800', marginBottom: 4, textAlign: 'center', letterSpacing: -0.5 },
   headerSubtitle: { fontSize: 13, fontWeight: '500', textAlign: 'center', opacity: 0.65, marginBottom: 12 },
-  subtitle: { fontSize: 16, marginBottom: 4 },
   section: { marginBottom: 16, paddingHorizontal: 16 },
   sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 14, color: '#1f2937' },
   input: { borderWidth: 1, padding: 14, borderRadius: 14, marginBottom: 10, fontSize: 16 },
@@ -1503,51 +1625,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
-  btn: { padding: 14, borderRadius: 8, alignItems: 'center', marginTop: 16, marginBottom: 8, marginHorizontal: 16 },
-  subscriptionActionBox: {
-    flexDirection: 'row',
-    marginTop: 16,
-    marginBottom: 8,
-    marginHorizontal: 16,
-    borderRadius: 8,
-    overflow: 'hidden',
-    height: 80,
-  },
-  subscriptionButtonLeft: {
-    flex: 0.6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    borderRightWidth: 1,
-    borderRightColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  subscriptionButtonText: {
-    fontWeight: '700',
-    fontSize: 13,
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  subscriptionPriceDisplay: {
-    flex: 0.4,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderLeftWidth: 1,
-  },
-  displayPriceValue: {
-    fontSize: 20,
-    fontWeight: '800',
-  },
-  displayPricePeriod: {
-    fontSize: 11,
-    fontWeight: '600',
-    marginTop: 2,
-  },
   validationHint: { fontSize: 12, fontWeight: '500', marginHorizontal: 16, marginBottom: 12, minHeight: 16, textAlign: 'center' },
-  btnDisabled: { opacity: 0.7 },
-  btnText: { fontWeight: '700', fontSize: 16 },
-  link: { textAlign: 'center', fontWeight: '600', paddingHorizontal: 16, paddingBottom: 16 },
   
   // ===== Clinic Type Selection Styles =====
   clinicTypeSection: {
@@ -1566,13 +1644,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 16,
     letterSpacing: -0.2,
-  },
-  clinicTypeSubtitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginBottom: 20,
-    opacity: 0.8,
   },
   clinicTypeGrid: {
     flexDirection: 'row',
@@ -1874,5 +1945,80 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  // ── Clinic Location card ──
+  mapPreview: {
+    borderRadius: 18,
+    borderWidth: 1,
+    height: 120,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 12,
+    overflow: 'hidden',
+  },
+  mapPreviewPinRing: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: 'rgba(61,158,255,0.12)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
+  },
+  mapPreviewLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    opacity: 0.6,
+  },
+  locationAddressRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 12,
+  },
+  locationAddressText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 19,
+  },
+  locationCoordsText: {
+    fontSize: 11,
+    fontWeight: '500',
+    opacity: 0.55,
+    marginTop: 2,
+  },
+  mapPreviewEmpty: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    height: 90,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginBottom: 12,
+  },
+  mapPreviewEmptyLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    opacity: 0.6,
+  },
+  locationBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 12,
+  },
+  locationBtnOutline: {
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+  },
+  locationBtnText: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

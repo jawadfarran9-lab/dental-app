@@ -54,8 +54,9 @@ export async function ensureClinicPublished(
 
     // Optional fields — only set if present so we never overwrite richer
     // data the owner may have entered via Public Profile.
-    if (clinicData.clinicImageUrl || clinicData.imageUrl) {
-      payload.heroImage = clinicData.clinicImageUrl || clinicData.imageUrl;
+    const heroSource = clinicData.profileImageUrl || clinicData.clinicImageUrl || clinicData.imageUrl;
+    if (heroSource) {
+      payload.heroImage = heroSource;
     }
     if (clinicData.clinicPhone) payload.phone = clinicData.clinicPhone;
     if (clinicData.clinicType)  payload.specialty = clinicData.clinicType;
@@ -63,10 +64,10 @@ export async function ensureClinicPublished(
     if (clinicData.address)     payload.address = clinicData.address;
 
     // Geo coordinates for distance-based discovery
-    if (clinicData.location?.latitude != null && clinicData.location?.longitude != null) {
+    if (clinicData.location?.lat != null && clinicData.location?.lng != null) {
       payload.geo = {
-        lat: clinicData.location.latitude,
-        lng: clinicData.location.longitude,
+        lat: clinicData.location.lat,
+        lng: clinicData.location.lng,
       };
     }
 
