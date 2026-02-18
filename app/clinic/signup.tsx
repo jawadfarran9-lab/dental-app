@@ -1,17 +1,19 @@
 import { db } from '@/firebaseConfig';
-import i18n from '@/i18n';
 import { useTheme } from '@/src/context/ThemeContext';
-import { uploadClinicImage } from '@/src/utils/firebaseStorageUtils';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, BackHandler, Image, KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import CountrySelect from '../components/CountrySelect';
+
+// ── Unified accent color ──
+const ACCENT = '#3D9EFF';
 
 /**
  * CLINIC SIGNUP - FIRESTORE ONLY (No Firebase Auth)
@@ -57,13 +59,49 @@ export default function ClinicSignup() {
   const [cardNumberError, setCardNumberError] = useState('');
   const [cardExpiryError, setCardExpiryError] = useState('');
   const [cardCvcError, setCardCvcError] = useState('');
-  const [clinicImage, setClinicImage] = useState<string | null>(null);
-  const [showImageModal, setShowImageModal] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const router = useRouter();
   const { plan, billing } = useLocalSearchParams<{ plan?: string; billing?: string }>();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
+
+  // ── Phase 3: Entrance animation ──
+  const entranceScale = useRef(new Animated.Value(0.97)).current;
+  const entranceFade = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    // Entrance scale 0.97 → 1 + fade in
+    Animated.parallel([
+      Animated.spring(entranceScale, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.timing(entranceFade, {
+        toValue: 1,
+        duration: 450,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
+
+  // Payment section uses conditional rendering only — no animated layout transitions.
+
+  // ── Phase 3: Premium input focus style helper (visual only) ──
+  // Uses onFocus/onBlur only — no onChangeText dependency.
+  const getInputFocusStyle = (fieldName: string) => {
+    if (focusedField !== fieldName) return {};
+    return {
+      borderColor: ACCENT,
+      borderWidth: 2,
+      shadowColor: ACCENT,
+      shadowOffset: { width: 0, height: 0 } as const,
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 4,
+    };
+  };
 
   // NOTE: Do NOT use useClinicGuard here - signup must be accessible from Subscribe page
   // Guard is only enforced at login level to prevent patient access post-auth
@@ -235,49 +273,6 @@ export default function ClinicSignup() {
     }
   };
 
-  const pickClinicImage = async () => {
-    try {
-      // Request permission
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
-          'Please allow access to your photo library to upload a clinic image.'
-        );
-        return;
-      }
-
-      // Launch image picker - get base64 data for Firebase upload
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.7,
-        base64: true, // ✅ Request base64 data for Firebase upload
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        console.log('[IMAGE PICKER] Selected image URI:', asset.uri?.substring(0, 80));
-        
-        // Use base64 data URL for Firebase upload
-        if (asset.base64) {
-          const mimeType = asset.mimeType || 'image/jpeg';
-          const dataUrl = `data:${mimeType};base64,${asset.base64}`;
-          console.log('[IMAGE PICKER] Using base64 data URL, length:', dataUrl.length);
-          setClinicImage(dataUrl);
-        } else {
-          // Fallback to URI if base64 not available
-          console.log('[IMAGE PICKER] base64 not available, using URI');
-          setClinicImage(asset.uri);
-        }
-      }
-    } catch (error) {
-      console.error('[IMAGE PICKER] Error:', error);
-      Alert.alert('Error', 'Failed to pick image. Please try again.');
-    }
-  };
-
   const applyCoupon = () => {
     const code = couponCode.trim().toUpperCase();
     
@@ -403,7 +398,7 @@ export default function ClinicSignup() {
     if (!clinicType) {
       return Alert.alert(
         t('clinic.validation', 'Validation'),
-        t('clinic.selectClinicType', 'Please select clinic type to continue / يرجى اختيار نوع العيادة للمتابعة')
+        t('clinic.selectClinicType', 'Please select a clinic type to continue')
       );
     }
     
@@ -531,7 +526,6 @@ export default function ClinicSignup() {
       console.log('[SIGNUP] =====================================');
 
       // Check if subscription is free (100% coupon applied)
-      const isFree = parseFloat(planPrice) === 0;
       
       if (isFree) {
         // Free subscription - skip payment, mark as subscribed immediately
@@ -683,46 +677,7 @@ export default function ClinicSignup() {
     setLoading(false);
     
     try {
-      // Get clinic ID and upload image if one was selected
-      const clinicId = await AsyncStorage.getItem('clinicId');
-      
       console.log('[SIGNUP] completePaymentAndLogin called');
-      console.log('[SIGNUP] clinicId:', clinicId);
-      console.log('[SIGNUP] clinicImage exists:', !!clinicImage);
-      console.log('[SIGNUP] clinicImage value:', clinicImage ? clinicImage.substring(0, 100) + '...' : 'null');
-      
-      if (clinicId && clinicImage) {
-        console.log('[SIGNUP] Uploading clinic image to Firebase Storage...');
-        setLoading(true);
-        
-        try {
-          // Upload image to Firebase Storage
-          const imageUrl = await uploadClinicImage(clinicImage, clinicId);
-          
-          // Save image URL to Firestore clinic document (use merge to avoid "No document" error)
-          console.log('[SIGNUP] Saving image URL to Firestore...');
-          await setDoc(doc(db, 'clinics', clinicId), {
-            clinicImageUrl: imageUrl,  // ✅ Use clinicImageUrl for consistency
-            imageUrl: imageUrl,        // Also keep imageUrl for backward compatibility
-            imageUploadedAt: Date.now(),
-          }, { merge: true });
-          
-          console.log('[SIGNUP] Image uploaded and saved successfully:', imageUrl);
-          await AsyncStorage.setItem('clinicImageUrl', imageUrl);
-        } catch (imageError: any) {
-          console.error('[SIGNUP] Warning: Image upload failed:', imageError);
-          console.error('[SIGNUP] Error code:', imageError?.code);
-          console.error('[SIGNUP] Error message:', imageError?.message);
-          Alert.alert(
-            'Image Upload',
-            `Could not upload clinic image: ${imageError?.message || 'Unknown error'}. Your account was created successfully.`,
-            [{ text: 'OK' }]
-          );
-        }
-      } else {
-        console.log('[SIGNUP] Skipping image upload - clinicId:', !!clinicId, 'clinicImage:', !!clinicImage);
-      }
-      
       setLoading(false);
     } catch (err: any) {
       console.error('[SIGNUP] Error in completePaymentAndLogin:', err);
@@ -744,34 +699,38 @@ export default function ClinicSignup() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1, backgroundColor: isDark ? colors.background : '#f0f4ff' }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-    >
-      <ScrollView 
-        contentContainerStyle={[styles.container, { backgroundColor: isDark ? colors.background : '#f0f4ff' }]} 
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
+    <View style={{ flex: 1, backgroundColor: isDark ? colors.background : '#E0F2FE' }}>
+      <PremiumGradientBackground isDark={isDark} showSparkles={!isDark} />
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
       >
-        {/* Back Button */}
-        <TouchableOpacity style={styles.backButton} onPress={goBack} disabled={loading}>
-          <View style={[styles.backButtonCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.8)' }]}>
-            <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
-          </View>
-        </TouchableOpacity>
+        <ScrollView 
+          contentContainerStyle={styles.container} 
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+        <Animated.View style={{ transform: [{ scale: entranceScale }], opacity: entranceFade }}>
+        {/* ===== Fixed Header Container ===== */}
+        <View style={styles.headerContainer}>
+          {/* Back Button — absolute positioned */}
+          <TouchableOpacity style={styles.backButton} onPress={goBack} disabled={loading}>
+            <View style={[styles.backButtonCircle, { backgroundColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.85)' }]}>
+              <Ionicons name="chevron-back" size={22} color={colors.textPrimary} />
+            </View>
+          </TouchableOpacity>
 
-        <View style={styles.header}>
           <Text style={[styles.title, { color: colors.textPrimary }]}>BeSmile AI</Text>
+          <Text style={[styles.headerSubtitle, { color: colors.textSecondary }]}>
+            {t('clinic.fillDataAccurately', 'Fill in your subscription details accurately.')}
+          </Text>
         </View>
 
         {/* ===== Clinic Type Selection Section ===== */}
         <View style={styles.clinicTypeSection}>
           <Text style={[styles.clinicTypeTitle, { color: colors.textPrimary }]}>
-            {t('clinic.selectClinicTypeTitle', 'اختر نوع العيادة للمتابعة')}
-          </Text>
-          <Text style={[styles.clinicTypeSubtitle, { color: colors.textSecondary }]}>
-            {t('clinic.fillDataAccurately', 'املأ بيانات الاشتراك بدقة.')}
+            {t('clinic.selectClinicTypeTitle', 'Select Your Clinic Type')}
           </Text>
           
           <View style={styles.clinicTypeGrid}>
@@ -779,29 +738,47 @@ export default function ClinicSignup() {
             <TouchableOpacity
               style={[
                 styles.clinicTypeCard,
-                { 
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(173,216,230,0.3)',
-                  borderColor: clinicType === 'dental' ? '#3b82f6' : 'transparent',
-                  borderWidth: clinicType === 'dental' ? 3 : 0,
-                },
-                clinicType === 'dental' && styles.clinicTypeCardSelected,
+                clinicType === 'dental'
+                  ? [
+                      styles.clinicTypeCardSelected,
+                      {
+                        backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(255,255,255,0.88)',
+                        borderColor: 'rgba(61,158,255,0.85)',
+                        borderWidth: 2.5,
+                      },
+                    ]
+                  : [
+                      styles.clinicTypeCardUnselected,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.5)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        borderWidth: 1,
+                      },
+                    ],
               ]}
               onPress={() => setClinicType('dental')}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
               disabled={loading}
             >
               <View style={[
                 styles.clinicTypeIconContainer,
-                { backgroundColor: isDark ? 'rgba(173,216,230,0.2)' : 'rgba(173,216,230,0.5)' }
+                clinicType === 'dental'
+                  ? { backgroundColor: isDark ? 'rgba(61,158,255,0.2)' : 'rgba(61,158,255,0.12)' }
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' },
               ]}>
                 <Text style={styles.clinicTypeEmoji}>🦷</Text>
               </View>
-              <Text style={[styles.clinicTypeLabel, { color: colors.textPrimary }]}>
-                {t('clinic.dentalClinic', 'عيادة أسنان')}
+              <Text style={[
+                styles.clinicTypeLabel,
+                { color: clinicType === 'dental' ? (isDark ? '#fff' : colors.textPrimary) : colors.textSecondary },
+              ]}>
+                {t('clinic.dentalClinic', 'Dental Clinic')}
               </Text>
               {clinicType === 'dental' && (
                 <View style={styles.clinicTypeCheckmark}>
-                  <Ionicons name="checkmark-circle" size={24} color="#3b82f6" />
+                  <View style={styles.clinicTypeCheckmarkBg}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                  </View>
                 </View>
               )}
             </TouchableOpacity>
@@ -810,29 +787,47 @@ export default function ClinicSignup() {
             <TouchableOpacity
               style={[
                 styles.clinicTypeCard,
-                { 
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,182,193,0.3)',
-                  borderColor: clinicType === 'beauty' ? '#ec4899' : 'transparent',
-                  borderWidth: clinicType === 'beauty' ? 3 : 0,
-                },
-                clinicType === 'beauty' && styles.clinicTypeCardSelected,
+                clinicType === 'beauty'
+                  ? [
+                      styles.clinicTypeCardSelected,
+                      {
+                        backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(255,255,255,0.88)',
+                        borderColor: 'rgba(61,158,255,0.85)',
+                        borderWidth: 2.5,
+                      },
+                    ]
+                  : [
+                      styles.clinicTypeCardUnselected,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.5)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        borderWidth: 1,
+                      },
+                    ],
               ]}
               onPress={() => setClinicType('beauty')}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
               disabled={loading}
             >
               <View style={[
                 styles.clinicTypeIconContainer,
-                { backgroundColor: isDark ? 'rgba(255,182,193,0.2)' : 'rgba(255,182,193,0.5)' }
+                clinicType === 'beauty'
+                  ? { backgroundColor: isDark ? 'rgba(61,158,255,0.2)' : 'rgba(61,158,255,0.12)' }
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' },
               ]}>
                 <Text style={styles.clinicTypeEmoji}>💄</Text>
               </View>
-              <Text style={[styles.clinicTypeLabel, { color: colors.textPrimary }]}>
-                {t('clinic.beautyClinic', 'عيادة تجميل')}
+              <Text style={[
+                styles.clinicTypeLabel,
+                { color: clinicType === 'beauty' ? (isDark ? '#fff' : colors.textPrimary) : colors.textSecondary },
+              ]}>
+                {t('clinic.beautyClinic', 'Beauty Clinic')}
               </Text>
               {clinicType === 'beauty' && (
                 <View style={styles.clinicTypeCheckmark}>
-                  <Ionicons name="checkmark-circle" size={24} color="#ec4899" />
+                  <View style={styles.clinicTypeCheckmarkBg}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                  </View>
                 </View>
               )}
             </TouchableOpacity>
@@ -841,76 +836,100 @@ export default function ClinicSignup() {
             <TouchableOpacity
               style={[
                 styles.clinicTypeCard,
-                { 
-                  backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(175,238,238,0.3)',
-                  borderColor: clinicType === 'laser' ? '#06b6d4' : 'transparent',
-                  borderWidth: clinicType === 'laser' ? 3 : 0,
-                },
-                clinicType === 'laser' && styles.clinicTypeCardSelected,
+                clinicType === 'laser'
+                  ? [
+                      styles.clinicTypeCardSelected,
+                      {
+                        backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(255,255,255,0.88)',
+                        borderColor: 'rgba(61,158,255,0.85)',
+                        borderWidth: 2.5,
+                      },
+                    ]
+                  : [
+                      styles.clinicTypeCardUnselected,
+                      {
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.5)',
+                        borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                        borderWidth: 1,
+                      },
+                    ],
               ]}
               onPress={() => setClinicType('laser')}
-              activeOpacity={0.7}
+              activeOpacity={0.85}
               disabled={loading}
             >
               <View style={[
                 styles.clinicTypeIconContainer,
-                { backgroundColor: isDark ? 'rgba(175,238,238,0.2)' : 'rgba(175,238,238,0.5)' }
+                clinicType === 'laser'
+                  ? { backgroundColor: isDark ? 'rgba(61,158,255,0.2)' : 'rgba(61,158,255,0.12)' }
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)' },
               ]}>
                 <Text style={styles.clinicTypeEmoji}>✨</Text>
               </View>
-              <Text style={[styles.clinicTypeLabel, { color: colors.textPrimary }]}>
-                {t('clinic.laserClinic', 'عيادة ليزر')}
+              <Text style={[
+                styles.clinicTypeLabel,
+                { color: clinicType === 'laser' ? (isDark ? '#fff' : colors.textPrimary) : colors.textSecondary },
+              ]}>
+                {t('clinic.laserClinic', 'Laser Clinic')}
               </Text>
               {clinicType === 'laser' && (
                 <View style={styles.clinicTypeCheckmark}>
-                  <Ionicons name="checkmark-circle" size={24} color="#06b6d4" />
+                  <View style={styles.clinicTypeCheckmarkBg}>
+                    <Ionicons name="checkmark" size={13} color="#fff" />
+                  </View>
                 </View>
               )}
             </TouchableOpacity>
           </View>
         </View>
 
-        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)' }]}>
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.50)' }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            {t('auth.personalInfo', 'املأ بيانات الاشتراك بدقة')}
+            {t('auth.personalInfo', 'Personal Information')}
           </Text>
           <TextInput 
-            style={[styles.input, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+            style={[styles.input, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('firstName')]} 
             placeholder={t('auth.firstName')} 
             placeholderTextColor={colors.inputPlaceholder} 
             value={firstName} 
             onChangeText={setFirstName} 
+            onFocus={() => setFocusedField('firstName')}
+            onBlur={() => setFocusedField(null)}
             editable={!loading} 
           />
           <TextInput 
-            style={[styles.input, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+            style={[styles.input, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('lastName')]} 
             placeholder={t('auth.lastName')} 
             placeholderTextColor={colors.inputPlaceholder} 
             value={lastName} 
             onChangeText={setLastName} 
+            onFocus={() => setFocusedField('lastName')}
+            onBlur={() => setFocusedField(null)}
             editable={!loading} 
           />
         </View>
 
-        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)' }]}>
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.048)' : 'rgba(255,255,255,0.48)' }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('auth.accountDetails')}</Text>
           <View style={styles.inputWithIcon}>
             <Ionicons name="mail-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput 
-              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('email')]} 
               placeholder={t('auth.email')} 
               placeholderTextColor={colors.inputPlaceholder} 
               keyboardType="email-address" 
               value={email} 
               onChangeText={setEmail} 
+              onFocus={() => setFocusedField('email')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
               autoCapitalize="none" 
             />
           </View>
           
           {/* Password Field with Show/Hide Toggle */}
-          <View style={[styles.passwordContainer, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-            <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} style={{ marginLeft: 12 }} />
+          <View style={[styles.passwordContainer, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: focusedField === 'password' ? ACCENT : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }, focusedField === 'password' && { borderWidth: 2 }]}>
+            <Ionicons name="lock-closed-outline" size={20} color={focusedField === 'password' ? ACCENT : colors.textSecondary} style={{ marginLeft: 12 }} />
             <TextInput 
               style={[styles.passwordInput, { color: colors.textPrimary }]} 
               placeholder={t('auth.password')} 
@@ -918,6 +937,8 @@ export default function ClinicSignup() {
               secureTextEntry={!showPassword}
               value={password} 
               onChangeText={setPassword} 
+              onFocus={() => setFocusedField('password')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
             />
             <TouchableOpacity 
@@ -940,12 +961,14 @@ export default function ClinicSignup() {
           <View style={styles.inputWithIcon}>
             <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput 
-              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('phone')]} 
               placeholder={t('auth.phone')} 
               placeholderTextColor={colors.inputPlaceholder} 
               keyboardType="phone-pad" 
               value={phone} 
               onChangeText={setPhone} 
+              onFocus={() => setFocusedField('phone')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
             />
           </View>
@@ -953,11 +976,13 @@ export default function ClinicSignup() {
           <View style={styles.inputWithIcon}>
             <Ionicons name="business-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput 
-              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('clinicName')]} 
               placeholder={t('auth.clinicName')} 
               placeholderTextColor={colors.inputPlaceholder} 
               value={clinicName} 
               onChangeText={setClinicName} 
+              onFocus={() => setFocusedField('clinicName')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
             />
           </View>
@@ -965,61 +990,16 @@ export default function ClinicSignup() {
           <View style={styles.inputWithIcon}>
             <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput 
-              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('clinicPhone')]} 
               placeholder={t('auth.clinicPhone')} 
               placeholderTextColor={colors.inputPlaceholder} 
               keyboardType="phone-pad" 
               value={clinicPhone} 
               onChangeText={setClinicPhone} 
+              onFocus={() => setFocusedField('clinicPhone')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
             />
-          </View>
-          
-          {/* Clinic Image Upload */}
-          <View style={styles.imageUploadSection}>
-            <View style={styles.imageUploadHeader}>
-              <Ionicons name="image-outline" size={20} color={colors.textSecondary} />
-              <Text style={[styles.imageLabel, { color: colors.textSecondary }]}>
-                {t('clinic.uploadImage', 'تحضير الصور')}
-              </Text>
-            </View>
-            <View style={styles.imageUploadContent}>
-              <TouchableOpacity
-                style={[styles.uploadButton, { 
-                  backgroundColor: isDark ? 'rgba(59,130,246,0.2)' : 'rgba(59,130,246,0.1)', 
-                  borderColor: '#3b82f6',
-                }]}
-                onPress={pickClinicImage}
-                disabled={loading}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="cloud-upload-outline" size={24} color="#3b82f6" />
-                <Text style={{ color: '#3b82f6', fontWeight: '600', fontSize: 14, marginTop: 4 }}>
-                  {clinicImage ? t('clinic.changeImage', 'Change') : t('clinic.uploadImage', 'تحضير الصور')}
-                </Text>
-              </TouchableOpacity>
-              
-              {clinicImage && (
-                <View style={styles.thumbnailContainer}>
-                  <TouchableOpacity onPress={() => setShowImageModal(true)} activeOpacity={0.8}>
-                    <Image 
-                      source={{ uri: clinicImage }} 
-                      style={styles.thumbnailImage}
-                    />
-                    <View style={styles.thumbnailOverlay}>
-                      <Text style={styles.thumbnailLabel}>BS</Text>
-                    </View>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.removeImageButton}
-                    onPress={() => setClinicImage(null)}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="close" size={12} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              )}
-            </View>
           </View>
           
           {/* Country Selector - Using CountrySelect Component */}
@@ -1037,18 +1017,20 @@ export default function ClinicSignup() {
           <View style={styles.inputWithIcon}>
             <Ionicons name="location-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
             <TextInput 
-              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]} 
+              style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, getInputFocusStyle('city')]} 
               placeholder={t('auth.city')} 
               placeholderTextColor={colors.inputPlaceholder} 
               value={city} 
               onChangeText={setCity} 
+              onFocus={() => setFocusedField('city')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading} 
             />
           </View>
         </View>
 
         {/* Payment Method Selection */}
-        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)' }]}>
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.055)' : 'rgba(255,255,255,0.55)' }]}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('payment.chooseMethod', 'Payment Method')}</Text>
           
           {/* Show message if subscription is free */}
@@ -1066,8 +1048,9 @@ export default function ClinicSignup() {
             <TouchableOpacity 
               style={[
                 styles.paymentMethodTile,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.95)' },
-                selectedPaymentMethod === 'card' && styles.paymentMethodSelected
+                selectedPaymentMethod === 'card'
+                  ? [styles.paymentMethodSelected, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.06)' }]
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.75)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
               ]}
               onPress={() => {
                 setSelectedPaymentMethod('card');
@@ -1080,7 +1063,7 @@ export default function ClinicSignup() {
               activeOpacity={0.7}
             >
               <View style={[styles.paymentMethodIcon, selectedPaymentMethod === 'card' && styles.paymentMethodIconSelected]}>
-                <MaterialCommunityIcons name="credit-card" size={26} color={selectedPaymentMethod === 'card' ? '#fff' : '#3b82f6'} />
+                <MaterialCommunityIcons name="credit-card" size={26} color={selectedPaymentMethod === 'card' ? '#fff' : ACCENT} />
               </View>
               <Text style={[styles.paymentMethodLabel, { color: colors.textPrimary }]}>{t('payment.card', 'Card')}</Text>
               {selectedPaymentMethod === 'card' && (
@@ -1094,8 +1077,9 @@ export default function ClinicSignup() {
             <TouchableOpacity 
               style={[
                 styles.paymentMethodTile,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.95)' },
-                selectedPaymentMethod === 'apple-pay' && styles.paymentMethodSelected
+                selectedPaymentMethod === 'apple-pay'
+                  ? [styles.paymentMethodSelected, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.06)' }]
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.75)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
               ]}
               onPress={() => {
                 setSelectedPaymentMethod('apple-pay');
@@ -1122,8 +1106,9 @@ export default function ClinicSignup() {
             <TouchableOpacity 
               style={[
                 styles.paymentMethodTile,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.95)' },
-                selectedPaymentMethod === 'paypal' && styles.paymentMethodSelected
+                selectedPaymentMethod === 'paypal'
+                  ? [styles.paymentMethodSelected, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.06)' }]
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.75)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
               ]}
               onPress={() => {
                 setSelectedPaymentMethod('paypal');
@@ -1150,8 +1135,9 @@ export default function ClinicSignup() {
             <TouchableOpacity 
               style={[
                 styles.paymentMethodTile,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.95)' },
-                selectedPaymentMethod === 'google-pay' && styles.paymentMethodSelected
+                selectedPaymentMethod === 'google-pay'
+                  ? [styles.paymentMethodSelected, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.06)' }]
+                  : { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.75)', borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)' },
               ]}
               onPress={() => {
                 setSelectedPaymentMethod('google-pay');
@@ -1182,18 +1168,20 @@ export default function ClinicSignup() {
         </View>
         {/* Card Entry Section (only shown when Card is selected) */}
         {selectedPaymentMethod === 'card' && (
-          <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)' }]}>
+          <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.50)' }]}>
             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{t('payment.cardDetails', 'Card Details')}</Text>
             
             {/* Card Name */}
             <View style={styles.inputWithIcon}>
               <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
               <TextInput
-                style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardNameError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]}
+                style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardNameError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, !cardNameError && getInputFocusStyle('cardName')]}
                 placeholder={t('payment.nameOnCard', 'Name on card')}
                 placeholderTextColor={colors.inputPlaceholder}
                 value={cardName}
                 onChangeText={validateCardName}
+                onFocus={() => setFocusedField('cardName')}
+                onBlur={() => setFocusedField(null)}
                 editable={!loading}
                 autoCapitalize="words"
               />
@@ -1208,12 +1196,14 @@ export default function ClinicSignup() {
             <View style={styles.inputWithIcon}>
               <Ionicons name="card-outline" size={20} color={colors.textSecondary} style={styles.inputIcon} />
               <TextInput
-                style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardNumberError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]}
+                style={[styles.inputIconField, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardNumberError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, !cardNumberError && getInputFocusStyle('cardNumber')]}
                 placeholder={t('payment.cardNumber', 'Card number')}
                 placeholderTextColor={colors.inputPlaceholder}
                 keyboardType="number-pad"
                 value={cardNumber}
                 onChangeText={validateCardNumber}
+                onFocus={() => setFocusedField('cardNumber')}
+                onBlur={() => setFocusedField(null)}
                 editable={!loading}
                 maxLength={19}
               />
@@ -1228,12 +1218,14 @@ export default function ClinicSignup() {
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <View style={{ flex: 1 }}>
                 <TextInput
-                  style={[styles.inputHalf, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardExpiryError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]}
+                  style={[styles.inputHalf, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardExpiryError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, !cardExpiryError && getInputFocusStyle('cardExpiry')]}
                   placeholder={t('payment.expiry', 'MM/YY')}
                   placeholderTextColor={colors.inputPlaceholder}
                   keyboardType="number-pad"
                   value={cardExpiry}
                   onChangeText={validateCardExpiry}
+                  onFocus={() => setFocusedField('cardExpiry')}
+                  onBlur={() => setFocusedField(null)}
                   editable={!loading}
                   maxLength={7}
                 />
@@ -1245,12 +1237,14 @@ export default function ClinicSignup() {
               </View>
               <View style={{ flex: 1 }}>
                 <TextInput
-                  style={[styles.inputHalf, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardCvcError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }]}
+                  style={[styles.inputHalf, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: cardCvcError ? '#ef4444' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary }, !cardCvcError && getInputFocusStyle('cardCvc')]}
                   placeholder={t('payment.cvc', 'CVC')}
                   placeholderTextColor={colors.inputPlaceholder}
                   keyboardType="number-pad"
                   value={cardCvc}
                   onChangeText={validateCardCvc}
+                  onFocus={() => setFocusedField('cardCvc')}
+                  onBlur={() => setFocusedField(null)}
                   editable={!loading}
                   maxLength={4}
                 />
@@ -1265,32 +1259,34 @@ export default function ClinicSignup() {
         )}
 
         {/* Coupon Code Section */}
-        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.7)' }]}>
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.042)' : 'rgba(255,255,255,0.42)' }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <Ionicons name="pricetag-outline" size={20} color={colors.textSecondary} style={{ marginRight: 8 }} />
             <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0 }]}>
-              {t('payment.couponCode', 'كود الخصم')}
+              {t('payment.couponCode', 'Coupon Code')}
             </Text>
           </View>
           
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 8 }}>
             <TextInput
-              style={[styles.inputCoupon, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: appliedCoupon ? '#10b981' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary, flex: 1, borderWidth: appliedCoupon ? 2 : 1 }]}
-              placeholder={t('payment.enterCoupon', 'أدخل كود الخصم...')}
+              style={[styles.inputCoupon, styles.glassInput, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.9)', borderColor: appliedCoupon ? '#10b981' : isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)', color: colors.textPrimary, flex: 1, borderWidth: appliedCoupon ? 2 : 1 }, !appliedCoupon && getInputFocusStyle('coupon')]}
+              placeholder={t('payment.enterCoupon', 'Enter coupon code...')}
               placeholderTextColor={colors.inputPlaceholder}
               value={couponCode}
               onChangeText={setCouponCode}
+              onFocus={() => setFocusedField('coupon')}
+              onBlur={() => setFocusedField(null)}
               editable={!loading && !appliedCoupon}
               maxLength={20}
             />
             {!appliedCoupon ? (
               <TouchableOpacity 
-                style={[styles.couponApplyBtn, { backgroundColor: '#3b82f6' }]}
+                style={[styles.couponApplyBtn, { backgroundColor: ACCENT }]}
                 onPress={applyCoupon}
                 disabled={loading || !couponCode.trim()}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.couponBtnText, { color: '#fff' }]}>{t('payment.apply', 'تطبيق')}</Text>
+                <Text style={[styles.couponBtnText, { color: '#fff' }]}>{t('payment.apply', 'Apply')}</Text>
               </TouchableOpacity>
             ) : (
               <TouchableOpacity 
@@ -1299,125 +1295,132 @@ export default function ClinicSignup() {
                 disabled={loading}
                 activeOpacity={0.7}
               >
-                <Text style={[styles.couponBtnText, { color: '#fff' }]}>{t('payment.remove', 'إزالة')}</Text>
+                <Text style={[styles.couponBtnText, { color: '#fff' }]}>{t('payment.remove', 'Remove')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {couponMessage && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, padding: 10, backgroundColor: 'rgba(16,185,129,0.1)', borderRadius: 10 }}>
-              <Ionicons name="checkmark-circle" size={18} color="#10b981" style={{ marginRight: 8 }} />
-              <Text style={[styles.validationHint, { color: '#10b981', marginBottom: 0, marginHorizontal: 0 }]}>
+            <View style={styles.couponSuccessBadge}>
+              <View style={styles.couponBadgeIconCircle}>
+                <Ionicons name="checkmark" size={12} color="#10b981" />
+              </View>
+              <Text style={styles.couponSuccessText}>
                 {couponMessage}
               </Text>
             </View>
           )}
 
           {couponError && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, padding: 10, backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 10 }}>
-              <Ionicons name="alert-circle" size={18} color="#ef4444" style={{ marginRight: 8 }} />
-              <Text style={[styles.validationHint, { color: '#ef4444', marginBottom: 0, marginHorizontal: 0 }]}>
+            <View style={styles.couponErrorBadge}>
+              <View style={[styles.couponBadgeIconCircle, { backgroundColor: 'rgba(239,68,68,0.1)' }]}>
+                <Ionicons name="close" size={12} color="#ef4444" />
+              </View>
+              <Text style={styles.couponErrorText}>
                 {couponError}
               </Text>
             </View>
           )}
         </View>
 
-        {/* Modern Gradient Subscription Button */}
+        {/* Validation Hint Glass Card */}
+        {(!firstName || !lastName || !email || !email.includes('@') || !password || password.length < 6) && (
+          <View style={[styles.validationGlassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.45)' }]}>
+            <Ionicons name="information-circle-outline" size={16} color={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.35)'} style={{ marginRight: 8, marginTop: 1 }} />
+            <Text style={[styles.validationGlassText, { color: isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.4)' }]}>
+              {!firstName || !lastName ? 'Please enter your first and last name' : ''}
+              {firstName && lastName && (!email || !email.includes('@')) ? 'Please enter a valid email address' : ''}
+              {email && email.includes('@') && (!password || password.length < 6) ? 'Password must be at least 6 characters' : ''}
+            </Text>
+          </View>
+        )}
+        </Animated.View>
+      </ScrollView>
+
+      {/* ===== Sticky CTA Dock ===== */}
+      <View style={[
+        styles.stickyCtaDock,
+        { backgroundColor: isDark ? 'rgba(20,20,30,0.85)' : 'rgba(255,255,255,0.78)' },
+      ]}>
         <TouchableOpacity 
           style={[
-            styles.modernSubscribeButton,
-            (!isFormValid() || loading) && styles.modernSubscribeButtonDisabled
+            styles.stickyCtaButton,
+            (!isFormValid() || loading) && styles.stickyCtaButtonDisabled,
           ]} 
           onPress={onSignup} 
           disabled={!isFormValid() || loading}
           activeOpacity={0.85}
         >
           <LinearGradient
-            colors={isFormValid() ? ['#06b6d4', '#8b5cf6'] : ['#9ca3af', '#6b7280']}
+            colors={isFormValid() ? [ACCENT, '#6366f1'] : [isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)', isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.03)']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.subscribeGradient}
+            style={styles.stickyCtaGradient}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" size="small" />
+              <ActivityIndicator color={isFormValid() ? '#fff' : colors.textSecondary} size="small" />
             ) : (
               <View style={styles.subscribeButtonContent}>
                 <View style={styles.subscribeTextContainer}>
-                  <Text style={styles.subscribePrimaryText}>
-                    {t('auth.startSubscription', 'اشترك الآن')}
+                  <Text style={[
+                    styles.subscribePrimaryText,
+                    !isFormValid() && { color: isDark ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.3)' },
+                  ]}>
+                    {t('auth.startSubscription', 'Subscribe Now')}
                   </Text>
-                  <Text style={styles.subscribeSecondaryText}>
+                  <Text style={[
+                    styles.subscribeSecondaryText,
+                    !isFormValid() && { color: isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' },
+                  ]}>
                     {parseFloat(planPrice) === 0 
-                      ? 'مجاناً • للأبد' 
-                      : `$${planPrice}/${(planLabel || 'Monthly').toLowerCase().includes('year') ? 'سنة' : 'شهر'}`
+                      ? 'Free • Forever' 
+                      : `$${planPrice}/${(planLabel || 'Monthly').toLowerCase().includes('year') ? 'yr' : 'mo'}`
                     }
                   </Text>
                 </View>
-                <View style={styles.subscribeArrowCircle}>
-                  <Ionicons name="arrow-forward" size={20} color="#fff" />
+                <View style={[
+                  styles.subscribeArrowCircle,
+                  !isFormValid() && { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)' },
+                ]}>
+                  <Ionicons name="arrow-forward" size={20} color={isFormValid() ? '#fff' : isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)'} />
                 </View>
               </View>
             )}
           </LinearGradient>
         </TouchableOpacity>
+      </View>
 
-        <Text style={[styles.validationHint, { color: colors.textSecondary, textAlign: 'center', marginTop: 12 }]}>
-          {!firstName || !lastName ? '⚠️ يرجى إدخال الاسم الأول والأخير' : ''}
-          {firstName && lastName && (!email || !email.includes('@')) ? '⚠️ يرجى إدخال بريد إلكتروني صحيح' : ''}
-          {email && email.includes('@') && (!password || password.length < 6) ? '⚠️ كلمة المرور يجب أن تكون 6 أحرف على الأقل' : ''}
-        </Text>
-      </ScrollView>
-
-      {/* Image Preview Modal */}
-      <Modal
-        visible={showImageModal}
-        transparent={true}
-        animationType="fade"
-        onRequestClose={() => setShowImageModal(false)}
-      >
-        <TouchableOpacity 
-          style={styles.modalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowImageModal(false)}
-        >
-          <View style={styles.modalContent}>
-            <TouchableOpacity
-              style={[styles.modalCloseButton, { backgroundColor: colors.card }]}
-              onPress={() => setShowImageModal(false)}
-            >
-              <Ionicons name="close" size={28} color={colors.textPrimary} />
-            </TouchableOpacity>
-            
-            {clinicImage && (
-              <Image 
-                source={{ uri: clinicImage }} 
-                style={styles.fullImage}
-                resizeMode="contain"
-              />
-            )}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 0, paddingVertical: 20, flexGrow: 1 },
+  container: { padding: 0, paddingTop: 0, paddingBottom: 110, flexGrow: 1 },
+  // ===== Header Container =====
+  headerContainer: {
+    minHeight: 175,
+    paddingTop: 68,
+    paddingBottom: 28,
+    paddingHorizontal: 16,
+    marginBottom: 0,
+    borderWidth: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
   backButton: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    paddingHorizontal: 16, 
-    paddingTop: 12, 
-    paddingBottom: 8 
+    position: 'absolute',
+    top: 60,
+    left: 20,
+    zIndex: 10,
   },
   backButtonText: { 
     marginLeft: 8, 
     fontWeight: '600' 
   },
-  header: { marginBottom: 28, paddingBottom: 16, borderBottomWidth: 0, paddingHorizontal: 16, marginTop: 8, alignItems: 'center', justifyContent: 'center' },
-  title: { fontSize: 32, fontWeight: '800', marginBottom: 6, textAlign: 'center', letterSpacing: -0.5 },
+  title: { fontSize: 28, fontWeight: '800', marginBottom: 4, textAlign: 'center', letterSpacing: -0.5 },
+  headerSubtitle: { fontSize: 13, fontWeight: '500', textAlign: 'center', opacity: 0.65, marginBottom: 12 },
   subtitle: { fontSize: 16, marginBottom: 4 },
   section: { marginBottom: 16, paddingHorizontal: 16 },
   sectionTitle: { fontSize: 17, fontWeight: '700', marginBottom: 14, color: '#1f2937' },
@@ -1490,7 +1493,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     minWidth: 90,
-    shadowColor: '#3b82f6',
+    shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 4,
@@ -1541,81 +1544,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  uploadButton: {
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    minWidth: 100,
-    minHeight: 80,
-  },
-  thumbnailImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#3b82f6',
-  },
-  removeImageButton: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  imageLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '85%',
-    height: '80%',
-    position: 'relative',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  fullImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 12,
-  },
   validationHint: { fontSize: 12, fontWeight: '500', marginHorizontal: 16, marginBottom: 12, minHeight: 16, textAlign: 'center' },
   btnDisabled: { opacity: 0.7 },
   btnText: { fontWeight: '700', fontSize: 16 },
@@ -1624,15 +1552,20 @@ const styles = StyleSheet.create({
   // ===== Clinic Type Selection Styles =====
   clinicTypeSection: {
     paddingHorizontal: 16,
-    paddingTop: 20,
-    paddingBottom: 10,
-    marginBottom: 8,
+    paddingTop: 12,
+    paddingBottom: 8,
+    marginTop: 0,
+    marginBottom: 16,
+    backgroundColor: 'transparent',
+    borderRadius: 0,
+    borderWidth: 0,
   },
   clinicTypeTitle: {
-    fontSize: 22,
-    fontWeight: '800',
+    fontSize: 18,
+    fontWeight: '700',
     textAlign: 'center',
-    marginBottom: 6,
+    marginBottom: 16,
+    letterSpacing: -0.2,
   },
   clinicTypeSubtitle: {
     fontSize: 14,
@@ -1650,49 +1583,67 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 18,
     paddingHorizontal: 8,
-    borderRadius: 16,
-    minHeight: 110,
+    borderRadius: 18,
+    minHeight: 116,
     position: 'relative',
-    // Glassmorphism effect
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 3,
   },
   clinicTypeCardSelected: {
-    shadowOpacity: 0.2,
+    shadowColor: ACCENT,
+    shadowOpacity: 0.18,
     shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
     elevation: 8,
-    transform: [{ scale: 1.02 }],
+    transform: [{ scale: 1.01 }],
+  },
+  clinicTypeCardUnselected: {
+    transform: [{ scale: 1 }],
   },
   clinicTypeIconContainer: {
-    width: 56,
-    height: 56,
+    width: 52,
+    height: 52,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   clinicTypeEmoji: {
-    fontSize: 28,
+    fontSize: 26,
   },
   clinicTypeLabel: {
     fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.1,
   },
   clinicTypeCheckmark: {
     position: 'absolute',
-    top: 6,
-    right: 6,
+    top: 7,
+    right: 7,
+  },
+  clinicTypeCheckmarkBg: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: ACCENT,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
   },
   
   // ===== Glassmorphism & Modern UI Styles =====
   glassCard: {
-    borderRadius: 20,
+    borderRadius: 22,
     padding: 20,
     marginBottom: 16,
     shadowColor: '#000',
@@ -1738,47 +1689,11 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   
-  // ===== Image Upload Modern Styles =====
-  imageUploadSection: {
-    marginTop: 12,
-    marginBottom: 12,
-  },
-  imageUploadHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 12,
-  },
-  imageUploadContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  thumbnailContainer: {
-    position: 'relative',
-  },
-  thumbnailOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(59,130,246,0.9)',
-    paddingVertical: 4,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
-    alignItems: 'center',
-  },
-  thumbnailLabel: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  
   // ===== Payment Method Modern Styles =====
   paymentMethodSelected: {
     borderWidth: 2,
-    borderColor: '#3b82f6',
-    shadowColor: '#3b82f6',
+    borderColor: ACCENT,
+    shadowColor: ACCENT,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -1788,13 +1703,13 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 14,
-    backgroundColor: 'rgba(59,130,246,0.1)',
+    backgroundColor: `rgba(61,158,255,0.1)`,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 8,
   },
   paymentMethodIconSelected: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: ACCENT,
   },
   paymentCheckmark: {
     position: 'absolute',
@@ -1803,7 +1718,7 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#3b82f6',
+    backgroundColor: ACCENT,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1825,26 +1740,110 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   
-  // ===== Modern Subscribe Button =====
-  modernSubscribeButton: {
-    marginHorizontal: 16,
-    marginTop: 20,
+  // ===== Coupon Badge Styles =====
+  couponSuccessBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
-    borderRadius: 20,
-    overflow: 'hidden',
-    shadowColor: '#8b5cf6',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(16,185,129,0.06)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(16,185,129,0.15)',
   },
-  modernSubscribeButtonDisabled: {
-    shadowOpacity: 0.1,
+  couponErrorBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: 'rgba(239,68,68,0.04)',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(239,68,68,0.12)',
+  },
+  couponBadgeIconCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(16,185,129,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  couponSuccessText: {
+    color: '#059669',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    opacity: 0.85,
+  },
+  couponErrorText: {
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+    opacity: 0.75,
+  },
+  
+  // ===== Validation Glass Card =====
+  validationGlassCard: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
     shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
+    elevation: 2,
   },
-  subscribeGradient: {
-    paddingVertical: 18,
-    paddingHorizontal: 24,
+  validationGlassText: {
+    fontSize: 13,
+    fontWeight: '500',
+    flex: 1,
+    lineHeight: 18,
+  },
+  
+  // ===== Sticky CTA Dock =====
+  stickyCtaDock: {
+    position: 'absolute',
+    bottom: 12,
+    left: 16,
+    right: 16,
+    borderRadius: 28,
+    padding: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  stickyCtaButton: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    shadowColor: ACCENT,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    elevation: 6,
+  },
+  stickyCtaButtonDisabled: {
+    shadowOpacity: 0,
+    shadowColor: 'transparent',
+  },
+  stickyCtaGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 22,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1859,19 +1858,19 @@ const styles = StyleSheet.create({
   },
   subscribePrimaryText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '800',
     marginBottom: 2,
   },
   subscribeSecondaryText: {
     color: 'rgba(255,255,255,0.85)',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
   },
   subscribeArrowCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',

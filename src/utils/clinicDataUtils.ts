@@ -2,7 +2,7 @@ import { db } from '@/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
 
 /**
- * Clinic data type with image URL
+ * Clinic data type
  */
 export type ClinicData = {
   id: string;
@@ -71,15 +71,4 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
   }
 };
 
-/**
- * Get clinic image URL only
- */
-export const getClinicImageUrl = async (clinicId: string): Promise<string | null> => {
-  try {
-    const clinicData = await fetchClinicData(clinicId);
-    return clinicData?.imageUrl || null;
-  } catch (error) {
-    console.error('[CLINIC_IMAGE] Error fetching image URL:', error);
-    return null;
-  }
-};
+

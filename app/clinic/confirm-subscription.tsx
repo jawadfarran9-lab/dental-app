@@ -8,7 +8,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, BackHandler, Image, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /**
  * SUBSCRIPTION CONFIRMATION PAGE
@@ -33,7 +33,6 @@ export default function ConfirmSubscription() {
   const [clinicId, setClinicId] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [includeAIPro, setIncludeAIPro] = useState(false);
-  const [clinicImageUrl, setClinicImageUrl] = useState<string | null>(null);
 
   // ✅ NEW: Additional fields for detailed confirmation
   const [clinicName, setClinicName] = useState('');
@@ -79,7 +78,6 @@ export default function ConfirmSubscription() {
           const userEmail = results[5]?.[1] || '';
           const cId = results[6]?.[1] || '';
           const aiProStr = results[7]?.[1] || 'false';
-          const imageUrl = results[8]?.[1] || null;
           const actualFinalPriceStr = results[9]?.[1] || null;
           const cName = results[10]?.[1] || '';
           const cPhone = results[11]?.[1] || '';
@@ -142,7 +140,6 @@ export default function ConfirmSubscription() {
           setEmail(userEmail);
           setClinicId(cId);
           setIncludeAIPro(hasAIPro);
-          setClinicImageUrl(imageUrl);
           
           // ✅ Set additional fields
           setClinicName(cName);
@@ -171,7 +168,6 @@ export default function ConfirmSubscription() {
             coupon,
             email: userEmail,
             includeAIPro: hasAIPro,
-            clinicImageUrl: imageUrl ? 'present' : 'none',
             isFreeSubscription: finalNum === 0,
             clinicName: cName,
             clinicPhone: cPhone,
@@ -432,17 +428,6 @@ BeSmile AI Team
                   {isRTL ? 'معلومات العيادة' : 'Clinic Info'}
                 </Text>
               </View>
-
-              {/* Clinic Image */}
-              {clinicImageUrl && (
-                <View style={styles.clinicImageWrapper}>
-                  <Image
-                    source={{ uri: clinicImageUrl }}
-                    style={styles.clinicImageSmall}
-                    resizeMode="cover"
-                  />
-                </View>
-              )}
 
               {/* Clinic Name */}
               <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
@@ -730,23 +715,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 24,
   },
-  clinicImageContainer: {
-    width: '100%',
-    height: 200,
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 20,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
-  },
-  clinicImage: {
-    width: '100%',
-    height: '100%',
-  },
+
   detailsCard: {
     borderWidth: 1,
     borderRadius: 14,
@@ -875,17 +844,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     maxWidth: '60%',
   },
-  clinicImageWrapper: {
-    width: '100%',
-    height: 140,
-    borderRadius: 10,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  clinicImageSmall: {
-    width: '100%',
-    height: '100%',
-  },
+
   planBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
