@@ -13,20 +13,20 @@ import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    FlatList,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  FlatList,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -277,6 +277,18 @@ export default function ClinicProfileScreen() {
     if (phone) Linking.openURL(`tel:${phone}`);
   }, [phone]);
 
+  const handleGetDirections = useCallback(() => {
+    if (!clinic?.location?.lat || !clinic?.location?.lng) return;
+    const { lat, lng } = clinic.location;
+    const encodedLabel = encodeURIComponent(displayName);
+    const appleUrl = `http://maps.apple.com/?daddr=${lat},${lng}&q=${encodedLabel}`;
+    const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    const url = Platform.OS === 'ios' ? appleUrl : googleUrl;
+    Linking.openURL(url).catch(() => {
+      Linking.openURL(googleUrl).catch(() => {});
+    });
+  }, [clinic?.location, displayName]);
+
   const handleMediaPress = useCallback(
     (mediaId: string) => {
       router.push(`/clinic/${clinicId}/media/${mediaId}` as any);
@@ -398,12 +410,14 @@ export default function ClinicProfileScreen() {
           </TouchableOpacity>
         )}
 
-        <View style={styles.infoRow}>
-          <Ionicons name="map-outline" size={16} color={isDark ? '#5A6A80' : '#B0BEC5'} />
-          <Text style={[styles.infoText, { color: isDark ? '#5A6A80' : '#B0BEC5' }]}>
-            View on Map
-          </Text>
-        </View>
+        {!!(clinic?.location?.lat && clinic?.location?.lng) && (
+          <TouchableOpacity style={styles.infoRow} onPress={handleGetDirections} activeOpacity={0.6}>
+            <Ionicons name="navigate-outline" size={16} color="#4A90D9" />
+            <Text style={[styles.infoText, { color: '#4A90D9' }]}>
+              Get Directions
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* ══════ Posts / Reels Tabs ══════ */}
