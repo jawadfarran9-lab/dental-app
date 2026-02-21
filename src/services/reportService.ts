@@ -655,21 +655,13 @@ export async function printHTMLReport(
   html: string,
   filename: string,
   shouldShare: boolean = false
-): Promise<string | void> {
+): Promise<void> {
   try {
     // Use expo-print to handle PDF conversion and printing
-    const result = await Print.printAsync({
+    await Print.printAsync({
       html,
       printerUrl: undefined, // Uses default printer/print dialog
     });
-
-    if (shouldShare && result) {
-      // If print was successful and sharing is requested,
-      // navigate to share sheet (handled by native print dialog)
-      return result;
-    }
-
-    return result;
   } catch (error) {
     console.error('Error printing report:', error);
     throw error;

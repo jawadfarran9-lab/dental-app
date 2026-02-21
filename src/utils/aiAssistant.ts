@@ -265,7 +265,7 @@ export async function sendMessageToAIStream(
   if (!response.body) {
     const data = await response.json().catch(() => null);
     const finalText = (data && (data.message || data.fullText)) || '';
-    const category = data && (data.category as AIStreamResult['category']);
+    const category: AIStreamResult['category'] = data?.category || undefined;
     if (finalText && options.onDelta) options.onDelta(finalText);
     if (category && options.onCategory) options.onCategory(category);
     return { finalText, category };

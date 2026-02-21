@@ -28,22 +28,27 @@ import {
 // Simplified roles: only doctor can be added (owner is the account creator)
 const ROLE_OPTIONS: ClinicRole[] = ['doctor'];
 
-function roleLabel(role: ClinicRole) {
+function roleLabel(role: RoleBadgeRole) {
   switch (role) {
     case 'owner':
       return 'Owner';
     case 'doctor':
       return 'Doctor';
+    case 'DISABLED':
+      return 'Disabled';
     default:
       return role;
   }
 }
 
-function RoleBadge({ role }: { role: ClinicRole }) {
+type RoleBadgeRole = ClinicRole | 'DISABLED';
+
+function RoleBadge({ role }: { role: RoleBadgeRole }) {
   const { colors } = useTheme();
-  const palette: Record<ClinicRole, { bg: string; text: string }> = {
+  const palette: Record<RoleBadgeRole, { bg: string; text: string }> = {
     owner: { bg: '#0B6EF3', text: '#fff' },
     doctor: { bg: '#059669', text: '#fff' },
+    DISABLED: { bg: '#9CA3AF', text: '#fff' },
   };
   const tone = palette[role] || { bg: colors.card, text: colors.textPrimary };
   return (
@@ -69,7 +74,7 @@ export default function ClinicTeamScreen() {
     displayName: '',
     email: '',
     password: '',
-    role: 'DOCTOR' as ClinicRole,
+    role: 'doctor' as ClinicRole,
   });
 
   const loadMembers = async () => {
@@ -107,7 +112,7 @@ export default function ClinicTeamScreen() {
         invitedBy: memberId || clinicId,
         invitedByName: 'Owner',
       });
-      setForm({ displayName: '', email: '', password: '', role: 'DOCTOR' });
+      setForm({ displayName: '', email: '', password: '', role: 'doctor' });
       await loadMembers();
       Alert.alert(t('common.success'), t('team.inviteSent'));
     } catch (error: any) {

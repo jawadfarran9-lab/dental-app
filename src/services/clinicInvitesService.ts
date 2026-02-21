@@ -28,9 +28,6 @@ export async function createInvite(params: {
   invitedBy: string;
   invitedByName?: string;
 }): Promise<ClinicInvite> {
-  if (params.role === 'OWNER_ADMIN') {
-    throw new Error('Cannot invite OWNER_ADMIN');
-  }
   const payload: ClinicInvite = {
     clinicId: params.clinicId,
     email: params.email.toLowerCase().trim(),

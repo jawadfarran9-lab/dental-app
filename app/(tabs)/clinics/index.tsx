@@ -4,6 +4,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import RadiusSelector from '@/src/components/RadiusSelector';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
+import { useHasActiveSubscription } from '@/src/hooks/useHasActiveSubscription';
 import {
   PublicClinic,
   fetchPublishedClinics,
@@ -134,6 +135,7 @@ export default function ClinicsListScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
   const { clinicId: ownClinicId, isSubscribed } = useAuth();
+  const hasSubscription = useHasActiveSubscription();
 
   const [clinics, setClinics] = useState<ClinicListItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -469,7 +471,7 @@ export default function ClinicsListScreen() {
               </Text>
             )}
           </View>
-          {ownClinicId ? (
+          {hasSubscription && ownClinicId ? (
             <TouchableOpacity
               onPress={() => router.push(`/clinics/${ownClinicId}` as any)}
               style={[styles.profileBtn, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' }]}

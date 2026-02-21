@@ -155,16 +155,16 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: inactiveColor,
           tabBarStyle: {
             position: 'absolute',
-            bottom: 14,
+            bottom: 2,
             left: 16,
             right: 16,
-            height: 72,
+            height: 62,
             borderRadius: 28,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             borderWidth: 0,
-            paddingBottom: 10,
-            paddingTop: 8,
+            paddingBottom: 4,
+            paddingTop: 4,
             paddingHorizontal: 4,
             ...Platform.select({
               ios: {
@@ -202,14 +202,14 @@ export default function TabsLayout() {
           tabBarLabelStyle: {
             fontSize: 11,
             fontWeight: '700',
-            marginTop: 2,
+            marginTop: 0,
             letterSpacing: 0.3,
           },
           tabBarIconStyle: {
             marginBottom: -2,
           },
           tabBarItemStyle: {
-            paddingVertical: 4,
+            paddingVertical: 2,
             minWidth: 64,
             minHeight: 44, // Minimum tap target
           },
@@ -296,8 +296,8 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   iconContainer: {
-    width: 64,
-    height: 56,
+    width: 56,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     position: 'relative',
@@ -305,8 +305,8 @@ const styles = StyleSheet.create({
   },
   iconGlow: {
     position: 'absolute',
-    width: 66,
-    height: 58,
+    width: 58,
+    height: 46,
     borderRadius: 16,
     shadowColor: '#3D9EFF',
     shadowOpacity: 0.5,

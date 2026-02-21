@@ -40,7 +40,7 @@ export default function ClinicDashboard() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const { clinicAuth } = useAuth();
+  const { clinicId } = useAuth();
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
 
   const [clinicName, setClinicName] = useState('');
@@ -54,16 +54,16 @@ export default function ClinicDashboard() {
   // Load clinic and patients data
   const loadClinicData = useCallback(async () => {
     try {
-      const clinicId = clinicAuth?.clinicId || await AsyncStorage.getItem('clinicId');
+      const resolvedClinicId = clinicId || await AsyncStorage.getItem('clinicId');
       
-      if (!clinicId) {
+      if (!resolvedClinicId) {
         console.error('[Dashboard] No clinicId found');
         setLoading(false);
         return;
       }
 
       // Load clinic info
-      const clinicRef = doc(db, 'clinics', clinicId);
+      const clinicRef = doc(db, 'clinics', resolvedClinicId);
       const clinicSnap = await getDoc(clinicRef);
       
       if (clinicSnap.exists()) {
@@ -77,7 +77,7 @@ export default function ClinicDashboard() {
       }
 
       // Load patients
-      const patientsRef = collection(db, 'clinics', clinicId, 'patients');
+      const patientsRef = collection(db, 'clinics', resolvedClinicId, 'patients');
       const patientsQuery = query(patientsRef, orderBy('createdAt', 'desc'));
       const patientsSnap = await getDocs(patientsQuery);
       
@@ -98,7 +98,7 @@ export default function ClinicDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [clinicAuth, t]);
+  }, [clinicId, t]);
 
   useFocusEffect(
     useCallback(() => {

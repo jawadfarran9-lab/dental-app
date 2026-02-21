@@ -178,10 +178,6 @@ async function addClinicMemberInternal(params: {
   invitedBy?: string;
   memberIdOverride?: string;
 }): Promise<ClinicMember> {
-  if (params.member.role === 'OWNER_ADMIN') {
-    throw new Error('Cannot create additional OWNER_ADMIN members');
-  }
-
   const email = normalizeEmail(params.member.email);
   const now = serverTimestamp();
 
@@ -234,10 +230,6 @@ export async function changeMemberRole(params: {
 
   if (memberId === clinicId) {
     throw new Error('Cannot change role of OWNER_ADMIN');
-  }
-
-  if (newRole === 'OWNER_ADMIN') {
-    throw new Error('Cannot assign OWNER_ADMIN role');
   }
 
   const update = { role: newRole, updatedAt: serverTimestamp() };
