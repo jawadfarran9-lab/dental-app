@@ -151,7 +151,6 @@ export default function ClinicSignup() {
             await AsyncStorage.removeItem('signupDraftLocation');
           }
         } catch (e) {
-          console.warn('[SIGNUP] Failed to read draft location', e);
         }
 
         // Restore draft form fields if current fields are empty (remount safeguard)
@@ -171,7 +170,6 @@ export default function ClinicSignup() {
             if (!clinicPhone && draft.clinicPhone) setClinicPhone(draft.clinicPhone);
           }
         } catch (e) {
-          console.warn('[SIGNUP] Failed to restore draft form', e);
         }
       })();
       return () => {};
@@ -198,7 +196,6 @@ export default function ClinicSignup() {
             'pendingSubscriptionPriceWithAIPro',
           ]);
           
-          console.log('[SIGNUP] Raw AsyncStorage results:', results);
           
           // Extract values from [[key, value], ...] format
           const planId = results[0]?.[1];
@@ -206,12 +203,6 @@ export default function ClinicSignup() {
           const basePrice = results[2]?.[1];
           const priceWithAIPro = results[3]?.[1];
           
-          console.log('[SIGNUP] Extracted values:', {
-            planId: `"${planId}"`,
-            planName: `"${planName}"`,
-            basePrice: `"${basePrice}"`,
-            priceWithAIPro: `"${priceWithAIPro}"`,
-          });
           
           // Choose the price: AI Pro price if available and non-null, else base price
           let finalPrice = priceWithAIPro ?? basePrice;
@@ -219,13 +210,11 @@ export default function ClinicSignup() {
           // If still no price from AsyncStorage, use the derived price
           if (!finalPrice || finalPrice === 'null') {
             const derivedPrice = planId === 'ANNUAL' ? '230.88' : '19.99';
-            console.log('[SIGNUP] No price in AsyncStorage, using derived:', derivedPrice);
             finalPrice = derivedPrice;
           }
           
           const finalName = planName || (planId === 'ANNUAL' ? 'Annual' : 'Monthly');
           
-          console.log('[SIGNUP] Setting UI state:', { name: finalName, price: finalPrice });
           setPlanLabel(finalName);
           setPlanPrice(finalPrice);
           setBasePlanPrice(finalPrice);  // Store base price for coupon calculations
@@ -248,7 +237,6 @@ export default function ClinicSignup() {
     // TEMP: Skip card validation if subscription is free (100% discount)
     const isFreeSubscription = parseFloat(planPrice) === 0;
     if (isFreeSubscription) {
-      console.log('[CARD VALIDATION] Free subscription - skipping card validation');
       return true;
     }
     
@@ -332,7 +320,6 @@ export default function ClinicSignup() {
       newPrice = '0';
       discountPercent = 100;
       isValid = true;
-      console.log('[COUPON] 100% discount coupon applied to:', planLabel, 'Original price:', basePlanPrice);
     } else if (code === 'DEMO50') {
       // 50% discount
       const basePrice = parseFloat(basePlanPrice);
@@ -349,13 +336,11 @@ export default function ClinicSignup() {
       // The plan name should stay the same, only the price changes
       setCouponMessage(`✓ Coupon Applied Successfully! (${discountPercent}% off)`);
       setCouponError('');
-      console.log('[COUPON] Applied:', { code, newPrice, originalPlan: planLabel, discountPercent });
     } else {
       setCouponError('Invalid Coupon Code');
       setCouponMessage('');
       setAppliedCoupon(null);
       setPlanPrice(basePlanPrice);
-      console.log('[COUPON] Invalid code:', code);
     }
   };
 
@@ -366,7 +351,6 @@ export default function ClinicSignup() {
     setCouponCode('');
     setCouponMessage('');
     setCouponError('');
-    console.log('[COUPON] Removed - price restored to:', basePlanPrice);
   };
 
 
@@ -389,14 +373,6 @@ export default function ClinicSignup() {
     // For FREE subscriptions: Only core fields + location required (NO payment method needed)
     if (isFreeSubscription) {
       const isValid = Boolean(coreFieldsOk && locationOk && !loading);
-      console.log('[FORM VALIDATION] Free subscription', {
-        clinicType,
-        coreFieldsOk,
-        locationOk,
-        isValid,
-        firstName: !!firstName,
-        lastName: !!lastName,
-      });
       return isValid;
     }
     
@@ -412,28 +388,13 @@ export default function ClinicSignup() {
       const cardCvcOk = /^\d{3,4}$/.test(cardCvc);
       paymentOk = cardNameOk && cardNumberOk && cardExpiryOk && cardCvcOk;
       
-      console.log('[FORM VALIDATION] Paid with card', {
-        cardNameOk,
-        cardNumberOk,
-        cardExpiryOk,
-        cardCvcOk,
-        paymentOk,
-      });
     } else if (paymentMethodSelected) {
       // Other payment methods (Apple Pay, PayPal, Google Pay): Just need method selected
       paymentOk = true;
-      console.log('[FORM VALIDATION] Paid with', selectedPaymentMethod);
     }
     
     const isValid = Boolean(coreFieldsOk && locationOk && paymentMethodSelected && paymentOk && !loading);
     
-    console.log('[FORM VALIDATION] Paid subscription final', {
-      coreFieldsOk,
-      locationOk,
-      paymentMethodSelected,
-      paymentOk,
-      isValid,
-    });
     
     return isValid;
   };
@@ -485,14 +446,12 @@ export default function ClinicSignup() {
 
     setLoading(true);
     try {
-      console.log('[SIGNUP] Starting clinic account setup with payment...');
       
       // Get or create clinic ID
       let existingClinicId = await AsyncStorage.getItem('clinicId');
       
       if (!existingClinicId) {
         // Create new clinic document if doesn't exist
-        console.log('[SIGNUP] No clinic ID found, creating new clinic document...');
         const newClinicRef = await addDoc(collection(db, 'clinics'), {
           subscribed: false,
           createdAt: Date.now(),
@@ -500,7 +459,6 @@ export default function ClinicSignup() {
         });
         existingClinicId = newClinicRef.id;
         await AsyncStorage.setItem('clinicId', existingClinicId);
-        console.log('[SIGNUP] Created new clinic document:', existingClinicId);
       }
 
       // Persist clinic + contact info + payment method and card details for confirmation
@@ -527,7 +485,6 @@ export default function ClinicSignup() {
       // For free subscriptions, enable AI Pro by default
       if (isFree) {
         storageData.push(['pendingIncludeAIPro', 'true']);
-        console.log('[SIGNUP] Free subscription - AI Pro enabled by default');
       }
       
       if (selectedPaymentMethod === 'card') {
@@ -540,17 +497,7 @@ export default function ClinicSignup() {
       
       await AsyncStorage.multiSet(storageData);
 
-      console.log('[SIGNUP] ====== SAVED TO ASYNC STORAGE ======');
-      console.log('[SIGNUP] Pricing data saved:', {
-        pendingFinalPrice: planPrice,
-        pendingSubscriptionPrice: basePlanPrice,
-        pendingAppliedCoupon: appliedCoupon,
-        pendingSubscriptionPlanName: planLabel,
-        isFreeSubscription: parseFloat(planPrice) === 0,
-      });
-      console.log('[SIGNUP] =====================================');
 
-      console.log(`[SIGNUP] Updating clinic ${existingClinicId} with account credentials...`);
 
       // Update existing clinic document with account credentials (use merge to avoid "No document" error)
       await setDoc(doc(db, 'clinics', existingClinicId), {
@@ -573,24 +520,17 @@ export default function ClinicSignup() {
         status: 'active', // Mark as fully active
       }, { merge: true });
 
-      console.log(`[SIGNUP] Account setup complete for clinic: ${existingClinicId}`);
 
       // ✅ CRITICAL: Verify clinicId is saved before navigating
       const verifyClinicId = await AsyncStorage.getItem('clinicId');
-      console.log('[SIGNUP] ====== CLINIC ID VERIFICATION ======');
-      console.log('[SIGNUP] existingClinicId variable:', existingClinicId);
-      console.log('[SIGNUP] clinicId in AsyncStorage:', verifyClinicId);
       if (verifyClinicId !== existingClinicId) {
         console.error('[SIGNUP] WARNING: clinicId mismatch!');
       }
-      console.log('[SIGNUP] =====================================');
 
       // Check if subscription is free (100% coupon applied)
       
       if (isFree) {
         // Free subscription - skip payment, mark as subscribed immediately
-        console.log('[SIGNUP] Free subscription detected, clinicId:', existingClinicId);
-        console.log('[SIGNUP] Navigating to confirmation page...');
         setLoading(false);
         
         // Navigate to confirmation page (instead of dashboard)
@@ -618,13 +558,11 @@ export default function ClinicSignup() {
     // TEMP: Bypass payment processing for free subscriptions ($0 price)
     const pendingFinalPrice = parseFloat(planPrice);
     if (pendingFinalPrice === 0) {
-      console.log('[PAYMENT] Final price is $0 - bypassing payment processing');
       await completePaymentAndLogin();
       return;
     }
     
     if (!selectedPaymentMethod) {
-      console.log('[PAYMENT] No payment method selected, likely a free subscription');
       return;
     }
     
@@ -740,7 +678,6 @@ export default function ClinicSignup() {
     setLoading(false);
     
     try {
-      console.log('[SIGNUP] completePaymentAndLogin called');
       setLoading(false);
     } catch (err: any) {
       console.error('[SIGNUP] Error in completePaymentAndLogin:', err);
@@ -749,7 +686,6 @@ export default function ClinicSignup() {
     }
     
     // Navigate to confirmation page
-    console.log('[SIGNUP] Payment completed, navigating to confirmation page');
     router.push('/clinic/confirm-subscription' as any);
   };
 

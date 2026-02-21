@@ -36,7 +36,6 @@ export async function setRole(role: UserRole): Promise<void> {
 export async function clearRole(): Promise<void> {
   try {
     await AsyncStorage.removeItem(ROLE_KEY);
-    console.log('[roleUtils] Role cleared');
   } catch (err) {
     // Error logging disabled for production
   }
@@ -76,7 +75,6 @@ export async function isSetupComplete(): Promise<boolean> {
 export async function markSetupComplete(): Promise<void> {
   try {
     await AsyncStorage.setItem(SETUP_COMPLETE_KEY, 'true');
-    console.log('[roleUtils] Setup marked as complete');
   } catch (err) {
     console.error('[roleUtils] Error marking setup complete:', err);
     throw err;

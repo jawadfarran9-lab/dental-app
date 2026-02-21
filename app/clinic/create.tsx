@@ -82,7 +82,6 @@ export default function CreatePatientScreen() {
         createdAt: serverTimestamp(),
       });
 
-      console.log(`[DEV] Created patient with code: ${code}`);
 
       const localizedCode = localizeNumber(code);
 

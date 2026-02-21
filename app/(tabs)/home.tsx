@@ -989,10 +989,8 @@ export default function HomeScreen() {
 
   // ========== Native Share Handler ==========
   const handleNativeShare = useCallback(async () => {
-    console.log('🔵 handleNativeShare called');
     
     if (!selectedPostForShare) {
-      console.log('❌ No selectedPostForShare - returning early');
       return;
     }
     
@@ -1002,15 +1000,12 @@ export default function HomeScreen() {
     const postUrl = `https://besmile.ai/post/${postId}`;
     const shareMessage = `Check out "${title}" by ${author} on BeSmile AI!\n\n${postUrl}`;
     
-    console.log('🔵 Share message:', shareMessage);
     
     // Try calling Share.share() FIRST, before closing the modal
     try {
-      console.log('🔵 Calling Share.share() NOW...');
       const result = await Share.share({
         message: shareMessage,
       });
-      console.log('✅ Share result:', result);
       
       // Close modal AFTER share completes or is dismissed
       setShareModalVisible(false);

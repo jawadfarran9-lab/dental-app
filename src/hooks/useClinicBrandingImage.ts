@@ -14,7 +14,6 @@ export function useClinicBrandingImage() {
         const branding = await getClinicBranding(clinicId);
         if (isMounted) setBrandingUrl(branding.heroImageUrl || undefined);
       } catch (error) {
-        console.warn('[BRANDING] Failed to load branding', error);
       }
     };
     load();

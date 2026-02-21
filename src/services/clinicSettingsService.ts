@@ -164,7 +164,6 @@ export async function deleteClinicLogo(
         const storageRef = ref(storage, logoUrl);
         await deleteObject(storageRef);
       } catch (err) {
-        console.warn('Could not delete logo from storage:', err);
       }
     }
 

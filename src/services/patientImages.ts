@@ -78,7 +78,6 @@ export async function uploadPatientImage(
             const docRef = doc(db, `clinics/${clinicId}/patients/${patientId}/images`, imageId);
             await setDoc(docRef, imageDoc);
 
-            console.log(`[IMAGE UPLOADED] ${imageId} -> ${downloadUrl}`);
             resolve(imageDoc);
           } catch (error) {
             console.error('[POST-UPLOAD ERROR]', error);
@@ -187,7 +186,6 @@ export async function saveImageAnnotations(
     const docRef = doc(db, `clinics/${clinicId}/patients/${patientId}/images`, imageId);
     await updateDoc(docRef, { annotations });
 
-    console.log(`[ANNOTATIONS SAVED] ${imageId}`);
   } catch (error) {
     console.error('[SAVE ANNOTATIONS ERROR]', error);
     throw error;

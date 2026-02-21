@@ -112,7 +112,6 @@ export default function ClinicLogin() {
         
         // التوجيه حسب الدور: owner → home based on clinicType, doctor → patients
         if (profile.role === 'owner') {
-          console.log('[LOGIN] Owner login, clinicType:', staffClinicType, '-> route:', staffHomeRoute);
           router.replace(staffHomeRoute as any);
         } else {
           // doctor → patients page
@@ -131,7 +130,6 @@ export default function ClinicLogin() {
 
       const ownerMember = await ensureOwnerMembership(clinicId, normalizedEmail);
       
-      console.log(`[PHASE F] Clinic login: ${clinicId}, subscribed=${isSubscribed}`);
       
       // Store email for future password verification in protected actions
       await AsyncStorage.setItem('clinicUserEmail', normalizedEmail);
@@ -161,7 +159,6 @@ export default function ClinicLogin() {
       // Subscription is active - Owner goes to home based on clinic type
       setLoading(false);
       const homeRoute = getHomeRoute(clinicType);
-      console.log('[LOGIN] Clinic login successful, clinicType:', clinicType, '-> route:', homeRoute);
       router.replace(homeRoute as any);
     } catch (err: any) {
       console.error('Login error:', err);

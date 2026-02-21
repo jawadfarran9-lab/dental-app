@@ -51,11 +51,6 @@ export const uploadXrayImage = async (
   patientId: string,
   imageId: string
 ): Promise<string> => {
-  console.log('[STORAGE] ========== X-RAY IMAGE UPLOAD START ==========');
-  console.log('[STORAGE] Platform:', Platform.OS);
-  console.log('[STORAGE] Clinic ID:', clinicId);
-  console.log('[STORAGE] Patient ID:', patientId);
-  console.log('[STORAGE] Image ID:', imageId);
 
   // Validate required parameters
   if (!clinicId || clinicId === 'undefined') {
@@ -73,16 +68,13 @@ export const uploadXrayImage = async (
 
   try {
     // ✅ Convert image to Blob using XMLHttpRequest (most reliable)
-    console.log('[STORAGE] Converting image to Blob using XMLHttpRequest...');
     let blob: Blob;
     try {
       blob = await uriToBlob(imageUri);
     } catch (blobError: any) {
-      console.log('[STORAGE] XMLHttpRequest failed, trying fetch()...');
       const response = await fetch(imageUri);
       blob = await response.blob();
     }
-    console.log('[STORAGE] Blob created, size:', blob.size, 'bytes, type:', blob.type);
 
     if (!blob || blob.size === 0) {
       throw new Error('Blob is empty or invalid');
@@ -90,11 +82,9 @@ export const uploadXrayImage = async (
 
     // Create storage reference for X-ray
     const storagePath = `clinics/${clinicId}/patients/${patientId}/xrays/${imageId}.jpg`;
-    console.log('[STORAGE] Storage path:', storagePath);
     const storageRef = ref(storage, storagePath);
 
     // ✅ Upload using uploadBytesResumable
-    console.log('[STORAGE] Starting Firebase upload...');
     
     return new Promise((resolve, reject) => {
       const uploadTask = uploadBytesResumable(storageRef, blob, {
@@ -112,7 +102,6 @@ export const uploadXrayImage = async (
         'state_changed',
         (snapshot) => {
           const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          console.log('[STORAGE] X-ray upload progress:', progress.toFixed(1) + '%');
         },
         (error) => {
           console.error('[STORAGE] ❌ X-ray upload failed:', error.code, error.message);
@@ -122,8 +111,6 @@ export const uploadXrayImage = async (
         async () => {
           try {
             const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-            console.log('[STORAGE] ✅ X-ray download URL:', downloadURL.substring(0, 80) + '...');
-            console.log('[STORAGE] ========== X-RAY UPLOAD SUCCESS ==========');
             resolve(downloadURL);
           } catch (urlError: any) {
             reject(new Error(`X-ray upload succeeded but failed to get URL: ${urlError.message}`));

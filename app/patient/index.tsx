@@ -58,7 +58,6 @@ export default function PatientLogin() {
       const patientDoc = snapshot.docs[0];
       const patientId = patientDoc.id;
 
-      console.log(`[PHASE F] Patient logged in: ${patientId}`);
 
       // PHASE F: Update global auth state via AuthContext
       // This will store patientId and clear clinicId

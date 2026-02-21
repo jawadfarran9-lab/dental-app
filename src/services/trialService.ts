@@ -108,6 +108,5 @@ export async function logUsageLimitWarning(
       });
     }
   } catch (err) {
-    console.warn('[TRIAL] logUsageLimitWarning error', err);
   }
 }

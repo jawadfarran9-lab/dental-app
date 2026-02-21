@@ -19,7 +19,6 @@ export async function sendSubscriptionReceiptMock(params: {
       details: { type: 'subscription_receipt', method: params.payload.method },
     });
   }
-  console.log('[EMAIL MOCK] Subscription receipt preview:\n', preview);
   return { preview };
 }
 
@@ -39,7 +38,6 @@ export async function sendSecurityNoticeMock(params: {
       details: { type: 'security_notice' },
     });
   }
-  console.log('[EMAIL MOCK] Security notice preview:\n', preview);
   return { preview };
 }
 
@@ -60,6 +58,5 @@ export async function sendInviteAcceptedMock(params: {
       details: { type: 'invite_accepted' },
     });
   }
-  console.log('[EMAIL MOCK] Invite accepted preview:\n', preview);
   return { preview };
 }

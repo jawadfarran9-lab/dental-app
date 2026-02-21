@@ -253,7 +253,6 @@ export default function CameraScreen() {
     
     // Camera must be ready (mode="video" means video pipeline is initialized)
     if (!isCameraReady) {
-      console.log('Camera not ready yet, waiting...');
       return;
     }
 
@@ -301,7 +300,6 @@ export default function CameraScreen() {
     
     // Wait for camera to be ready
     if (!isCameraReady) {
-      console.log('Camera not ready yet, waiting...');
       return;
     }
 
@@ -398,7 +396,6 @@ export default function CameraScreen() {
 
   // Handle tool press
   const handleToolPress = useCallback((tool: string) => {
-    console.log('Tool pressed:', tool);
     switch (tool) {
       case 'create':
         // Text-only story mode - navigate to text editor
@@ -432,7 +429,6 @@ export default function CameraScreen() {
   // Handle camera ready - with mode="video", this means video pipeline is ready
   // Both takePictureAsync() and recordAsync() are now available
   const handleCameraReady = useCallback(() => {
-    console.log('Camera ready (video mode) - recording now available');
     setIsCameraReady(true);
   }, []);
 

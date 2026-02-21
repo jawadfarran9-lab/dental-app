@@ -33,16 +33,13 @@ export type ClinicData = {
 export const fetchClinicData = async (clinicId: string): Promise<ClinicData | null> => {
   try {
     if (!clinicId) {
-      console.warn('[CLINIC_DATA] No clinic ID provided');
       return null;
     }
 
-    console.log('[CLINIC_DATA] Fetching clinic data:', clinicId);
     const clinicRef = doc(db, 'clinics', clinicId);
     const clinicSnap = await getDoc(clinicRef);
 
     if (!clinicSnap.exists()) {
-      console.warn('[CLINIC_DATA] Clinic document not found:', clinicId);
       return null;
     }
 
@@ -67,9 +64,7 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
     };
 
     if (clinicData.imageUrl) {
-      console.log('[CLINIC_DATA] Image URL found:', clinicData.imageUrl);
     } else {
-      console.log('[CLINIC_DATA] No image URL in clinic data');
     }
 
     return clinicData;

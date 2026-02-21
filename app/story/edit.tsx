@@ -5291,7 +5291,6 @@ export default function EditStoryScreen() {
       frameImageUriProcessed.current = params.frameImageUri;
       const returnedClinicName = params.frameClinicName || clinicName;
       if (!returnedClinicName || returnedClinicName === 'My Clinic') {
-        console.warn('[FrameSticker] clinicName unavailable or default — using best available:', returnedClinicName);
       }
       setTimeout(() => {
         addFrameStickerToCanvas(
@@ -5588,24 +5587,14 @@ export default function EditStoryScreen() {
 
   const handleShare = useCallback(async () => {
     // TODO: Implement story sharing with all overlays
-    console.log('Sharing story with media:', params.uri);
-    console.log('AI Label:', aiLabelEnabled);
-    console.log('Comments:', commentsEnabled);
-    console.log('Text overlays:', textOverlays);
 
     // Attach reply metadata if in reply mode
     if (isReplyMode && params.questionStickerId && params.responseId) {
-      console.log('Reply metadata:', {
-        replyToQuestionStickerId: params.questionStickerId,
-        replyToResponseId: params.responseId,
-        replyToText: params.replyText || '',
-      });
 
       // Mark the response as read after publish
       if (clinicId) {
         try {
           await markQuestionResponseRead(clinicId, params.responseId);
-          console.log('Response marked as read:', params.responseId);
         } catch (e) {
           console.error('Failed to mark response as read:', e);
         }
@@ -5619,7 +5608,6 @@ export default function EditStoryScreen() {
 
   const handleDownload = useCallback(() => {
     // TODO: Implement download functionality
-    console.log('Downloading story...');
   }, []);
 
   // ========== Location Sticker Handlers ==========
@@ -5689,18 +5677,14 @@ export default function EditStoryScreen() {
   }, []);
 
   const openPhotoPicker = useCallback(async () => {
-    console.log('=== openPhotoPicker START ===');
     // Determine if we already have a background image
     const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
-    console.log('Already has background:', alreadyHasBackground);
     try {
       // Request permission using the direct expo-image-picker method
       // This ensures proper native picker is launched
       const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      console.log('Permission result:', JSON.stringify(permissionResult));
       
       if (!permissionResult.granted) {
-        console.log('Permission denied');
         Alert.alert(
           'Permission Required',
           'Photo library access is required to use this feature. Please enable it in your device settings.',
@@ -5709,7 +5693,6 @@ export default function EditStoryScreen() {
         return;
       }
       
-      console.log('Permission OK! Launching native image picker...');
       
       // Launch the native image picker directly
       // Using single selection mode for maximum compatibility across iOS versions
@@ -5723,17 +5706,12 @@ export default function EditStoryScreen() {
         base64: false,
       });
       
-      console.log('Picker result canceled:', result.canceled);
-      console.log('Picker result assets count:', result.assets?.length || 0);
       
       if (!result.canceled && result.assets && result.assets.length > 0) {
         const asset = result.assets[0];
-        console.log('Selected photo URI:', asset.uri);
-        console.log('Selected photo dimensions:', asset.width, 'x', asset.height);
         
         if (alreadyHasBackground) {
           // Background already exists — add new photo as a draggable sticker on top
-          console.log('Adding photo as sticker layer on top of background');
           addPhotoSticker(asset);
         } else {
           // No background yet — open editing modal, first photo becomes background
@@ -5743,18 +5721,14 @@ export default function EditStoryScreen() {
             height: asset.height || 1920,
           };
           
-          console.log('Setting pendingEditImage:', JSON.stringify(imageData));
           setPendingEditImage(imageData);
           
           // Then show the modal (with a small delay to ensure state is set)
-          console.log('Opening editing modal...');
           setTimeout(() => {
-            console.log('Setting imageEditingVisible to true');
             setImageEditingVisible(true);
           }, 100);
         }
       } else {
-        console.log('User cancelled or no photo selected');
       }
     } catch (error) {
       console.error('=== ERROR in openPhotoPicker ===', error);
@@ -5764,12 +5738,10 @@ export default function EditStoryScreen() {
         [{ text: 'OK' }]
       );
     }
-    console.log('=== openPhotoPicker END ===');
   }, [params.uri, backgroundImageUri, addPhotoSticker]);
 
   // Open image picker for Frames sticker (called after Modal is fully dismissed)
   const openFramePicker = useCallback(async () => {
-    console.log('=== openFramePicker START ===');
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
@@ -5780,7 +5752,6 @@ export default function EditStoryScreen() {
         );
         return;
       }
-      console.log('Frame picker: launching image library...');
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsMultipleSelection: false,
@@ -5790,7 +5761,6 @@ export default function EditStoryScreen() {
         base64: false,
       });
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        console.log('Frame picker: image selected, navigating to frame-editor');
         router.push({
           pathname: '/story/frame-editor',
           params: {
@@ -5803,7 +5773,6 @@ export default function EditStoryScreen() {
           },
         });
       } else {
-        console.log('Frame picker: user cancelled');
       }
     } catch (error) {
       console.error('Error opening image picker for Frames:', error);
@@ -5813,7 +5782,6 @@ export default function EditStoryScreen() {
         [{ text: 'OK' }]
       );
     }
-    console.log('=== openFramePicker END ===');
   }, [router, params.uri, params.width, params.height, params.mediaType, clinicName]);
 
   // Handler for when image editing is complete
@@ -5822,11 +5790,9 @@ export default function EditStoryScreen() {
     
     if (!alreadyHasBackground) {
       // First photo — set as the main background canvas
-      console.log('Image editing done, setting as background...');
       setBackgroundImageUri(editedUri);
     } else {
       // Subsequent photos — add as draggable sticker layer
-      console.log('Image editing done, adding as sticker layer...');
       const newSticker: PhotoSticker = {
         id: `photo-${Date.now()}`,
         uri: editedUri,
@@ -5846,7 +5812,6 @@ export default function EditStoryScreen() {
 
   // Handler for canceling image editing
   const handleImageEditingCancel = useCallback(() => {
-    console.log('Image editing cancelled');
     setImageEditingVisible(false);
     setPendingEditImage(null);
   }, []);
@@ -6398,7 +6363,6 @@ export default function EditStoryScreen() {
     
     // Handle photo sticker - open image picker
     if (stickerId === 'photo') {
-      console.log('Photo sticker selected! Setting pending flag and closing tray...');
       pendingPhotoPickerOpen.current = true;
       closeStickerTray();
       return;
@@ -6413,7 +6377,6 @@ export default function EditStoryScreen() {
 
     // Handle Frames sticker – set pending flag, open picker after Modal fully dismisses
     if (stickerId === 'frames') {
-      console.log('Frames sticker selected! Setting pending flag and closing tray...');
       pendingFramePickerOpen.current = true;
       closeStickerTray();
       return;
@@ -6421,7 +6384,6 @@ export default function EditStoryScreen() {
 
     // Handle Questions sticker – set pending flag, open editor after Modal fully dismisses
     if (stickerId === 'questions') {
-      console.log('Questions sticker selected! Setting pending flag and closing tray...');
       pendingQuestionEditorOpen.current = true;
       closeStickerTray();
       return;
@@ -6470,7 +6432,6 @@ export default function EditStoryScreen() {
     }
 
     // TODO: Add sticker to canvas
-    console.log('Selected sticker:', stickerId);
     closeStickerTray();
   }, [closeStickerTray, params, router, addClockSticker, openPhotoPicker, addPhoneStickerToCanvas, addClinicNameStickerToCanvas, addComboStickerToCanvas, addDentalStickerToCanvas, addLaserStickerToCanvas, addBeautyStickerToCanvas]);
 
@@ -6973,7 +6934,6 @@ export default function EditStoryScreen() {
 
                 {/* Row 2: Photo, GIF */}
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-5deg' }] }]} onPress={() => {
-                  console.log('Photo button pressed! Setting pending flag and closing tray...');
                   pendingPhotoPickerOpen.current = true;
                   closeStickerTray();
                 }}>

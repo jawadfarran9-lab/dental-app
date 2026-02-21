@@ -193,11 +193,9 @@ export default function PublicClinicProfile() {
       clinicId={clinic.clinicId}
       enabled={true}
       onSubmit={(rating, note) => {
-        console.log('Patient rating submitted:', { clinicId: clinic.clinicId, rating, note });
         // TODO: Send rating to backend via API
       }}
       onSkip={() => {
-        console.log('Patient rating skipped for clinic:', clinic.name);
       }}
     >
       <View style={[styles.container, { backgroundColor: colors.background }]}> 

@@ -114,7 +114,6 @@ const fetchNearbyCities = async (
   searchQuery?: string
 ): Promise<{ places: LocationItem[]; error?: string }> => {
   if (!GOOGLE_PLACES_API_KEY) {
-    console.log('[LOCATION] No Google Places API key configured');
     return { places: [], error: 'API key not configured' };
   }
 

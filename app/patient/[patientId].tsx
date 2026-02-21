@@ -61,7 +61,6 @@ export default function PatientView() {
         }
 
         const patientId = storedPatientId;
-        console.log('Authenticated patient:', patientId);
 
         // Load patient info
         const pRef = doc(db, 'patients', patientId);

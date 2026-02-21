@@ -39,7 +39,6 @@ export default function ClinicProfileViewer() {
           }
         }
       } catch (err) {
-        console.warn('Failed to load clinic profile:', err);
       } finally {
         setLoading(false);
       }

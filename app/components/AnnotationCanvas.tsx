@@ -27,7 +27,6 @@ if (Platform.OS !== 'web') {
     Skia = skiaModule.Skia;
     useDrawingContext = skiaModule.useDrawingContext;
   } catch (e) {
-    console.warn('Skia not available, using fallback canvas');
   }
 }
 
@@ -118,7 +117,6 @@ export const AnnotationCanvas: React.FC<AnnotationCanvasProps> = ({
       // On native, we need to render canvas and export
       if (Platform.OS === 'web') {
         // Web fallback: just use original image
-        console.warn('Drawing not fully supported on web yet');
         onSave(imageUrl, strokes, textOverlays);
       } else {
         // Native: render and export annotated image

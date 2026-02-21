@@ -223,7 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }));
         }),
         status === 'ACTIVE' ? recordMemberLogin(clinicId, memberId) : Promise.resolve(),
-      ]).catch(err => console.warn('[AUTH] Background tasks failed:', err));
+      ]).catch(() => {});
 
     } catch (error) {
       console.error('[AUTH] Error setting clinic auth:', error);

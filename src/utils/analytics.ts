@@ -10,7 +10,6 @@ const logFn = (name: string, params?: Params) => {
   // Only log in development mode
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     // eslint-disable-next-line no-console
-    console.log('[analytics]', name, params || {});
   }
   
   // TODO: Add @react-native-firebase/analytics for production tracking

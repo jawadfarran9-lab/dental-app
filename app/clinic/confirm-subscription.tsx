@@ -112,24 +112,6 @@ export default function ConfirmSubscription() {
           // ✅ SIMPLE CHECK: If finalNum is exactly 0, it's a free subscription
           const isFreeSubscription = finalNum === 0;
 
-          console.log('[CONFIRM] ====== PRICE CALCULATION DEBUG ======');
-          console.log('[CONFIRM] Raw AsyncStorage values:', {
-            'pendingSubscriptionPrice (base)': basePriceStr,
-            'pendingSubscriptionPriceWithAIPro': priceWithAIProStr,
-            'pendingFinalPrice (after coupon)': actualFinalPriceStr,
-            'pendingAppliedCoupon': coupon,
-          });
-          console.log('[CONFIRM] Calculated values:', {
-            baseNum,
-            finalNum,
-            discount,
-            isFreeSubscription,
-          });
-          console.log('[CONFIRM] Plan info:', {
-            planName,
-            paymentMethod: method,
-          });
-          console.log('[CONFIRM] =====================================');
 
           setPlanLabel(planName);
           setBasePrice(baseNum.toFixed(2));
@@ -152,31 +134,10 @@ export default function ConfirmSubscription() {
           setClinicType(cType);  // ✅ Set clinic type for navigation
 
           // ✅ CRITICAL: Log clinicId status
-          console.log('[CONFIRM] ====== CLINIC ID CHECK ======');
-          console.log('[CONFIRM] clinicId from AsyncStorage:', cId || 'EMPTY/NULL');
           if (!cId) {
             console.error('[CONFIRM] WARNING: No clinicId found in AsyncStorage!');
           }
-          console.log('[CONFIRM] ================================');
 
-          console.log('[CONFIRM] Loaded subscription data:', {
-            clinicId: cId || 'MISSING',
-            planName,
-            basePrice: baseNum.toFixed(2),
-            finalPrice: finalNum.toFixed(2),
-            discount: discount > 0 ? discount.toFixed(2) : '0',
-            coupon,
-            email: userEmail,
-            includeAIPro: hasAIPro,
-            isFreeSubscription: finalNum === 0,
-            clinicName: cName,
-            clinicPhone: cPhone,
-            personalPhone: pPhone,
-            firstName: fName,
-            lastName: lName,
-            country: countryCode,
-            city: cityName,
-          });
         } catch (error) {
           console.error('[CONFIRM] Error loading subscription data:', error);
           Alert.alert('Error', 'Failed to load subscription details. Please try again.');
@@ -201,8 +162,6 @@ export default function ConfirmSubscription() {
   const sendConfirmationEmail = async (userEmail: string, subscriptionDetails: any) => {
     try {
       // TEMP: Mock email sending - in production, use Firebase Cloud Functions or EmailJS
-      console.log('[EMAIL] Sending confirmation email to:', userEmail);
-      console.log('[EMAIL] Subscription details:', subscriptionDetails);
 
       // Mock success - in real implementation, call Cloud Function
       // Example: await fetch('https://your-function.cloudfunctions.net/sendConfirmationEmail', {...})
@@ -228,7 +187,6 @@ Best regards,
 BeSmile AI Team
       `;
 
-      console.log('[EMAIL] Email content:', emailContent);
 
       // In production, this would call a Cloud Function:
       // await fetch(
@@ -275,7 +233,6 @@ BeSmile AI Team
     try {
       setConfirming(true);
 
-      console.log('[CONFIRM] Starting subscription confirmation for clinic:', clinicId);
 
       // Send confirmation email
       const emailData = {
@@ -288,12 +245,10 @@ BeSmile AI Team
         includeAIPro,
       };
 
-      console.log('[CONFIRM] Sending confirmation email with data:', emailData);
       await sendConfirmationEmail(email, emailData);
 
       // ✅ CRITICAL: Mark subscription as confirmed in Firestore
       // This MUST succeed for the subscription to be valid
-      console.log('[CONFIRM] Updating Firestore with subscribed=true for clinic:', clinicId);
       
       await setDoc(doc(db, 'clinics', clinicId), {
         subscribed: true,
@@ -306,7 +261,6 @@ BeSmile AI Team
         setupComplete: true,
       }, { merge: true });
 
-      console.log('[CONFIRM] ✅ SUCCESS: Subscription confirmed in Firestore for clinic:', clinicId);
 
       // Auto-publish to clinics directory (fire-and-forget)
       ensureClinicPublished(clinicId).catch(() => {});
@@ -339,8 +293,6 @@ BeSmile AI Team
         'pendingClinicType',  // ✅ Also clear clinic type
       ]);
 
-      console.log('[CONFIRM] Cleared pending subscription data from AsyncStorage');
-      console.log('[CONFIRM] Confirmed clinic ID preserved:', confirmedClinicId);
 
       setConfirming(false);
       
@@ -359,7 +311,6 @@ BeSmile AI Team
       };
       
       const homeRoute = getHomeRoute(clinicType);
-      console.log('[CONFIRM] Clinic type:', clinicType, '-> Navigating to:', homeRoute);
       
       // Show success message and navigate based on clinic type
       Alert.alert(
