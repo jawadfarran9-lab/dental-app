@@ -1,4 +1,6 @@
 import { db } from '@/firebaseConfig';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
+import StaticMapPreview from '@/src/components/StaticMapPreview';
 import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -8,7 +10,6 @@ import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import CountrySelect from '../components/CountrySelect';
 
 // ── Unified accent color ──
@@ -63,9 +64,6 @@ export default function ClinicSignup() {
   const params = useLocalSearchParams<{
     plan?: string;
     billing?: string;
-    pickedLat?: string;
-    pickedLng?: string;
-    pickedAddress?: string;
   }>();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
@@ -76,7 +74,7 @@ export default function ClinicSignup() {
     lng: number;
     address: string;
   } | null>(null);
-  const locationConsumed = useRef(false);
+
   const [submitAttempted, setSubmitAttempted] = useState(false);
 
   // ── Phase 3: Entrance animation ──
@@ -139,47 +137,52 @@ export default function ClinicSignup() {
     }, [loading])
   );
 
-  // ── Pick up returned location params ──
+  // ── Pick up returned location from AsyncStorage (no URL params, no remount) ──
   useFocusEffect(
     React.useCallback(() => {
-      if (
-        params.pickedLat &&
-        params.pickedLng &&
-        params.pickedAddress &&
-        !locationConsumed.current
-      ) {
-        const lat = parseFloat(params.pickedLat);
-        const lng = parseFloat(params.pickedLng);
-        if (!isNaN(lat) && !isNaN(lng)) {
-          setClinicLocation({ lat, lng, address: params.pickedAddress });
-          locationConsumed.current = true;
+      (async () => {
+        try {
+          const raw = await AsyncStorage.getItem('signupDraftLocation');
+          if (raw) {
+            const loc = JSON.parse(raw) as { lat: number; lng: number; address: string };
+            if (loc.lat && loc.lng) {
+              setClinicLocation(loc);
+            }
+            await AsyncStorage.removeItem('signupDraftLocation');
+          }
+        } catch (e) {
+          console.warn('[SIGNUP] Failed to read draft location', e);
         }
-      }
-      return () => {
-        // Reset guard so future returns are captured
-        locationConsumed.current = false;
-      };
-    }, [params.pickedLat, params.pickedLng, params.pickedAddress])
+
+        // Restore draft form fields if current fields are empty (remount safeguard)
+        try {
+          const draftRaw = await AsyncStorage.getItem('signupDraftForm');
+          if (draftRaw) {
+            const draft = JSON.parse(draftRaw);
+            if (!firstName && draft.firstName) setFirstName(draft.firstName);
+            if (!lastName && draft.lastName) setLastName(draft.lastName);
+            if (!email && draft.email) setEmail(draft.email);
+            if (!password && draft.password) setPassword(draft.password);
+            if (!phone && draft.phone) setPhone(draft.phone);
+            if (!country && draft.country) setCountry(draft.country);
+            if (!city && draft.city) setCity(draft.city);
+            if (!clinicType && draft.clinicType) setClinicType(draft.clinicType);
+            if (!clinicName && draft.clinicName) setClinicName(draft.clinicName);
+            if (!clinicPhone && draft.clinicPhone) setClinicPhone(draft.clinicPhone);
+          }
+        } catch (e) {
+          console.warn('[SIGNUP] Failed to restore draft form', e);
+        }
+      })();
+      return () => {};
+    }, [])
   );
 
-  // Clear sensitive inputs when navigating back
-  // Also reset country error to allow clean signup attempts
+  // Clear country error on focus — form reset is handled by goBack only
   useFocusEffect(
     React.useCallback(() => {
-      setCountryError(''); // Reset country error on focus
-      return () => {
-        setFirstName('');
-        setLastName('');
-        setClinicName('');
-        setClinicPhone('');
-        setEmail('');
-        setPassword('');
-        setPhone('');
-        setCountry('');
-        setCountryError('');
-        setCity('');
-        setShowPassword(false);
-      };
+      setCountryError('');
+      return () => {};
     }, [])
   );
 
@@ -591,9 +594,12 @@ export default function ClinicSignup() {
         setLoading(false);
         
         // Navigate to confirmation page (instead of dashboard)
+        // Clear draft keys on successful signup
+        await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
         router.push('/clinic/confirm-subscription' as any);
       } else {
         // Paid subscription - process payment
+        await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
         await processPayment();
       }
     } catch (err: any) {
@@ -747,9 +753,23 @@ export default function ClinicSignup() {
     router.push('/clinic/confirm-subscription' as any);
   };
 
-  const goBack = () => {
+  const goBack = async () => {
     // Only allow back if not loading
     if (!loading) {
+      // Reset form state on intentional exit
+      setFirstName('');
+      setLastName('');
+      setClinicName('');
+      setClinicPhone('');
+      setEmail('');
+      setPassword('');
+      setPhone('');
+      setCountry('');
+      setCountryError('');
+      setCity('');
+      setShowPassword(false);
+      // Clear draft keys on intentional exit
+      await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
       router.back();
     }
   };
@@ -1092,12 +1112,7 @@ export default function ClinicSignup() {
           {clinicLocation ? (
             <>
               {/* Static map preview */}
-              <View style={[styles.mapPreview, { backgroundColor: isDark ? 'rgba(61,158,255,0.08)' : 'rgba(61,158,255,0.06)', borderColor: isDark ? 'rgba(61,158,255,0.18)' : 'rgba(61,158,255,0.14)' }]}>
-                <View style={styles.mapPreviewPinRing}>
-                  <Ionicons name="location-sharp" size={26} color={ACCENT} />
-                </View>
-                <Text style={[styles.mapPreviewLabel, { color: colors.textSecondary }]}>Map preview</Text>
-              </View>
+              <StaticMapPreview lat={clinicLocation.lat} lng={clinicLocation.lng} address={clinicLocation.address} />
 
               {/* Address */}
               <View style={styles.locationAddressRow}>
@@ -1115,12 +1130,14 @@ export default function ClinicSignup() {
               {/* Change button */}
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() =>
+                onPress={async () => {
+                  // Save draft form before navigating to picker
+                  await AsyncStorage.setItem('signupDraftForm', JSON.stringify({ firstName, lastName, email, password, phone, country, city, clinicType, clinicName, clinicPhone }));
                   router.push({
                     pathname: '/clinic/location-picker' as any,
                     params: { lat: String(clinicLocation.lat), lng: String(clinicLocation.lng) },
-                  })
-                }
+                  });
+                }}
                 style={[styles.locationBtn, styles.locationBtnOutline, { borderColor: ACCENT }]}
               >
                 <Ionicons name="navigate-outline" size={16} color={ACCENT} />
@@ -1139,7 +1156,11 @@ export default function ClinicSignup() {
 
               <TouchableOpacity
                 activeOpacity={0.7}
-                onPress={() => router.push('/clinic/location-picker' as any)}
+                onPress={async () => {
+                  // Save draft form before navigating to picker
+                  await AsyncStorage.setItem('signupDraftForm', JSON.stringify({ firstName, lastName, email, password, phone, country, city, clinicType, clinicName, clinicPhone }));
+                  router.push({ pathname: '/clinic/location-picker' as any });
+                }}
                 style={[styles.locationBtn, { backgroundColor: ACCENT }]}
               >
                 <Ionicons name="navigate-outline" size={16} color="#FFF" />

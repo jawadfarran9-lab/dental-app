@@ -59,24 +59,23 @@ export default function ClinicSubscribeLanding() {
     Animated.timing(changePlanScale, { toValue: 1, duration: 120, useNativeDriver: true }).start();
   };
 
-  // Plan selection micro-interaction: animated scale 1.02, 120ms
-  const monthlyScale = useRef(new Animated.Value(1)).current;
-  const annualScale = useRef(new Animated.Value(1)).current;
+  // Plan selection micro-interaction: spring scale on select
+  const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(monthlyScale, {
-        toValue: selectedPlan === 'MONTHLY' ? 1.02 : 1,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-      Animated.timing(annualScale, {
-        toValue: selectedPlan === 'ANNUAL' ? 1.02 : 1,
-        duration: 120,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [selectedPlan]);
+  const handleSelectPlan = useCallback((planId: PlanId, planData?: PlanOption) => {
+    setSelectedPlan(planId);
+    scaleAnim.setValue(0.97);
+    Animated.spring(scaleAnim, {
+      toValue: 1,
+      friction: 6,
+      useNativeDriver: true,
+    }).start();
+
+    // Single-tap flow: trigger subscribe immediately after visual update
+    if (planData) {
+      handleSubscribe(planData);
+    }
+  }, []);
 
   // Hero card subtle floating shimmer
   const heroShimmer = useRef(new Animated.Value(0)).current;
@@ -130,6 +129,13 @@ export default function ClinicSubscribeLanding() {
   // Prevent patients from accessing clinic subscription
   useClinicGuard();
 
+  // Reset plan selection when screen regains focus (e.g. back from signup)
+  useFocusEffect(
+    useCallback(() => {
+      setSelectedPlan(null);
+    }, [])
+  );
+
   // Intercept hardware back button on subscribe screen
   useFocusEffect(
     useCallback(() => {
@@ -169,7 +175,7 @@ export default function ClinicSubscribeLanding() {
           const clinicData = clinicSnap.data();
           const plan = (clinicData.subscriptionPlan as PlanId) || null;
           setCurrentPlan(plan);
-          setSelectedPlan(plan || 'MONTHLY');
+          setSelectedPlan(plan);
           setIsSubscribed(clinicData.subscribed === true);
           if (plan) {
             await AsyncStorage.setItem('clinicSubscriptionPlan', plan);
@@ -270,7 +276,7 @@ export default function ClinicSubscribeLanding() {
               // Reset all UI state to allow fresh subscription
               setIsSubscribed(false);
               setCurrentPlan(null);
-              setSelectedPlan('MONTHLY');
+              setSelectedPlan(null);
               setSelectedAIPro(false);
               setEffectiveClinicId(null);
               // Stay on same page - no navigation, no alert that blocks
@@ -410,11 +416,11 @@ export default function ClinicSubscribeLanding() {
               return (
                 <Animated.View
                   key={plan.id}
-                  style={[{ width: '48%' }, { transform: [{ scale: plan.id === 'MONTHLY' ? monthlyScale : annualScale }] }]}
+                  style={[{ width: '48%' }, isSelected && { transform: [{ scale: scaleAnim }] }]}
                 >
                 <TouchableOpacity
                   activeOpacity={0.88}
-                  onPress={() => setSelectedPlan(plan.id)}
+                  onPress={() => handleSelectPlan(plan.id, plan)}
                 >
                   <GlassCard
                     intensity={isSelected ? 55 : 35}
@@ -422,12 +428,12 @@ export default function ClinicSubscribeLanding() {
                     borderRadius={22}
                     style={[
                       styles.planCardGlass,
-                      {
-                        borderColor: isSelected
-                          ? 'rgba(61,158,255,0.85)'
-                          : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                        borderWidth: isSelected ? 1.5 : 0.5,
-                      },
+                      isSelected
+                        ? styles.planCardSelected
+                        : {
+                            borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(0,0,0,0.08)',
+                            borderWidth: 1,
+                          },
                     ]}
                   >
                     {/* Subtle accent overlay for selected */}
@@ -500,11 +506,11 @@ export default function ClinicSubscribeLanding() {
                           borderWidth: isSelected ? 0 : StyleSheet.hairlineWidth,
                           borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
                         },
-                        (isCurrent || !selectedPlan) && styles.disabledPlanCta
+                        (isCurrent || selectedPlan !== plan.id) && styles.disabledPlanCta
                       ]}
                       onPress={() => handleSubscribe(plan)}
                       activeOpacity={0.8}
-                      disabled={saving || isCurrent || !selectedPlan}
+                      disabled={saving || isCurrent || selectedPlan !== plan.id}
                     >
                       {saving && selectedPlan === plan.id ? (
                         <ActivityIndicator size="small" color="#fff" />
@@ -628,6 +634,14 @@ const styles = StyleSheet.create({
   planCardGlass: {
     padding: 16,
     overflow: 'hidden',
+  },
+  planCardSelected: {
+    borderColor: '#3D9EFF',
+    borderWidth: 2,
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
   planCardReflection: {
     position: 'absolute',

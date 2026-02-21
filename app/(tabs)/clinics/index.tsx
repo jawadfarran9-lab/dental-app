@@ -1,6 +1,7 @@
 import ClinicRow from '@/src/components/ClinicRow';
 import GlassCard from '@/src/components/GlassCard';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import RadiusSelector from '@/src/components/RadiusSelector';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import {
@@ -138,6 +139,7 @@ export default function ClinicsListScreen() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
+  const [radiusKm, setRadiusKm] = useState(25);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const locationFetched = useRef(false);
@@ -291,7 +293,15 @@ export default function ClinicsListScreen() {
       filtered = filtered.filter((c) => deriveClinicType(c.specialty) === activeCategory);
     }
 
-    // 3. Sort: own clinic first, then by distance (if available) or alphabetical
+    // 3. Apply radius filter (only when user location is available)
+    if (userLocation) {
+      filtered = filtered.filter((c) => {
+        if (!c.geo?.lat || !c.geo?.lng) return true; // keep clinics without geo
+        return getDistanceBetween(userLocation, c.geo) <= radiusKm;
+      });
+    }
+
+    // 4. Sort: own clinic first, then by distance (if available) or alphabetical
     return [...filtered].sort((a, b) => {
       const aIsOwn = isSubscribed && a.clinicId === ownClinicId ? 1 : 0;
       const bIsOwn = isSubscribed && b.clinicId === ownClinicId ? 1 : 0;
@@ -306,7 +316,7 @@ export default function ClinicsListScreen() {
 
       return a.name.localeCompare(b.name);
     });
-  }, [clinics, searchQuery, ownClinicId, isSubscribed, activeCategory, userLocation]);
+  }, [clinics, searchQuery, ownClinicId, isSubscribed, activeCategory, userLocation, radiusKm]);
 
   // ─── Split into sections (memoised) ───
   const ownClinicItem = useMemo(
@@ -561,6 +571,27 @@ export default function ClinicsListScreen() {
               />
             ))}
           </ScrollView>
+          {/* Radius filter — visible only when location is active */}
+          {userLocation && (
+            <RadiusSelector valueKm={radiusKm} onChangeKm={setRadiusKm} isDark={isDark} />
+          )}
+          {/* Map View button */}
+          <TouchableOpacity
+            onPress={() =>
+              router.push({
+                pathname: '/(tabs)/clinics/map',
+                params: { category: activeCategory, radiusKm: String(radiusKm) },
+              } as any)
+            }
+            activeOpacity={0.7}
+            style={[
+              styles.mapViewBtn,
+              { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' },
+            ]}
+          >
+            <Ionicons name="map-outline" size={15} color="#3D9EFF" />
+            <Text style={styles.mapViewBtnText}>Map View</Text>
+          </TouchableOpacity>
           </GlassCard>
         </View>
 
@@ -816,4 +847,21 @@ const styles = StyleSheet.create({
   },
 
   emptyText: { fontSize: 14, textAlign: 'center' },
+
+  // Map View button
+  mapViewBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+  },
+  mapViewBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#3D9EFF',
+    letterSpacing: 0.2,
+  },
 });

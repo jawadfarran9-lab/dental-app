@@ -31,6 +31,7 @@ function RootNavigator() {
       <Stack.Screen name="index" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/subscribe" options={{ title: 'Clinic Subscription', headerShown: false }} />
       <Stack.Screen name="clinic/signup" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/location-picker" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/login" options={{ title: 'Clinic Login', headerShown: true }} />
       <Stack.Screen name="clinic/dashboard" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/index" options={{ title: 'Patients', headerShown: true }} />

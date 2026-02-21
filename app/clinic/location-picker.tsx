@@ -1,15 +1,16 @@
 import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import MapView, { Region } from 'react-native-maps';
 
@@ -162,17 +163,14 @@ export default function LocationPickerScreen() {
     };
   }, []);
 
-  // ─── Confirm: pass params back ───
-  const onConfirm = useCallback(() => {
+  // ─── Confirm: store location in AsyncStorage, then go back ───
+  const onConfirm = useCallback(async () => {
     if (!center) return;
-    router.navigate({
-      pathname: '..' as any,
-      params: {
-        pickedLat: String(center.lat),
-        pickedLng: String(center.lng),
-        pickedAddress: address,
-      },
-    });
+    await AsyncStorage.setItem(
+      'signupDraftLocation',
+      JSON.stringify({ lat: center.lat, lng: center.lng, address }),
+    );
+    router.back();
   }, [center, address, router]);
 
   // ─── Loading state ───
