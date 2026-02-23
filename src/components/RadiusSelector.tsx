@@ -3,7 +3,7 @@ import React from 'react';
 import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const ACCENT = '#3D9EFF';
-const RADIUS_OPTIONS = [5, 10, 25, 50] as const;
+const RADIUS_OPTIONS = [5, 10, 25, 50, 100, 200] as const;
 
 export interface RadiusSelectorProps {
   valueKm: number;

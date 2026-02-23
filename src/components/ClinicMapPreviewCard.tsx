@@ -73,7 +73,7 @@ function ClinicMapPreviewCard({ clinic, userLocation, isDark, onOpen, onClose }:
             </View>
           )}
 
-          {/* Open Clinic button */}
+          {/* View Profile CTA */}
           <Pressable
             onPress={onOpen}
             style={({ pressed }) => [
@@ -81,8 +81,8 @@ function ClinicMapPreviewCard({ clinic, userLocation, isDark, onOpen, onClose }:
               { opacity: pressed ? 0.8 : 1 },
             ]}
           >
-            <Ionicons name="open-outline" size={13} color="#fff" />
-            <Text style={styles.openBtnText}>Open Clinic</Text>
+            <Ionicons name="person-circle-outline" size={14} color="#fff" />
+            <Text style={styles.openBtnText}>View Profile</Text>
           </Pressable>
         </View>
       </View>

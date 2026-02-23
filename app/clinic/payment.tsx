@@ -77,6 +77,7 @@ export default function ClinicPayment() {
         'pendingSubscriptionEmail',
         'pendingPaymentMethod',
         'clinicId',
+        'pendingFinalPrice',
       ]);
       const map = Object.fromEntries(entries);
       const hasPlan = !!map.pendingSubscriptionPlan;
@@ -94,7 +95,7 @@ export default function ClinicPayment() {
         const billingText = planId === 'ANNUAL' ? t('subscription.yearly', 'Yearly') : t('subscription.monthly', 'Monthly');
         setPlanLabelText(planName);
         setBillingLabelText(billingText);
-        const amount = map.pendingSubscriptionPriceWithAIPro || map.pendingSubscriptionPrice || '19.99';
+        const amount = map.pendingFinalPrice || map.pendingSubscriptionPriceWithAIPro || map.pendingSubscriptionPrice || '19.99';
         setFinalAmount(amount);
         // Load payment method from signup page
         const savedPaymentMethod = map.pendingPaymentMethod as 'card' | 'apple-pay' | 'paypal' | 'google-pay' | null;
@@ -249,7 +250,8 @@ export default function ClinicPayment() {
         targetPlan,
         planName,
         basePrice,
-        finalPrice,
+        priceWithAIPro,
+        actualFinalPrice,
         includeAIPro,
         clinicName,
         clinicPhone,
@@ -260,6 +262,7 @@ export default function ClinicPayment() {
         'pendingSubscriptionPlanName',
         'pendingSubscriptionPrice',
         'pendingSubscriptionPriceWithAIPro',
+        'pendingFinalPrice',
         'pendingIncludeAIPro',
         'pendingClinicName',
         'pendingClinicPhone',
@@ -268,7 +271,7 @@ export default function ClinicPayment() {
       ]);
 
       const plan = targetPlan[1] || 'MONTHLY';
-      const amount = parseFloat(finalPrice[1] || basePrice[1] || '19.99');
+      const amount = parseFloat(actualFinalPrice[1] || priceWithAIPro[1] || basePrice[1] || '19.99');
       const aiPro = includeAIPro[1] === 'true';
       const clinicNameValue = clinicName[1] || 'Clinic';
       const userEmail = (pendingEmail[1] || '').toLowerCase();
@@ -285,7 +288,7 @@ export default function ClinicPayment() {
         subscribed: true,
         subscriptionPlan: plan,
         subscriptionPlanName: planName[1] || plan,
-        subscriptionPrice: parseFloat(basePrice[1] || '19.99'),
+        subscriptionPrice: amount,
         subscriptionPriceWithAIPro: amount,
         includeAIPro: aiPro,
         subscriptionCurrency: 'USD',
@@ -310,7 +313,7 @@ export default function ClinicPayment() {
       // Save to AsyncStorage
       await AsyncStorage.multiSet([
         ['clinicSubscriptionPlan', plan],
-        ['clinicSubscriptionPrice', String(parseFloat(basePrice[1] || '19.99'))],
+        ['clinicSubscriptionPrice', String(amount)],
         ['clinicSubscriptionPriceWithAIPro', String(amount)],
         ['clinicIncludeAIPro', String(aiPro)],
         ['clinicSubscriptionUpdatedAt', String(payload.subscriptionUpdatedAt)],
