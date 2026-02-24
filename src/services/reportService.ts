@@ -3,10 +3,10 @@
  * Handles PDF generation and sharing for sessions and timelines
  */
 
+import { ClinicSettings, PatientMedia, PatientSession } from '@/src/types/media';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as Sharing from 'expo-sharing';
 import * as Print from 'expo-print';
-import { PatientSession, PatientMedia, ClinicSettings } from '@/src/types/media';
+import * as Sharing from 'expo-sharing';
 
 /**
  * Generate a simple text-based session report

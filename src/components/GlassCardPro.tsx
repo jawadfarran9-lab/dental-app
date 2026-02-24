@@ -1,7 +1,7 @@
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Platform, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const ACCENT_COLORS = {
   blue:   { border: 'rgba(61,158,255,0.30)',  glow: 'rgba(61,158,255,0.08)',  shadow: '#3D9EFF' },

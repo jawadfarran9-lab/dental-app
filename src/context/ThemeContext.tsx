@@ -31,6 +31,7 @@ export interface ThemeColors {
   cardBackground: string;
   accentGreen: string;
   accentBrown: string;
+  premiumSheet: string;
 }
 
 export interface ThemeContextType {
@@ -70,6 +71,7 @@ const LIGHT_COLORS: ThemeColors = {
   cardBackground: '#FFFFFF',
   accentGreen: '#10B981',
   accentBrown: '#92400E',
+  premiumSheet: '#DCEBFF',
 };
 
 const DARK_COLORS: ThemeColors = {
@@ -100,6 +102,7 @@ const DARK_COLORS: ThemeColors = {
   cardBackground: '#0F0F10',
   accentGreen: '#10B981',
   accentBrown: '#D97706',
+  premiumSheet: '#0F172A',
 };
 
 interface ThemeProviderProps {
