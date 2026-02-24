@@ -1,18 +1,17 @@
-import React from 'react';
-import {
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from 'react-native';
 import { useTheme } from '@/src/context/ThemeContext';
 import {
-  DAYS_ORDER,
-  DayOfWeek,
-  WeeklySchedule,
-  formatDayLabel,
+    DAYS_ORDER,
+    DayOfWeek,
+    WeeklySchedule,
+    formatDayLabel,
 } from '@/src/types/clinicSchedule';
+import {
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
 interface WorkingHoursEditorProps {
   value: WeeklySchedule;

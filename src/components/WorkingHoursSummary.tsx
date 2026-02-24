@@ -1,12 +1,11 @@
-import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '@/src/context/ThemeContext';
 import {
-  DAYS_ORDER,
-  WeeklySchedule,
-  formatDayLabel,
+    DAYS_ORDER,
+    WeeklySchedule,
+    formatDayLabel,
 } from '@/src/types/clinicSchedule';
 import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, Text, View } from 'react-native';
 
 interface WorkingHoursSummaryProps {
   workingHours: WeeklySchedule;

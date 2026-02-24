@@ -1,16 +1,16 @@
 import { auth, db } from '@/firebaseConfig';
-import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
 import i18n from '@/i18n';
 import GlassCardPro from '@/src/components/GlassCardPro';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
-import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
+import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';

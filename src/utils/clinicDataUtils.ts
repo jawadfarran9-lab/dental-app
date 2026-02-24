@@ -1,7 +1,7 @@
 import { db } from '@/firebaseConfig';
-import { doc, getDoc } from 'firebase/firestore';
 import { WeeklySchedule } from '@/src/types/clinicSchedule';
 import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
+import { doc, getDoc } from 'firebase/firestore';
 
 /**
  * Clinic data type

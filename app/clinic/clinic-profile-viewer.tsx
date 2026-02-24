@@ -1,14 +1,14 @@
 import { db } from '@/firebaseConfig';
 import WorkingHoursSummary from '@/src/components/WorkingHoursSummary';
 import { useTheme } from '@/src/context/ThemeContext';
-import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
+import { WeeklySchedule } from '@/src/types/clinicSchedule';
 import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
+import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { WeeklySchedule } from '@/src/types/clinicSchedule';
 
 interface ClinicProfile {
   name?: string;
