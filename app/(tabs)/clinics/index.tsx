@@ -6,9 +6,9 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useHasActiveSubscription } from '@/src/hooks/useHasActiveSubscription';
 import {
-  PublicClinic,
-  fetchPublishedClinics,
-  reverseGeocode,
+    PublicClinic,
+    fetchPublishedClinics,
+    reverseGeocode,
 } from '@/src/services/publicClinics';
 import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,19 +17,19 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Easing,
-  FlatList,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    Easing,
+    FlatList,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 // ─── Animated FlatList (required for native onScroll driver) ───

@@ -1,9 +1,9 @@
-import ClinicMapPreviewCard from '@/src/components/ClinicMapPreviewCard';
+import ClinicBottomCard from '@/src/components/ClinicBottomCard';
 import MapErrorBoundary from '@/src/components/MapErrorBoundary';
 import { useTheme } from '@/src/context/ThemeContext';
 import {
-    PublicClinic,
-    fetchPublishedClinics,
+  PublicClinic,
+  fetchPublishedClinics,
 } from '@/src/services/publicClinics';
 import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,22 +11,21 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Platform,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  Platform,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import ClusteredMapView from 'react-native-map-clustering';
 import MapView, { Marker, Region } from 'react-native-maps';
 
 // ─── Same category derivation as index.tsx ───
 type CategoryFilter = 'all' | 'dental' | 'laser' | 'beauty';
 
-/** Zoom tier — pure derivation from visibleKm, controls density only */
-type ZoomTier = 200 | 100 | 50 | 25 | 10 | 5;
 
 function deriveClinicType(specialty?: string): 'dental' | 'laser' | 'beauty' | null {
   if (!specialty) return null;
@@ -80,27 +79,6 @@ function radiusToDelta(km: number): number {
   return RADIUS_DELTA_MAP[best];
 }
 
-/** Snap visibleKm to zoom tier */
-function snapToZoomTier(km: number): ZoomTier {
-  if (km >= 150) return 200;
-  if (km >= 75) return 100;
-  if (km >= 37) return 50;
-  if (km >= 17) return 25;
-  if (km >= 7) return 10;
-  return 5;
-}
-
-/** Density cap per zoom tier */
-function maxLabelsForTier(tier: ZoomTier): number {
-  switch (tier) {
-    case 200: return 2;
-    case 100: return 2;
-    case 50:  return 4;
-    case 25:  return 4;
-    case 10:  return 6;
-    case 5:   return 8;
-  }
-}
 
 /**
  * Compute visible radius in km from a map region.
@@ -116,45 +94,6 @@ function computeVisibleKm(region: Region, prev: number): number {
   return Math.min(Math.max(1, Math.round(km)), 999);
 }
 
-// ─── Stable empty set (same reference always — prevents useMemo churn) ───
-const EMPTY_SET: Set<string> = new Set<string>();
-
-// ─── DEV-only render instrumentation ───
-// Tracks render counts for performance audits. Stripped in production.
-const DEV_COUNTERS = __DEV__
-  ? {
-      screen: 0,
-      markerMemo: 0,
-      stableMarker: 0,
-      clinicMarkerView: 0,
-      previewCard: 0,
-      log() {
-        console.log(
-          `[MAP_PERF] screen=${this.screen} markerMemo=${this.markerMemo} ` +
-          `stableMarker=${this.stableMarker} clinicMarkerView=${this.clinicMarkerView} ` +
-          `previewCard=${this.previewCard}`,
-        );
-      },
-      reset() {
-        this.screen = this.markerMemo = this.stableMarker = this.clinicMarkerView = this.previewCard = 0;
-      },
-    }
-  : null;
-
-// ─── Collision avoidance: approximate label box in normalised viewport coords ───
-// Conservative values to prevent near-overlaps
-const LABEL_BOX_W = 0.16; // ~16% viewport width
-const LABEL_BOX_H = 0.08; // ~8% viewport height
-
-function boxesOverlap(
-  ax: number, ay: number,
-  bx: number, by: number,
-): boolean {
-  return (
-    Math.abs(ax - bx) < LABEL_BOX_W &&
-    Math.abs(ay - by) < LABEL_BOX_H
-  );
-}
 
 // ─── Fixed zIndex hierarchy ───
 const Z_SELECTED  = 1000;
@@ -168,7 +107,6 @@ const Z_LABEL     = 500;
  * Receives category + radiusKm filters from the list screen via search params.
  */
 function ClinicsMapScreenInner() {
-  if (__DEV__) DEV_COUNTERS!.screen++;
   const router = useRouter();
   const { isDark } = useTheme();
   const params = useLocalSearchParams<{ category?: string; radiusKm?: string }>();
@@ -198,8 +136,6 @@ function ClinicsMapScreenInner() {
   const mapRef = useRef<MapView | null>(null);
   /** Always-current region — read inside useMemos without being a reactive dep */
   const regionRef = useRef<Region | null>(null);
-  /** Stable reference guard — prevents identity thrash when approved IDs haven't changed */
-  const prevApprovedIdsRef = useRef<Set<string>>(EMPTY_SET);
   /** Refresh debounce timer */
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** Animated pulse for refresh indicator */
@@ -311,80 +247,6 @@ function ClinicsMapScreenInner() {
     return result;
   }, [clinics, category, radiusKm, userLocation]);
 
-  // ─── Derived zoom tier (pure, no state, no debounce) ───
-  const zoomTier: ZoomTier = useMemo(() => snapToZoomTier(visibleKm ?? 999), [visibleKm]);
-  const maxVisibleLabels = useMemo(() => maxLabelsForTier(zoomTier), [zoomTier]);
-
-  // ─── Viewport-authoritative approved clinic pipeline ───
-  // Single pipeline: viewport filter → distance sort → collision resolve → density cap
-  const approvedClinicIds: Set<string> = useMemo(() => {
-    const region = regionRef.current;
-    if (!region) return EMPTY_SET;
-
-    const latMin = region.latitude - region.latitudeDelta / 2;
-    const latMax = region.latitude + region.latitudeDelta / 2;
-    const lngMin = region.longitude - region.longitudeDelta / 2;
-    const lngMax = region.longitude + region.longitudeDelta / 2;
-    const latSpan = latMax - latMin || 1;
-    const lngSpan = lngMax - lngMin || 1;
-
-    // 1. Viewport filter
-    const visible = filteredClinics.filter((c) => {
-      const { lat, lng } = c.geo!;
-      return lat >= latMin && lat <= latMax && lng >= lngMin && lng <= lngMax;
-    });
-
-    // 2. Distance sort
-    const refPoint = userLocation ?? { lat: region.latitude, lng: region.longitude };
-    const sorted = [...visible].sort(
-      (a, b) => getDistanceBetween(refPoint, a.geo!) - getDistanceBetween(refPoint, b.geo!),
-    );
-
-    // 3. Collision resolution + density cap
-    const accepted: { id: string; nx: number; ny: number }[] = [];
-
-    // Selected clinic always gets priority (if in viewport)
-    if (selectedClinic?.geo) {
-      const sx = (selectedClinic.geo.lng - lngMin) / lngSpan;
-      const sy = (selectedClinic.geo.lat - latMin) / latSpan;
-      if (
-        selectedClinic.geo.lat >= latMin && selectedClinic.geo.lat <= latMax &&
-        selectedClinic.geo.lng >= lngMin && selectedClinic.geo.lng <= lngMax
-      ) {
-        accepted.push({ id: selectedClinic.id, nx: sx, ny: sy });
-      }
-    }
-
-    for (const c of sorted) {
-      if (accepted.length >= maxVisibleLabels) break;
-      if (accepted.some((a) => a.id === c.id)) continue;
-      const nx = (c.geo!.lng - lngMin) / lngSpan;
-      const ny = (c.geo!.lat - latMin) / latSpan;
-      if (accepted.some((a) => boxesOverlap(a.nx, a.ny, nx, ny))) continue;
-      accepted.push({ id: c.id, nx, ny });
-    }
-
-    return new Set(accepted.map((a) => a.id));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleKm, filteredClinics, userLocation, selectedClinic, maxVisibleLabels]);
-
-  // Stable reference guard: return previous Set if content is identical
-  const stableApprovedIds: Set<string> = useMemo(() => {
-    const prev = prevApprovedIdsRef.current;
-    if (approvedClinicIds === EMPTY_SET) {
-      prevApprovedIdsRef.current = EMPTY_SET;
-      return EMPTY_SET;
-    }
-    if (approvedClinicIds.size === prev.size) {
-      let same = true;
-      for (const id of approvedClinicIds) {
-        if (!prev.has(id)) { same = false; break; }
-      }
-      if (same) return prev;
-    }
-    prevApprovedIdsRef.current = approvedClinicIds;
-    return approvedClinicIds;
-  }, [approvedClinicIds]);
 
   // ─── Compute initial region (derived from immutable radiusKm) ───
   const initialRegion: Region = useMemo(() => {
@@ -414,10 +276,10 @@ function ClinicsMapScreenInner() {
     setSelectedClinic(clinic);
   }, []);
 
-  const handleOpenClinic = useCallback(() => {
-    if (!selectedClinic) return;
-    router.push(`/clinics/${selectedClinic.clinicId}` as any);
-  }, [router, selectedClinic]);
+  const handleOpenClinic = useCallback((clinic: PublicClinic) => {
+    if (!clinic?.clinicId) return;
+    router.push(`/clinics/${clinic.clinicId}` as any);
+  }, [router]);
 
   const handleClosePreview = useCallback(() => {
     setSelectedClinic(null);
@@ -457,26 +319,78 @@ function ClinicsMapScreenInner() {
     return parts.join(' · ');
   }, [category, visibleKm]);
 
-  // ─── Render ONLY approved clinics — DOT + NAME atomic ───
-  const markerElements = useMemo(() => {
-    if (__DEV__) DEV_COUNTERS!.markerMemo++;
-    const approvedClinics = filteredClinics.filter((c) => stableApprovedIds.has(c.id));
-
-    return approvedClinics.map((clinic, index) => {
-      const isSelected = selectedId === clinic.id;
-
+  // ─── Clustering Layer: all filteredClinics as <Marker> for Supercluster ───
+  const clusterMarkers = useMemo(() => {
+    return filteredClinics.map((clinic) => {
+      let h = 0;
+      for (let i = 0; i < clinic.id.length; i++) h += clinic.id.charCodeAt(i);
+      const staggerPad = h % 2 === 0 ? STAGGER_EVEN_PAD : STAGGER_ODD_PAD;
+      const sel = selectedId === clinic.id;
       return (
-        <StableMarker
+        <Marker
           key={clinic.id}
-          clinic={clinic}
-          index={index}
-          isSelected={isSelected}
-          isDark={isDark}
-          onPress={handleMarkerPress}
-        />
+          identifier={clinic.id}
+          coordinate={{ latitude: clinic.geo!.lat, longitude: clinic.geo!.lng }}
+          onPress={() => handleMarkerPress(clinic)}
+          tracksViewChanges={false}
+          zIndex={sel ? Z_SELECTED : Z_LABEL}
+          anchor={{ x: 0.5, y: 1 }}
+          hitSlop={MARKER_HIT_SLOP}
+        >
+          <ClinicMarkerView
+            name={clinic.name}
+            isSelected={sel}
+            isDark={isDark}
+            staggerPadTop={staggerPad}
+          />
+        </Marker>
       );
     });
-  }, [filteredClinics, selectedId, stableApprovedIds, isDark, handleMarkerPress]);
+  }, [filteredClinics, selectedId, isDark, handleMarkerPress]);
+
+  // ─── Cluster bubble renderer (custom renderCluster for Supercluster) ───
+  const renderClusterMarker = useCallback(
+    (cluster: any) => {
+      const { id, geometry, properties, onPress } = cluster;
+      const count: number = properties.point_count;
+      const [lng, lat] = geometry.coordinates as [number, number];
+      const color =
+        count >= 16 ? '#FF8C42' : count >= 6 ? '#7B61FF' : '#3D9EFF';
+      const bg = isDark
+        ? 'rgba(22,28,36,0.92)'
+        : 'rgba(255,255,255,0.95)';
+      const textCol = isDark ? '#FFFFFF' : '#0D1B2A';
+      return (
+        <Marker
+          key={`cluster-${id}`}
+          coordinate={{ latitude: lat, longitude: lng }}
+          onPress={onPress}
+          tracksViewChanges={false}
+          zIndex={count + 1}
+        >
+          <View style={clusterStyles.wrap}>
+            <View
+              style={[
+                clusterStyles.bubble,
+                { backgroundColor: bg, borderColor: color },
+              ]}
+            >
+              <Text style={[clusterStyles.count, { color: textCol }]}>
+                +{count}
+              </Text>
+            </View>
+            <View
+              style={[
+                clusterStyles.dot,
+                { backgroundColor: color, borderColor: '#fff' },
+              ]}
+            />
+          </View>
+        </Marker>
+      );
+    },
+    [isDark],
+  );
 
   return (
     <View style={styles.container}>
@@ -486,17 +400,27 @@ function ClinicsMapScreenInner() {
           <ActivityIndicator size="large" color="#3D9EFF" />
         </View>
       ) : (
-        <MapView
-          ref={mapRef}
+        <ClusteredMapView
+          ref={mapRef as any}
           style={StyleSheet.absoluteFill}
           initialRegion={initialRegion}
           showsUserLocation
           showsMyLocationButton={false}
-          onPress={handleClosePreview}
+          onPress={(e: any) => {
+            if (e?.nativeEvent?.action === 'marker-press') return;
+            handleClosePreview();
+          }}
           onRegionChangeComplete={onRegionChangeComplete}
+          clusteringEnabled
+          radius={60}
+          minPoints={2}
+          maxZoom={16}
+          renderCluster={renderClusterMarker}
+          animationEnabled={Platform.OS === 'ios'}
+          tracksViewChanges={false}
         >
-          {markerElements}
-        </MapView>
+          {clusterMarkers}
+        </ClusteredMapView>
       )}
 
       {/* Refresh indicator */}
@@ -541,16 +465,14 @@ function ClinicsMapScreenInner() {
         </TouchableOpacity>
       )}
 
-      {/* Preview Card */}
-      {selectedClinic && (
-        <ClinicMapPreviewCard
-          clinic={selectedClinic}
-          userLocation={userLocation}
-          isDark={isDark}
-          onOpen={handleOpenClinic}
-          onClose={handleClosePreview}
-        />
-      )}
+      {/* Bottom Preview Card */}
+      <ClinicBottomCard
+        clinic={selectedClinic}
+        userLocation={userLocation}
+        isDark={isDark}
+        onOpen={handleOpenClinic}
+        onClose={handleClosePreview}
+      />
     </View>
   );
 }
@@ -674,97 +596,56 @@ const styles = StyleSheet.create({
 
 // ─── Stable hitSlop constant (prevents inline object re-creation) ───
 const HIT_SLOP_8 = { top: 8, bottom: 8, left: 8, right: 8 };
-
-// ─── Pre-computed stagger margin styles ───
-const STAGGER_EVEN = { marginTop: -22 };
-const STAGGER_ODD = { marginTop: -34 };
+const MARKER_HIT_SLOP = { top: 24, bottom: 24, left: 24, right: 24 };
 
 /**
- * StableMarker — individual marker component.
- * React.memo with shallow comparison means it only re-renders when its
- * props actually change. Since the parent passes stable values (clinic
- * object identity, primitives), this prevents per-marker churn.
+ * Stagger: even markers get less top padding (label closer to dot),
+ * odd markers get more top padding (label further from dot).
+ * All padding is INSIDE the wrapper — nothing escapes Marker bounds.
  */
-const StableMarker = React.memo(
-  ({
-    clinic,
-    index,
-    isSelected,
-    isDark,
-    onPress,
-  }: {
-    clinic: PublicClinic;
-    index: number;
-    isSelected: boolean;
-    isDark: boolean;
-    onPress: (clinic: PublicClinic) => void;
-  }) => {
-    if (__DEV__) DEV_COUNTERS!.stableMarker++;
-    const handlePress = useCallback(() => onPress(clinic), [onPress, clinic]);
-    const coord = useMemo(() => ({
-      latitude: clinic.geo!.lat,
-      longitude: clinic.geo!.lng,
-    }), [clinic]);
-    const staggerOffsetY = index % 2 === 0 ? -22 : -34;
-    const markerZ = isSelected ? Z_SELECTED : Z_LABEL;
-
-    return (
-      <Marker
-        coordinate={coord}
-        onPress={handlePress}
-        tracksViewChanges={false}
-        zIndex={markerZ}
-      >
-        <ClinicMarkerView
-          name={clinic.name}
-          isSelected={isSelected}
-          isDark={isDark}
-          staggerOffsetY={staggerOffsetY}
-        />
-      </Marker>
-    );
-  },
-);
+const STAGGER_EVEN_PAD = 12;
+const STAGGER_ODD_PAD = 0;
+/** Wrapper height must contain: stagger pad + bubble (~26) + gap (3) + dot (14) */
+const MARKER_WRAP_H = 58;
 
 // ─── Clinic marker view — DOT + NAME always together (atomic) ───
 const ClinicMarkerView = React.memo(
-  ({ name, isSelected, isDark, staggerOffsetY = 0 }: {
+  ({ name, isSelected, isDark, staggerPadTop = 0 }: {
     name: string;
     isSelected: boolean;
     isDark: boolean;
-    staggerOffsetY?: number;
+    staggerPadTop?: number;
   }) => {
-    if (__DEV__) DEV_COUNTERS!.clinicMarkerView++;
-    const bg = isDark ? 'rgba(22,28,36,0.88)' : 'rgba(255,255,255,0.92)';
+    const bg = isSelected
+      ? (isDark ? 'rgba(30,40,55,0.95)' : 'rgba(255,255,255,0.98)')
+      : (isDark ? 'rgba(22,28,36,0.88)' : 'rgba(255,255,255,0.92)');
     const border = isSelected
       ? '#3D9EFF'
       : isDark
-        ? 'rgba(61,158,255,0.40)'
-        : 'rgba(61,158,255,0.30)';
-    const textColor = isDark ? '#E8EDF2' : '#1A2A3A';
-    const staggerStyle = staggerOffsetY === -22 ? STAGGER_EVEN : staggerOffsetY === -34 ? STAGGER_ODD : undefined;
+        ? 'rgba(61,158,255,0.25)'
+        : 'rgba(61,158,255,0.18)';
+    const textColor = isSelected
+      ? (isDark ? '#FFFFFF' : '#0D1B2A')
+      : (isDark ? '#E8EDF2' : '#1A2A3A');
+    const dotBg = isSelected ? '#2B8AE8' : '#3D9EFF';
+    const dotBorder = isSelected ? '#E8EDF2' : '#fff';
 
     return (
-      <View style={staggerStyle ? [markerStyles.wrap, staggerStyle] : markerStyles.wrap}>
+      <View style={[markerStyles.wrap, { paddingTop: staggerPadTop }]}>
         <View
           style={[
             markerStyles.bubble,
-            isSelected && markerStyles.bubbleSelected,
             { backgroundColor: bg, borderColor: border },
           ]}
         >
           <Text
-            style={[
-              markerStyles.name,
-              isSelected && markerStyles.nameSelected,
-              { color: textColor },
-            ]}
+            style={[markerStyles.name, { color: textColor }]}
             numberOfLines={1}
           >
             {name}
           </Text>
         </View>
-        <View style={[markerStyles.dot, isSelected && markerStyles.dotSelected]} />
+        <View style={[markerStyles.dot, { backgroundColor: dotBg, borderColor: dotBorder }]} />
       </View>
     );
   },
@@ -774,6 +655,9 @@ const ClinicMarkerView = React.memo(
 const markerStyles = StyleSheet.create({
   wrap: {
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    minHeight: MARKER_WRAP_H,
+    minWidth: 50,
   },
   bubble: {
     maxWidth: 140,
@@ -792,27 +676,10 @@ const markerStyles = StyleSheet.create({
       android: { elevation: 3 },
     }),
   },
-  bubbleSelected: {
-    maxWidth: 180,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderWidth: 1.5,
-    ...Platform.select({
-      ios: {
-        shadowOpacity: 0.30,
-        shadowRadius: 8,
-      },
-      android: { elevation: 6 },
-    }),
-  },
   name: {
     fontSize: 11,
     fontWeight: '700',
     letterSpacing: 0.1,
-  },
-  nameSelected: {
-    fontSize: 12,
-    fontWeight: '800',
   },
   dot: {
     width: 12,
@@ -831,10 +698,50 @@ const markerStyles = StyleSheet.create({
       android: { elevation: 2 },
     }),
   },
-  dotSelected: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2.5,
+});
+
+// ─── Cluster marker styles ───
+const clusterStyles = StyleSheet.create({
+  wrap: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    minHeight: 48,
+    minWidth: 44,
+  },
+  bubble: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    marginBottom: 3,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0D1B2A',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.18,
+        shadowRadius: 5,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  count: {
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  dot: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0D1B2A',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.22,
+        shadowRadius: 3,
+      },
+      android: { elevation: 3 },
+    }),
   },
 });

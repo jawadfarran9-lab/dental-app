@@ -1,20 +1,20 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
+import GlassCardPro from '@/src/components/GlassCardPro';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
-
-/** Subscription-wide primary blue — matches subscribe.tsx ACCENT */
-const SUBSCRIPTION_BLUE = '#3D9EFF';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect, useRouter, Stack } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import GlassCardPro from '@/src/components/GlassCardPro';
+
+/** Subscription-wide primary blue — matches subscribe.tsx ACCENT */
+const SUBSCRIPTION_BLUE = '#3D9EFF';
 
 /**
  * SUBSCRIPTION CONFIRMATION PAGE
