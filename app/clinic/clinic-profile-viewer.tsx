@@ -1,10 +1,14 @@
 import { db } from '@/firebaseConfig';
+import WorkingHoursSummary from '@/src/components/WorkingHoursSummary';
 import { useTheme } from '@/src/context/ThemeContext';
+import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
+import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Image, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { WeeklySchedule } from '@/src/types/clinicSchedule';
 
 interface ClinicProfile {
   name?: string;
@@ -13,6 +17,7 @@ interface ClinicProfile {
   heroImage?: string;
   whatsapp?: string;
   isPublished?: boolean;
+  workingHours?: WeeklySchedule;
 }
 
 export default function ClinicProfileViewer() {
@@ -21,6 +26,11 @@ export default function ClinicProfileViewer() {
   const { clinicId } = useLocalSearchParams<{ clinicId: string }>();
   const [loading, setLoading] = useState(true);
   const [profile, setProfile] = useState<ClinicProfile | null>(null);
+
+  const openStatus = useMemo(() => {
+    if (!profile?.workingHours) return null;
+    return getClinicOpenStatus(profile.workingHours);
+  }, [profile]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -35,7 +45,7 @@ export default function ClinicProfileViewer() {
           const clinicDoc = await getDoc(doc(db, 'clinics', clinicId));
           if (clinicDoc.exists()) {
             const d = clinicDoc.data();
-            setProfile({ name: d.clinicName || d.name, phone: d.clinicPhone || d.phone });
+            setProfile({ name: d.clinicName || d.name, phone: d.clinicPhone || d.phone, workingHours: parseWorkingHours(d.workingHours) ?? undefined });
           }
         }
       } catch (err) {
@@ -85,6 +95,24 @@ export default function ClinicProfileViewer() {
               {profile.name || 'Unnamed Clinic'}
             </Text>
 
+            {/* Open / Closed status pill */}
+            {openStatus && (
+              <View style={styles.statusRow}>
+                <View style={[styles.statusPill, { backgroundColor: openStatus.status === 'open' ? 'rgba(16,185,129,0.12)' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') }]}>
+                  <View style={[styles.statusDot, { backgroundColor: openStatus.status === 'open' ? '#10b981' : '#94A3B8' }]} />
+                  <Text style={[styles.statusText, { color: openStatus.status === 'open' ? '#10b981' : colors.textSecondary }]}>
+                    {openStatus.status === 'open' ? 'Open Now' : 'Closed Now'}
+                  </Text>
+                </View>
+                {openStatus.status === 'open' && (
+                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Closes at {openStatus.closesAt}</Text>
+                )}
+                {openStatus.status === 'closed' && openStatus.opensAt && (
+                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Opens at {openStatus.opensAt}</Text>
+                )}
+              </View>
+            )}
+
             {profile.address ? (
               <View style={styles.infoRow}>
                 <Ionicons name="location-outline" size={18} color={colors.textSecondary} />
@@ -106,6 +134,13 @@ export default function ClinicProfileViewer() {
               </View>
             ) : null}
           </View>
+
+          {/* Working Hours */}
+          {profile.workingHours && (
+            <View style={{ paddingHorizontal: 20 }}>
+              <WorkingHoursSummary workingHours={profile.workingHours} />
+            </View>
+          )}
 
           {/* Placeholder for future content */}
           <View style={[styles.placeholder, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: colors.border }]}>
@@ -208,5 +243,32 @@ const styles = StyleSheet.create({
   placeholderSubtext: {
     fontSize: 13,
     opacity: 0.7,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 4,
+  },
+  statusPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 6,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  statusText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  statusDetail: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });

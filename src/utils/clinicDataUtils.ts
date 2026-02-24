@@ -1,5 +1,7 @@
 import { db } from '@/firebaseConfig';
 import { doc, getDoc } from 'firebase/firestore';
+import { WeeklySchedule } from '@/src/types/clinicSchedule';
+import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 
 /**
  * Clinic data type
@@ -25,6 +27,7 @@ export type ClinicData = {
     lng: number;
     address: string;
   };
+  workingHours?: WeeklySchedule;
 };
 
 /**
@@ -61,6 +64,7 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
       status: data?.status,
       clinicType: data?.clinicType,
       location: data?.location,
+      workingHours: parseWorkingHours(data?.workingHours) ?? undefined,
     };
 
     if (clinicData.imageUrl) {

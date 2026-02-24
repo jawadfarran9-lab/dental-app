@@ -1,11 +1,14 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import StaticMapPreview from '@/src/components/StaticMapPreview';
+import WorkingHoursEditor from '@/src/components/WorkingHoursEditor';
 import { useTheme } from '@/src/context/ThemeContext';
+import { createDefaultSchedule, DAYS_ORDER, formatDayLabel, isValidTimeRange, WeeklySchedule } from '@/src/types/clinicSchedule';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { signInAnonymously } from 'firebase/auth';
 import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -16,11 +19,11 @@ import CountrySelect from '../components/CountrySelect';
 const ACCENT = '#3D9EFF';
 
 /**
- * CLINIC SIGNUP - FIRESTORE ONLY (No Firebase Auth)
+ * CLINIC SIGNUP - Anonymous Auth → Firestore
  * 
- * Saves clinic data directly to Firestore:
- * - No Firebase Auth user creation
- * - Password stored in Firestore (hashed in production)
+ * Uses Firebase Anonymous Auth to get a temporary authenticated session,
+ * then saves clinic data to Firestore with ownerId = auth.currentUser.uid.
+ * The anonymous account is linked to real credentials at confirm-subscription.
  * - Login will query Firestore by email/password
  * 
  * PHASE F: Prevents patients from accessing this page
@@ -76,6 +79,7 @@ export default function ClinicSignup() {
   } | null>(null);
 
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [workingHours, setWorkingHours] = useState<WeeklySchedule>(createDefaultSchedule());
 
   // ── Phase 3: Entrance animation ──
   const entranceScale = useRef(new Animated.Value(0.97)).current;
@@ -444,15 +448,42 @@ export default function ClinicSignup() {
       );
     }
 
+    // Working hours: at least one day must be enabled
+    const enabledDays = DAYS_ORDER.filter((d) => workingHours[d].enabled);
+    if (enabledDays.length === 0) {
+      return Alert.alert(
+        'Working Hours Required',
+        'Please select at least one working day and set valid hours.'
+      );
+    }
+
+    // Working hours: each enabled day must have a valid time range
+    for (const day of enabledDays) {
+      const { open, close } = workingHours[day];
+      if (!isValidTimeRange(open, close)) {
+        return Alert.alert(
+          'Invalid Working Hours',
+          `${formatDayLabel(day)} has an invalid time range. Please use HH:MM and ensure opening time is before closing time.`
+        );
+      }
+    }
+
     setLoading(true);
     try {
       
+      // Ensure we have an authenticated session (anonymous) before any Firestore write
+      if (!auth.currentUser) {
+        await signInAnonymously(auth);
+      }
+      const ownerUid = auth.currentUser!.uid;
+
       // Get or create clinic ID
       let existingClinicId = await AsyncStorage.getItem('clinicId');
       
       if (!existingClinicId) {
         // Create new clinic document if doesn't exist
         const newClinicRef = await addDoc(collection(db, 'clinics'), {
+          ownerId: ownerUid,
           subscribed: false,
           createdAt: Date.now(),
           status: 'pending_subscription',
@@ -480,6 +511,8 @@ export default function ClinicSignup() {
         ['pendingCity', city || ''],
         ['pendingPhone', phone.trim() || ''],  // ✅ Personal/Account phone
         ['pendingClinicType', clinicType || ''],  // ✅ Clinic type (dental/beauty/laser)
+        ['pendingWorkingHours', JSON.stringify(workingHours)],
+        ['pendingPassword', password],  // Needed for credential linking at confirm
       ];
 
       // For free subscriptions, enable AI Pro by default
@@ -501,6 +534,7 @@ export default function ClinicSignup() {
 
       // Update existing clinic document with account credentials (use merge to avoid "No document" error)
       await setDoc(doc(db, 'clinics', existingClinicId), {
+        ownerId: ownerUid,
         firstName,
         lastName,
         clinicName: clinicName.trim() || null,
@@ -516,6 +550,7 @@ export default function ClinicSignup() {
           lng: clinicLocation?.lng ?? null,
           address: clinicLocation?.address ?? null,
         },
+        workingHours,
         accountCreatedAt: Date.now(),
         status: 'active', // Mark as fully active
       }, { merge: true });
@@ -1111,6 +1146,12 @@ export default function ClinicSignup() {
               )}
             </>
           )}
+        </View>
+
+        {/* ── Clinic Working Hours ── */}
+        <View style={[styles.section, styles.glassCard, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.50)' }]}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Clinic Working Hours</Text>
+          <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />
         </View>
 
         {/* Payment Method Selection */}

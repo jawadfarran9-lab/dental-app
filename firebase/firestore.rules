@@ -28,13 +28,39 @@ service cloud.firestore {
       return isAuthed() && userClinic() == resourceClinicId;
     }
 
+    // ── workingHours field validation ──
+    function isValidHHMM(s) {
+      return s is string && s.matches('^[0-2][0-9]:[0-5][0-9]$');
+    }
+    function isValidDay(day) {
+      return day is map &&
+        day.enabled is bool &&
+        isValidHHMM(day.open) &&
+        isValidHHMM(day.close) &&
+        (day.enabled == false || day.open < day.close);
+    }
+    function isValidWorkingHours(wh) {
+      return wh is map &&
+        wh.keys().hasAll(['monday','tuesday','wednesday','thursday','friday','saturday','sunday']) &&
+        isValidDay(wh.monday) &&
+        isValidDay(wh.tuesday) &&
+        isValidDay(wh.wednesday) &&
+        isValidDay(wh.thursday) &&
+        isValidDay(wh.friday) &&
+        isValidDay(wh.saturday) &&
+        isValidDay(wh.sunday);
+    }
+    function workingHoursGuard() {
+      return !('workingHours' in request.resource.data) || isValidWorkingHours(request.resource.data.workingHours);
+    }
+
     // ----------------------------------------------------------------------
     // Clinics collection: metadata; readable to members of same clinic
     // Owner can update certain config fields; others are read-only
     // ----------------------------------------------------------------------
     match /clinics/{clinicId} {
       allow read: if isAuthed() && sameClinic(clinicId);
-      allow update: if isOwner() && sameClinic(clinicId);
+      allow update: if isOwner() && sameClinic(clinicId) && workingHoursGuard();
       allow create, delete: if false; // Managed by backend only
     }
 
@@ -124,8 +150,16 @@ service cloud.firestore {
     
     // CLINIC AUTHENTICATION & BASIC DATA
     match /clinics/{clinicId} {
-      allow read, write: if request.auth != null && 
-                          get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+      allow read: if request.auth != null &&
+                     get(/databases/$(database)/documents/clinics/$(clinicId)).data.get('ownerId') == request.auth.uid;
+      // Creates: new doc must carry the creator's UID as ownerId
+      allow create: if request.auth != null &&
+                       request.resource.data.ownerId == request.auth.uid &&
+                       workingHoursGuard();
+      // Updates: existing doc's ownerId must match the caller
+      allow update: if request.auth != null &&
+                       resource.data.ownerId == request.auth.uid &&
+                       workingHoursGuard();
       
       // PATIENT RECORDS
       match /patients/{patientId} {

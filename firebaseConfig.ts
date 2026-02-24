@@ -1,5 +1,6 @@
-// firebaseConfig.ts - Firebase client initialization (Firestore only)
+// firebaseConfig.ts - Firebase client initialization
 import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
@@ -16,8 +17,9 @@ const firebaseConfig = {
 // Initialize Firebase app (ONLY ONCE)
 const app = initializeApp(firebaseConfig);
 
-// Export Firebase services (NO AUTH)
+// Export Firebase services
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const auth = getAuth(app);
 export { app };
 

@@ -1,9 +1,12 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
+import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
 import i18n from '@/i18n';
 import GlassCardPro from '@/src/components/GlassCardPro';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
+import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
+import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -51,6 +54,8 @@ export default function ConfirmSubscription() {
   const [clinicType, setClinicType] = useState<'dental' | 'beauty' | 'laser' | ''>('');  // ✅ Clinic type for navigation
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [priceReady, setPriceReady] = useState(false);
+  const [workingHours, setWorkingHours] = useState<WeeklySchedule | null>(null);
+  const [pendingPassword, setPendingPassword] = useState('');
 
   // ── Price animation refs (UI-only, no recalculation) ──
   const basePriceOpacity = useRef(new Animated.Value(0)).current;
@@ -165,6 +170,8 @@ export default function ConfirmSubscription() {
             'pendingCity',                   // 15
             'pendingPhone',                  // 16 ✅ Personal phone
             'pendingClinicType',             // 17 ✅ Clinic type for navigation
+            'pendingWorkingHours',           // 18 ✅ Working hours schedule
+            'pendingPassword',               // 19 ✅ Password for credential linking
           ]);
 
           const planName = results[0]?.[1] || 'Monthly';
@@ -184,6 +191,8 @@ export default function ConfirmSubscription() {
           const cityName = results[15]?.[1] || '';
           const pPhone = results[16]?.[1] || '';  // Personal phone
           const cType = results[17]?.[1] as 'dental' | 'beauty' | 'laser' | '' || '';  // Clinic type
+          const whRaw = results[18]?.[1] || null;  // Working hours JSON
+          const pwd = results[19]?.[1] || '';  // Password for credential linking
           const hasAIPro = aiProStr === 'true';
 
           // ✅ SIMPLIFIED: Use pendingFinalPrice directly - no fallbacks!
@@ -229,6 +238,8 @@ export default function ConfirmSubscription() {
           setCountry(countryCode);
           setCity(cityName);
           setClinicType(cType);  // ✅ Set clinic type for navigation
+          if (whRaw) { try { setWorkingHours(parseWorkingHours(JSON.parse(whRaw))); } catch {} }
+          setPendingPassword(pwd);
           setPriceReady(true);
 
           // ✅ CRITICAL: Log clinicId status
@@ -359,6 +370,17 @@ BeSmile AI Team
         setupComplete: true,
       }, { merge: true });
 
+      // Link anonymous account to real email/password credential
+      if (auth.currentUser && email && pendingPassword) {
+        try {
+          const credential = EmailAuthProvider.credential(email, pendingPassword);
+          await linkWithCredential(auth.currentUser, credential);
+        } catch (linkErr: any) {
+          // Non-fatal: anonymous session stays valid; login flow can recover
+          console.warn('[CONFIRM] Credential link failed:', linkErr.code);
+        }
+      }
+
 
       // Auto-publish to clinics directory (fire-and-forget)
       ensureClinicPublished(clinicId).catch(() => {});
@@ -389,6 +411,8 @@ BeSmile AI Team
         'pendingCity',
         'pendingPhone',
         'pendingClinicType',  // ✅ Also clear clinic type
+        'pendingWorkingHours',
+        'pendingPassword',
       ]);
 
 
@@ -530,6 +554,40 @@ BeSmile AI Team
                 </Text>
               </View>
             </GlassCardPro>
+
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {/* SECTION: WORKING HOURS */}
+            {/* ═══════════════════════════════════════════════════════════════ */}
+            {workingHours && (
+              <GlassCardPro accent="blue" isDark={isDark}>
+                <View style={styles.sectionHeader}>
+                  <View style={[styles.sectionIconBox, { backgroundColor: SUBSCRIPTION_BLUE }]}>
+                    <Ionicons name="time" size={20} color="#fff" />
+                  </View>
+                  <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                    {isRTL ? 'ساعات العمل' : 'Working Hours'}
+                  </Text>
+                </View>
+
+                {DAYS_ORDER.map((day, idx) => {
+                  const ds = workingHours[day];
+                  const isLast = idx === DAYS_ORDER.length - 1;
+                  return (
+                    <View
+                      key={day}
+                      style={[styles.infoRow, !isLast && { borderBottomColor: colors.cardBorder }]}
+                    >
+                      <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                        {formatDayLabel(day)}
+                      </Text>
+                      <Text style={[styles.infoValue, { color: ds.enabled ? colors.textPrimary : colors.textSecondary }]}>
+                        {ds.enabled ? `${ds.open} – ${ds.close}` : (isRTL ? 'مغلق' : 'Closed')}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </GlassCardPro>
+            )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* SECTION 2: ACCOUNT INFO */}
