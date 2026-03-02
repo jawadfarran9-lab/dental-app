@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/hooks/useAuth';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { doc, getDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
@@ -49,7 +50,7 @@ export interface AIProStatus {
  * - finalPrice: total price including AI Pro
  */
 export function useAIProStatus(): AIProStatus {
-  const { userRole, clinicId } = useAuth();
+  const { userRole, clinicId, isSubscribed: authIsSubscribed } = useAuth();
   const [status, setStatus] = useState<AIProStatus>({
     hasAIPro: false,
     aiProPrice: 9.99,
@@ -68,7 +69,9 @@ export function useAIProStatus(): AIProStatus {
       
       if (clinicSnap.exists()) {
         const data = clinicSnap.data();
-        const hasAIPro = data.includeAIPro === true;
+        // Gate AI Pro behind active subscription status
+        const isActive = hasActiveSubscription(data);
+        const hasAIPro = isActive && data.includeAIPro === true;
         const tier = data.subscriptionPlan || null;
         const finalPrice = data.subscriptionPriceWithAIPro || data.subscriptionPrice || null;
 
@@ -125,17 +128,14 @@ export function useAIProStatus(): AIProStatus {
           return;
         }
 
-        // Unauthenticated or clinic user without ID
-        const cachedAIPro = await AsyncStorage.getItem('clinicIncludeAIPro');
-        const hasAIPro = cachedAIPro === 'true';
-
+        // Unauthenticated or clinic user without ID — no access authority from cache
         setStatus({
-          hasAIPro,
+          hasAIPro: false,
           aiProPrice: 9.99,
           isLoading: false,
           error: null,
-          subscriptionTier: await AsyncStorage.getItem('clinicSubscriptionTier'),
-          finalPrice: Number(await AsyncStorage.getItem('clinicFinalPrice')) || null,
+          subscriptionTier: null,
+          finalPrice: null,
         });
       } catch (error) {
         setStatus(prev => ({
@@ -147,7 +147,7 @@ export function useAIProStatus(): AIProStatus {
     };
 
     loadAIProStatus();
-  }, [userRole, clinicId, refreshFromFirestore]);
+  }, [userRole, clinicId, authIsSubscribed, refreshFromFirestore]);
 
   return status;
 }

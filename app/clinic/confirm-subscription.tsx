@@ -11,7 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -141,7 +141,7 @@ export default function ConfirmSubscription() {
       case 'dental': return '/clinic/dental-home';
       case 'beauty': return '/clinic/beauty-home';
       case 'laser': return '/clinic/laser-home';
-      default: return '/clinic/login';
+      default: return '/clinic/dashboard';
     }
   };
   const homeRoute = getHomeRoute(clinicType);
@@ -151,6 +151,10 @@ export default function ConfirmSubscription() {
     useCallback(() => {
       const loadSubscriptionData = async () => {
         try {
+          // Phase U2→R2: Removed FREE-only guard.
+          // This screen now serves both FREE signups and PAID renew flows.
+          // First-time PAID signups go through payment.tsx (routed from signup.tsx).
+
           const results = await AsyncStorage.multiGet([
             'pendingSubscriptionPlanName',  // 0
             'pendingSubscriptionPrice',      // 1
@@ -195,6 +199,39 @@ export default function ConfirmSubscription() {
           const pwd = results[19]?.[1] || '';  // Password for credential linking
           const hasAIPro = aiProStr === 'true';
 
+          // ── Firestore fallback for renew flow ──
+          // Renew writes empty personal keys; fetch clinic doc to fill gaps
+          let fsClinic: Record<string, any> = {};
+          if (cId) {
+            try {
+              const clinicSnap = await getDoc(doc(db, 'clinics', cId));
+              if (clinicSnap.exists()) {
+                fsClinic = clinicSnap.data();
+              }
+            } catch (e) {
+              console.warn('[CONFIRM] Firestore clinic fetch failed:', e);
+            }
+          }
+
+          // Merge: pending key wins; Firestore fills blanks
+          const mergedClinicName = cName || fsClinic.clinicName || '';
+          const mergedClinicPhone = cPhone || fsClinic.clinicPhone || '';
+          const mergedFirstName = fName || fsClinic.firstName || '';
+          const mergedLastName = lName || fsClinic.lastName || '';
+          const mergedCountry = countryCode || fsClinic.countryCode || '';
+          const mergedCity = cityName || fsClinic.city || '';
+          const mergedEmail = userEmail || fsClinic.email || '';
+          const mergedPhone = pPhone || fsClinic.phone || '';
+          const mergedClinicType = (cType || fsClinic.clinicType || '') as 'dental' | 'beauty' | 'laser' | '';
+
+          // Working hours: parse from pending JSON, else use Firestore object
+          let mergedWorkingHours: WeeklySchedule | null = null;
+          if (whRaw) {
+            try { mergedWorkingHours = parseWorkingHours(JSON.parse(whRaw)); } catch {}
+          } else if (fsClinic.workingHours) {
+            try { mergedWorkingHours = parseWorkingHours(fsClinic.workingHours); } catch {}
+          }
+
           // ✅ SIMPLIFIED: Use pendingFinalPrice directly - no fallbacks!
           // pendingFinalPrice contains the FINAL price after any coupon discount
           // If it's '0', that means 100% discount was applied
@@ -225,26 +262,33 @@ export default function ConfirmSubscription() {
           setDiscountAmount(discount > 0 ? discount.toFixed(2) : '0');
           setPaymentMethod(method);
           setAppliedCoupon(coupon);
-          setEmail(userEmail);
+          setEmail(mergedEmail);
           setClinicId(cId);
           setIncludeAIPro(hasAIPro);
           
-          // ✅ Set additional fields
-          setClinicName(cName);
-          setClinicPhone(cPhone);
-          setPersonalPhone(pPhone);  // ✅ Personal phone
-          setFirstName(fName);
-          setLastName(lName);
-          setCountry(countryCode);
-          setCity(cityName);
-          setClinicType(cType);  // ✅ Set clinic type for navigation
-          if (whRaw) { try { setWorkingHours(parseWorkingHours(JSON.parse(whRaw))); } catch {} }
+          // ✅ Set fields — merged with Firestore fallback
+          setClinicName(mergedClinicName);
+          setClinicPhone(mergedClinicPhone);
+          setPersonalPhone(mergedPhone);
+          setFirstName(mergedFirstName);
+          setLastName(mergedLastName);
+          setCountry(mergedCountry);
+          setCity(mergedCity);
+          setClinicType(mergedClinicType);
+          setWorkingHours(mergedWorkingHours);
           setPendingPassword(pwd);
           setPriceReady(true);
 
-          // ✅ CRITICAL: Log clinicId status
-          if (!cId) {
-            console.error('[CONFIRM] WARNING: No clinicId found in AsyncStorage!');
+          // Data integrity guardrails (dev-only warnings, non-blocking)
+          if (__DEV__) {
+            const warnings: string[] = [];
+            if (!cId) warnings.push('clinicId is empty');
+            if (isNaN(finalNum) || finalNum < 0) warnings.push(`finalPrice invalid: ${actualFinalPriceStr}`);
+            if (!planName) warnings.push('planName is empty');
+            if (!mergedClinicType) warnings.push('clinicType is empty — post-confirm route will default to /clinic/login');
+            if (warnings.length > 0) {
+              console.warn('[CONFIRM] Data integrity warnings:', warnings.join('; '));
+            }
           }
 
         } catch (error) {
@@ -358,17 +402,33 @@ BeSmile AI Team
 
       // ✅ CRITICAL: Mark subscription as confirmed in Firestore
       // This MUST succeed for the subscription to be valid
-      
-      await setDoc(doc(db, 'clinics', clinicId), {
+      const confirmPayload: Record<string, any> = {
         subscribed: true,
+        status: 'active',
         subscriptionConfirmedAt: Date.now(),
         subscriptionPlan: planLabel.includes('Annual') ? 'ANNUAL' : 'MONTHLY',
+        subscriptionPlanName: planLabel,
+        subscriptionPrice: parseFloat(finalPrice),
+        subscriptionPriceWithAIPro: parseFloat(finalPrice),
         appliedCoupon: appliedCoupon || null,
         finalPrice: parseFloat(finalPrice),
         basePrice: parseFloat(basePrice),
-        // ✅ Also mark setup as complete if basic info exists
+        includeAIPro,
+        subscriptionCurrency: 'USD',
+        subscriptionUpdatedAt: Date.now(),
+        subscribedAt: serverTimestamp(),
+        detailsCompletedAt: Date.now(),
         setupComplete: true,
-      }, { merge: true });
+      };
+      // Add payment method for paid flows (renew or paid signup)
+      if (paymentMethod && paymentMethod !== 'Not selected') {
+        confirmPayload.paymentMethod = paymentMethod;
+      }
+      // Add clinic details if available
+      if (clinicName) confirmPayload.clinicName = clinicName;
+      if (clinicPhone) confirmPayload.clinicPhone = clinicPhone;
+
+      await setDoc(doc(db, 'clinics', clinicId), confirmPayload, { merge: true });
 
       // Link anonymous account to real email/password credential
       if (auth.currentUser && email && pendingPassword) {
@@ -385,8 +445,18 @@ BeSmile AI Team
       // Auto-publish to clinics directory (fire-and-forget)
       ensureClinicPublished(clinicId).catch(() => {});
 
-      // ✅ Store clinicId temporarily for login redirect
-      const confirmedClinicId = clinicId;
+      // Write session keys for downstream hooks (useSubscriptionStatus, feedback, etc.)
+      const plan = confirmPayload.subscriptionPlan;
+      await AsyncStorage.multiSet([
+        ['clinicSubscriptionPlan', plan],
+        ['clinicIncludeAIPro', String(includeAIPro)],
+        ['subscriptionSummaryPlan', plan],
+        ['subscriptionSummaryPlanName', planLabel],
+        ['subscriptionSummaryPrice', finalPrice],
+        ['subscriptionSummaryIncludeAIPro', String(includeAIPro)],
+        ['subscriptionSummaryEmail', email || ''],
+        ['subscriptionSummaryClinicName', clinicName || 'Clinic'],
+      ]);
 
       // Clear ONLY pending subscription data from AsyncStorage
       // NOTE: Keep clinicId for the login flow to work properly

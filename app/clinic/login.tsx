@@ -1,22 +1,24 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { ensureOwnerMembership, findUserByEmailAndPassword } from '@/src/services/clinicMembersService';
+import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 /**
- * CLINIC LOGIN - FIRESTORE ONLY (No Firebase Auth)
- * 
- * Queries Firestore for clinic by email/password match
- * 
- * PHASE F: Uses AuthContext to update global auth state and trigger auto-redirect
+ * CLINIC LOGIN — Firebase Auth
+ *
+ * Signs in via Firebase Auth, then queries Firestore by ownerUid.
+ *
+ * PHASE A2: Uses AuthContext to update global auth state and trigger auto-redirect
  * Prevents patients from accessing this page
  */
 
@@ -64,59 +66,25 @@ export default function ClinicLogin() {
     setLoading(true);
     try {
       const normalizedEmail = email.toLowerCase().trim();
-      // Query Firestore for clinic with matching email and password
+
+      // Firebase Auth sign-in — single source of identity
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        normalizedEmail,
+        password
+      );
+      const firebaseUid = userCredential.user.uid;
+
+      // Query clinic by ownerUid (set during signup via createUserWithEmailAndPassword)
       const q = query(
         collection(db, 'clinics'),
-        where('email', '==', normalizedEmail),
-        where('password', '==', password)
+        where('ownerUid', '==', firebaseUid)
       );
-      
       const snapshot = await getDocs(q);
-      
+
       if (snapshot.empty) {
-        // Try staff/member login via users collection
-        const memberResult = await findUserByEmailAndPassword(normalizedEmail, password);
-
-        if (!memberResult) {
-          Alert.alert(t('common.error'), t('auth.invalidCredentials'));
-          setLoading(false);
-          return;
-        }
-
-        const { memberId, profile } = memberResult;
-
-        if (profile.status === 'DISABLED') {
-          Alert.alert(t('common.error'), t('auth.accountDisabled', { defaultValue: 'Account disabled. Please contact the clinic owner.' }));
-          setLoading(false);
-          return;
-        }
-
-        // Store email for future password verification in protected actions
-        await AsyncStorage.setItem('clinicUserEmail', normalizedEmail);
-        await AsyncStorage.removeItem('clinicSubscriptionPlan');
-
-        await setClinicAuth({
-          clinicId: profile.clinicId,
-          memberId,
-          role: profile.role,
-          status: profile.status,
-        });
-
+        Alert.alert(t('common.error'), t('auth.invalidCredentials'));
         setLoading(false);
-        
-        // ✅ Get clinic type from Firestore for proper navigation
-        // For staff members, we need to fetch the clinic document
-        const clinicDoc = await getDocs(query(collection(db, 'clinics'), where('__name__', '==', profile.clinicId)));
-        const staffClinicType = clinicDoc.docs[0]?.data()?.clinicType || null;
-        const staffHomeRoute = getHomeRoute(staffClinicType);
-        
-        // التوجيه حسب الدور: owner → home based on clinicType, doctor → patients
-        if (profile.role === 'owner') {
-          router.replace(staffHomeRoute as any);
-        } else {
-          // doctor → patients page
-          router.replace('/clinic/patients' as any);
-        }
         return;
       }
 
@@ -124,7 +92,7 @@ export default function ClinicLogin() {
       const clinicDoc = snapshot.docs[0];
       const clinicId = clinicDoc.id;
       const clinicData = clinicDoc.data();
-      const isSubscribed = clinicData.subscribed === true;
+      const isSubscribed = hasActiveSubscription(clinicData);
       const clinicPlan = clinicData.subscriptionPlan || '';
       const clinicType = clinicData.clinicType || null;  // ✅ Get clinic type
 
@@ -162,7 +130,14 @@ export default function ClinicLogin() {
       router.replace(homeRoute as any);
     } catch (err: any) {
       console.error('Login error:', err);
-      Alert.alert(t('common.error'), err.message || t('common.error'));
+      const code = err?.code || '';
+      let msg = err.message || t('common.error');
+      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
+        msg = t('auth.invalidCredentials');
+      } else if (code === 'auth/too-many-requests') {
+        msg = 'Too many attempts. Please wait and try again.';
+      }
+      Alert.alert(t('common.error'), msg);
       setLoading(false);
     }
   };

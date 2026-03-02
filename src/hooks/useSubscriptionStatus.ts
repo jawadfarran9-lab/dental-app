@@ -13,11 +13,15 @@ export interface SubscriptionStatus {
 }
 
 /**
- * Hook to check user's subscription status and AI access
- * Returns subscription tier and whether user has AI Pro access
+ * Hook to check user's subscription status and AI access.
+ *
+ * Access authority derives strictly from Firestore status field
+ * (via AuthContext.isSubscribed, backed by hasActiveSubscription helper).
+ *
+ * AsyncStorage is used only for cosmetic tier/plan display — never for access control.
  */
 export function useSubscriptionStatus(): SubscriptionStatus {
-  const { userRole, clinicId } = useAuth();
+  const { userRole, clinicId, isSubscribed: authIsSubscribed } = useAuth();
   const [status, setStatus] = useState<SubscriptionStatus>({
     isSubscribed: false,
     tier: null,
@@ -43,32 +47,34 @@ export function useSubscriptionStatus(): SubscriptionStatus {
           return;
         }
 
-        // For clinic users, check stored subscription
+        // For clinic users — access authority derives strictly from Firestore status field
         if (userRole === 'clinic' && clinicId) {
-          const [storedPlan, aiProFlag] = await AsyncStorage.multiGet([
-            'clinicSubscriptionPlan',
-            'clinicIncludeAIPro',
-          ]);
-          const plan = storedPlan[1];
-          const aiProEnabled = aiProFlag[1] === 'true';
+          const subscribed = authIsSubscribed === true;
 
-          if (plan === 'MONTHLY' || plan === 'ANNUAL') {
-            setStatus({
-              isSubscribed: true,
-              tier: plan as SubscriptionTier,
-              hasAIAccess: aiProEnabled,
-              isLoading: false,
-              error: null,
-            });
-          } else {
-            setStatus({
-              isSubscribed: false,
-              tier: null,
-              hasAIAccess: false,
-              isLoading: false,
-              error: null,
-            });
+          // AsyncStorage used only for display tier — never for access control
+          let displayTier: SubscriptionTier = null;
+          let aiProEnabled = false;
+          try {
+            const [storedPlan, aiProFlag] = await AsyncStorage.multiGet([
+              'clinicSubscriptionPlan',
+              'clinicIncludeAIPro',
+            ]);
+            const plan = storedPlan[1];
+            if (plan === 'MONTHLY' || plan === 'ANNUAL') {
+              displayTier = plan as SubscriptionTier;
+            }
+            aiProEnabled = aiProFlag[1] === 'true';
+          } catch {
+            // Cache read failure is non-fatal — access decision unaffected
           }
+
+          setStatus({
+            isSubscribed: subscribed,
+            tier: subscribed ? displayTier : null,
+            hasAIAccess: subscribed && aiProEnabled,
+            isLoading: false,
+            error: null,
+          });
           return;
         }
 
@@ -90,7 +96,7 @@ export function useSubscriptionStatus(): SubscriptionStatus {
     };
 
     checkSubscription();
-  }, [userRole, clinicId]);
+  }, [userRole, clinicId, authIsSubscribed]);
 
   return status;
 }

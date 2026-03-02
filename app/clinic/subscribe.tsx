@@ -1,15 +1,17 @@
 import { db } from '@/firebaseConfig';
 import GlassCard from '@/src/components/GlassCard';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import RenewLoginSheet from '@/src/components/renew/RenewLoginSheet';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { SUBSCRIPTION_PRICING, SUBSCRIPTION_PRICING_OLD } from '@/src/types/subscription';
-import { useClinicGuard } from '@/src/utils/navigationGuards';
+import { useClinicGuardNoSubscription } from '@/src/utils/navigationGuards';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useFocusEffect, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc } from 'firebase/firestore';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -49,6 +51,11 @@ export default function ClinicSubscribeLanding() {
   const [effectiveClinicId, setEffectiveClinicId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [selectedAIPro, setSelectedAIPro] = useState(false);
+  const [clinicStatus, setClinicStatus] = useState<string | null>(null);
+  const [statusLoaded, setStatusLoaded] = useState(false);
+  const [isRenewOpen, setIsRenewOpen] = useState(false);
+  const renewAutoOpened = useRef(false);
+  const { reason } = useLocalSearchParams<{ reason?: string }>();
 
   // Micro-interaction: Change Plan button press scale
   const changePlanScale = useRef(new Animated.Value(1)).current;
@@ -62,7 +69,7 @@ export default function ClinicSubscribeLanding() {
   // Plan selection micro-interaction: spring scale on select
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  const handleSelectPlan = useCallback((planId: PlanId, planData?: PlanOption) => {
+  const handleSelectPlan = (planId: PlanId, planData?: PlanOption) => {
     setSelectedPlan(planId);
     scaleAnim.setValue(0.97);
     Animated.spring(scaleAnim, {
@@ -75,7 +82,7 @@ export default function ClinicSubscribeLanding() {
     if (planData) {
       handleSubscribe(planData);
     }
-  }, []);
+  };
 
   // Hero card subtle floating shimmer
   const heroShimmer = useRef(new Animated.Value(0)).current;
@@ -126,8 +133,8 @@ export default function ClinicSubscribeLanding() {
     ]
   ), [t]);
 
-  // Prevent patients from accessing clinic subscription
-  useClinicGuard();
+  // Prevent patients from accessing clinic subscription (no subscription check — this IS the subscription page)
+  useClinicGuardNoSubscription();
 
   // Reset plan selection when screen regains focus (e.g. back from signup)
   useFocusEffect(
@@ -167,6 +174,7 @@ export default function ClinicSubscribeLanding() {
         if (!storedId) {
           setIsSubscribed(false);
           setCurrentPlan(null);
+          setStatusLoaded(true);
           return;
         }
 
@@ -176,23 +184,41 @@ export default function ClinicSubscribeLanding() {
           const plan = (clinicData.subscriptionPlan as PlanId) || null;
           setCurrentPlan(plan);
           setSelectedPlan(plan);
-          setIsSubscribed(clinicData.subscribed === true);
+          setIsSubscribed(hasActiveSubscription(clinicData));
+          setClinicStatus((clinicData.status as string) || null);
+          setStatusLoaded(true);
           if (plan) {
             await AsyncStorage.setItem('clinicSubscriptionPlan', plan);
           }
         } else {
           setIsSubscribed(false);
           setCurrentPlan(null);
+          setClinicStatus(null);
+          setStatusLoaded(true);
         }
       } catch (error) {
         console.error('[SUBSCRIPTION CHECK ERROR]', error);
         setIsSubscribed(false);
         setCurrentPlan(null);
+        setStatusLoaded(true);
       }
     };
 
     loadSubscription();
   }, [clinicId, clinicRole, userRole]);
+
+  // Phase R1: Auto-open Renew sheet ONLY when redirected due to cancelled subscription
+  useEffect(() => {
+    if (
+      reason === 'cancelled' &&
+      statusLoaded &&
+      clinicStatus === 'cancelled' &&
+      !renewAutoOpened.current
+    ) {
+      renewAutoOpened.current = true;
+      setIsRenewOpen(true);
+    }
+  }, [reason, statusLoaded, clinicStatus]);
 
   const handleSubscribe = async (plan: PlanOption) => {
     if (saving || !plan) return;
@@ -206,9 +232,11 @@ export default function ClinicSubscribeLanding() {
         return;
       }
 
-      // Calculate final price with AI Pro add-on if selected
-      const aiProAddOn = plan.id === 'ANNUAL' ? SUBSCRIPTION_PRICING.aiProYearly : SUBSCRIPTION_PRICING.aiPro;
-      const finalPrice = selectedAIPro ? plan.basePrice + aiProAddOn : plan.basePrice;
+      // Compute final price inline to avoid stale computedPrice on first tap
+      const aiAdd = plan.id === 'ANNUAL'
+        ? SUBSCRIPTION_PRICING.aiProYearly
+        : SUBSCRIPTION_PRICING.aiPro;
+      const finalPrice = selectedAIPro ? plan.basePrice + aiAdd : plan.basePrice;
 
       // Create or get clinicId for this subscription flow
       let targetClinicId = clinicId || (await AsyncStorage.getItem('clinicId'));
@@ -230,6 +258,7 @@ export default function ClinicSubscribeLanding() {
         ['pendingSubscriptionPlanName', plan.name],
         ['pendingSubscriptionPrice', plan.basePrice.toFixed(2)],
         ['pendingSubscriptionPriceWithAIPro', finalPrice.toFixed(2)],
+        ['pendingFinalPrice', finalPrice.toFixed(2)],
         ['pendingIncludeAIPro', String(selectedAIPro)],
       ];
       
@@ -254,6 +283,7 @@ export default function ClinicSubscribeLanding() {
   };
 
   const handleRemoveSubscription = async () => {
+    if (!__DEV__) return;
     Alert.alert(
       'Remove Subscription',
       'This will clear your subscription state. Are you sure?',
@@ -264,13 +294,23 @@ export default function ClinicSubscribeLanding() {
           style: 'destructive',
           onPress: async () => {
             try {
+              // Write cancellation to Firestore (source of truth)
+              const targetId = effectiveClinicId || clinicId;
+              if (targetId) {
+                await updateDoc(doc(db, 'clinics', targetId), {
+                  subscribed: false,
+                  status: 'cancelled',
+                  subscriptionPlan: null,
+                  includeAIPro: false,
+                });
+              }
+
               await AsyncStorage.multiRemove([
                 'pendingSubscriptionPlan',
                 'pendingSubscriptionPlanName',
                 'pendingSubscriptionPrice',
                 'pendingSubscriptionPriceWithAIPro',
                 'pendingIncludeAIPro',
-                'clinicId',
                 'clinicSubscriptionPlan',
               ]);
               // Reset all UI state to allow fresh subscription
@@ -289,29 +329,18 @@ export default function ClinicSubscribeLanding() {
     );
   };
 
-  // Calculate dynamic price based on selected plan and AI Pro
-  const calculateSubscriptionPrice = (): string => {
-    const selectedPlanData = plans.find(p => p.id === selectedPlan);
-    if (!selectedPlanData) return '';
-    
-    let finalPrice = selectedPlanData.basePrice;
-    if (selectedAIPro) {
-      const aiProAddOn = selectedPlan === 'ANNUAL' 
-        ? SUBSCRIPTION_PRICING.aiProYearly 
-        : SUBSCRIPTION_PRICING.aiPro;
-      finalPrice += aiProAddOn;
-    }
-    return finalPrice.toFixed(2);
-  };
-
-  // Generate button text with proper pricing format
-  const getButtonText = (plan: PlanOption): string => {
-    if (selectedPlan !== plan.id) return '';
-    
-    const price = calculateSubscriptionPrice();
-    const billingPeriod = selectedPlan === 'ANNUAL' ? '/year' : '/month';
-    return `Start Subscription – $${price}${billingPeriod}`;
-  };
+  // Computed price: reactive to plan selection + AI Pro toggle
+  const computedPrice = useMemo(() => {
+    if (!selectedPlan) return null;
+    const plan = plans.find(p => p.id === selectedPlan);
+    if (!plan) return null;
+    const aiAdd = selectedPlan === 'ANNUAL'
+      ? SUBSCRIPTION_PRICING.aiProYearly
+      : SUBSCRIPTION_PRICING.aiPro;
+    const base = plan.basePrice;
+    const final = selectedAIPro ? base + aiAdd : base;
+    return { base, final, period: selectedPlan, name: plan.name };
+  }, [selectedPlan, selectedAIPro, plans]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -336,7 +365,7 @@ export default function ClinicSubscribeLanding() {
               <Ionicons name="arrow-back" size={22} color={colors.textPrimary} />
             </TouchableOpacity>
             <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>BeSmile AI</Text>
-            {isSubscribed ? (
+            {__DEV__ && isSubscribed ? (
               <TouchableOpacity onPress={handleRemoveSubscription} style={{ padding: 8 }}>
                 <Text style={{ fontSize: 13, color: '#ef4444', fontWeight: '600' }}>Remove</Text>
               </TouchableOpacity>
@@ -518,9 +547,7 @@ export default function ClinicSubscribeLanding() {
                         <Text style={[styles.planCtaText, { color: isSelected ? '#fff' : isDark ? 'rgba(255,255,255,0.5)' : colors.textSecondary }]}>
                           {isCurrent 
                             ? t('subscription.currentPlanChip', 'Current plan') 
-                            : selectedPlan === plan.id
-                              ? t('subscription.subscribeCta', 'Subscribe')
-                              : t('subscription.selectPlan', 'Select')
+                            : t('subscription.selectPlan', 'Select')
                           }
                         </Text>
                       )}
@@ -596,6 +623,17 @@ export default function ClinicSubscribeLanding() {
           </GlassCard>
           </Animated.View>
 
+          {/* Phase R0: Manual Renew button — visible when subscription is not active */}
+          {statusLoaded && isSubscribed === false && effectiveClinicId && (
+            <TouchableOpacity
+              style={[styles.renewBtn, { backgroundColor: ACCENT }]}
+              onPress={() => setIsRenewOpen(true)}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.renewBtnText}>Renew Subscription</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity onPress={() => router.push('/clinic/login' as any)}>
             <Text style={[styles.secondaryLink, { color: ACCENT }]}>{t('subscription.alreadyHaveAccount', 'Already have an account?')}</Text>
           </TouchableOpacity>
@@ -603,6 +641,16 @@ export default function ClinicSubscribeLanding() {
         </ScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
+
+      {/* Phase R1: Renew Login Bottom Sheet */}
+      <RenewLoginSheet
+        visible={isRenewOpen}
+        onClose={() => setIsRenewOpen(false)}
+        onAuthSuccess={() => {
+          setIsRenewOpen(false);
+          router.push('/clinic/renew-subscribe' as any);
+        }}
+      />
     </View>
   );
 }
@@ -913,5 +961,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontWeight: '600',
     fontSize: 14,
+  },
+
+  /* ── Renew Button (Phase R0) ── */
+  renewBtn: {
+    borderRadius: 14,
+    paddingVertical: 15,
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    marginBottom: 12,
+  },
+  renewBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });

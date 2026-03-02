@@ -46,7 +46,9 @@ function RootNavigator() {
       <Stack.Screen name="patient/index" options={{ title: 'Patient Login', headerShown: false }} />
       <Stack.Screen name="patient/files" options={{ title: 'My Files', headerShown: true }} />
       <Stack.Screen name="patient/profile" options={{ title: 'Clinic Profile', headerShown: true }} />
-      <Stack.Screen name="clinic/payment" options={{ title: 'Subscription Payment', headerShown: true }} />
+      <Stack.Screen name="clinic/confirm-subscription" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/renew-subscribe" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/feedback" options={{ headerShown: false }} />
       <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: true }} />
 
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />

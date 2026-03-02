@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { auth, db } from '@/firebaseConfig';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import {
     ensureOwnerMembership,
@@ -6,7 +6,9 @@ import {
     recordMemberLogin,
 } from '@/src/services/clinicMembersService';
 import { ClinicRole, MemberStatus } from '@/src/types/members';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signOut } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
@@ -74,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const clinicData = clinicSnap.data();
-      const subscribed = clinicData.subscribed === true;
+      const subscribed = hasActiveSubscription(clinicData);
       
       // Check if clinic details are complete (clinicName required)
       const detailsComplete = !!(clinicData.clinicName && clinicData.clinicName.trim());
@@ -287,6 +289,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         CLINIC_STATUS_KEY,
         PATIENT_ID_KEY,
       ]);
+      // End Firebase Auth session so no ghost user persists
+      await signOut(auth);
       setAuthState({
         userRole: null,
         userId: null,

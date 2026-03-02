@@ -92,14 +92,8 @@ export default function ClinicDetails() {
       
       setLoading(false);
 
-      // Navigate to payment screen with plan params
-      router.push({
-        pathname: '/clinic/payment',
-        params: { 
-          plan: plan || 'MONTHLY',
-          planName: planName || 'Monthly'
-        }
-      } as any);
+      // Navigate to confirmation screen
+      router.push('/clinic/confirm-subscription' as any);
     } catch (err: any) {
       console.error('Error saving clinic details:', err);
       Alert.alert(t('common.error'), err.message || t('clinicDetailsForm.saveFailed'));

@@ -8,7 +8,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { signInAnonymously } from 'firebase/auth';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -471,11 +471,13 @@ export default function ClinicSignup() {
     setLoading(true);
     try {
       
-      // Ensure we have an authenticated session (anonymous) before any Firestore write
-      if (!auth.currentUser) {
-        await signInAnonymously(auth);
-      }
-      const ownerUid = auth.currentUser!.uid;
+      // Create a real Firebase Auth account (email/password) — single source of identity
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim().toLowerCase(),
+        password
+      );
+      const ownerUid = userCredential.user.uid;
 
       // Get or create clinic ID
       let existingClinicId = await AsyncStorage.getItem('clinicId');
@@ -483,7 +485,7 @@ export default function ClinicSignup() {
       if (!existingClinicId) {
         // Create new clinic document if doesn't exist
         const newClinicRef = await addDoc(collection(db, 'clinics'), {
-          ownerId: ownerUid,
+          ownerUid: ownerUid,
           subscribed: false,
           createdAt: Date.now(),
           status: 'pending_subscription',
@@ -512,12 +514,19 @@ export default function ClinicSignup() {
         ['pendingPhone', phone.trim() || ''],  // ✅ Personal/Account phone
         ['pendingClinicType', clinicType || ''],  // ✅ Clinic type (dental/beauty/laser)
         ['pendingWorkingHours', JSON.stringify(workingHours)],
-        ['pendingPassword', password],  // Needed for credential linking at confirm
       ];
+
+      // Write plan ID for confirm-subscription parity
+      storageData.push(['pendingSubscriptionPlan', planLabel.includes('Annual') ? 'ANNUAL' : 'MONTHLY']);
+      // Parity: pendingPassword as empty string (Firebase Auth already created above)
+      storageData.push(['pendingPassword', '']);
 
       // For free subscriptions, enable AI Pro by default
       if (isFree) {
         storageData.push(['pendingIncludeAIPro', 'true']);
+      } else {
+        // Paid path: explicitly set AI Pro to false (no toggle in signup)
+        storageData.push(['pendingIncludeAIPro', 'false']);
       }
       
       if (selectedPaymentMethod === 'card') {
@@ -534,14 +543,13 @@ export default function ClinicSignup() {
 
       // Update existing clinic document with account credentials (use merge to avoid "No document" error)
       await setDoc(doc(db, 'clinics', existingClinicId), {
-        ownerId: ownerUid,
+        ownerUid: ownerUid,
         firstName,
         lastName,
         clinicName: clinicName.trim() || null,
         clinicPhone: clinicPhone.trim() || null,
         clinicType: clinicType, // ✅ Save clinic type to Firestore
         email: email.toLowerCase().trim(),
-        password, // In production, hash this password
         phone: phone || null,
         countryCode: country || null,
         city: city || null,
@@ -552,7 +560,7 @@ export default function ClinicSignup() {
         },
         workingHours,
         accountCreatedAt: Date.now(),
-        status: 'active', // Mark as fully active
+        status: isFree ? 'active' : 'pending_subscription', // Only mark active for FREE; PAID waits for payment.tsx
       }, { merge: true });
 
 
@@ -573,9 +581,10 @@ export default function ClinicSignup() {
         await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
         router.push('/clinic/confirm-subscription' as any);
       } else {
-        // Paid subscription - process payment
+        // Paid subscription — route to unified confirmation screen
         await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
-        await processPayment();
+        setLoading(false);
+        router.push('/clinic/confirm-subscription' as any);
       }
     } catch (err: any) {
       console.error('clinic signup error', err);
@@ -587,141 +596,6 @@ export default function ClinicSignup() {
       }
       Alert.alert(t('common.error'), errorMsg);
     }
-  };
-
-  const processPayment = async () => {
-    // TEMP: Bypass payment processing for free subscriptions ($0 price)
-    const pendingFinalPrice = parseFloat(planPrice);
-    if (pendingFinalPrice === 0) {
-      await completePaymentAndLogin();
-      return;
-    }
-    
-    if (!selectedPaymentMethod) {
-      return;
-    }
-    
-    try {
-      switch (selectedPaymentMethod) {
-        case 'apple-pay':
-          await simulateApplePayFlow();
-          break;
-        case 'paypal':
-          await simulatePayPalFlow();
-          break;
-        case 'google-pay':
-          await simulateGooglePayFlow();
-          break;
-        case 'card':
-        default:
-          // Process card payment directly
-          await completePaymentAndLogin();
-          return;
-      }
-    } catch (err) {
-      console.error('[PAYMENT ERROR]:', err);
-      setLoading(false);
-      Alert.alert(t('common.error', 'Error'), t('payment.failed', 'Payment failed. Please try again.'));
-    }
-  };
-
-  const simulateApplePayFlow = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        Alert.alert(
-          t('payment.applePayTitle', 'Apple Pay'),
-          t('payment.applePayMessage', 'In a real app, Apple Pay would open here for biometric authentication.'),
-          [
-            {
-              text: t('common.cancel', 'Cancel'),
-              onPress: () => {
-                setLoading(false);
-                resolve();
-              },
-            },
-            {
-              text: t('payment.complete', 'Complete Payment'),
-              onPress: async () => {
-                await completePaymentAndLogin();
-                resolve();
-              },
-              style: 'default',
-            },
-          ]
-        );
-      }, 500);
-    });
-  };
-
-  const simulatePayPalFlow = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        Alert.alert(
-          t('payment.paypalTitle', 'PayPal'),
-          t('payment.paypalMessage', 'In a real app, you would be redirected to PayPal for secure authentication.'),
-          [
-            {
-              text: t('common.cancel', 'Cancel'),
-              onPress: () => {
-                setLoading(false);
-                resolve();
-              },
-            },
-            {
-              text: t('payment.complete', 'Complete Payment'),
-              onPress: async () => {
-                await completePaymentAndLogin();
-                resolve();
-              },
-              style: 'default',
-            },
-          ]
-        );
-      }, 500);
-    });
-  };
-
-  const simulateGooglePayFlow = async () => {
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        Alert.alert(
-          t('payment.googlePayTitle', 'Google Pay'),
-          t('payment.googlePayMessage', 'In a real app, Google Pay would open for payment confirmation.'),
-          [
-            {
-              text: t('common.cancel', 'Cancel'),
-              onPress: () => {
-                setLoading(false);
-                resolve();
-              },
-            },
-            {
-              text: t('payment.complete', 'Complete Payment'),
-              onPress: async () => {
-                await completePaymentAndLogin();
-                resolve();
-              },
-              style: 'default',
-            },
-          ]
-        );
-      }, 500);
-    });
-  };
-
-  const completePaymentAndLogin = async () => {
-    setLoading(false);
-    
-    try {
-      setLoading(false);
-    } catch (err: any) {
-      console.error('[SIGNUP] Error in completePaymentAndLogin:', err);
-      console.error('[SIGNUP] Error details:', err?.message);
-      setLoading(false);
-    }
-    
-    // Navigate to confirmation page
-    router.push('/clinic/confirm-subscription' as any);
   };
 
   const goBack = async () => {

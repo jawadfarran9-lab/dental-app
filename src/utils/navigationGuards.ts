@@ -4,20 +4,26 @@ import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 
 /**
- * Guard hook to ensure only clinic users can access a route
- * If patient is logged in, redirects to patient login
- * If no user is logged in, allows access (will redirect from home)
+ * Guard hook to ensure only clinic users can access a route.
+ * Blocks: patients, DISABLED/REMOVED members, and cancelled subscriptions.
+ *
+ * Pages that cancelled clinics MUST still reach (e.g. subscribe.tsx)
+ * should use `useClinicGuardNoSubscription` instead.
  */
 export function useClinicGuard() {
   const router = useRouter();
-  const { userRole, loading, memberStatus, logout, userId, clinicId } = useAuth();
+  const { userRole, loading, memberStatus, logout, userId, clinicId, isSubscribed } = useAuth();
 
   useEffect(() => {
-    if (!loading && userRole === 'patient') {
+    if (loading) return;
+
+    if (userRole === 'patient') {
       router.replace('/patient' as any);
+      return;
     }
+
     // PHASE T: Block DISABLED or REMOVED members
-    if (!loading && userRole === 'clinic' && (memberStatus === 'DISABLED' || memberStatus === 'REMOVED')) {
+    if (userRole === 'clinic' && (memberStatus === 'DISABLED' || memberStatus === 'REMOVED')) {
       try {
         const action = memberStatus === 'REMOVED' ? 'SESSION_INVALIDATED' : 'LOGIN_BLOCKED';
         const { writeAuditLog } = require('@/src/services/auditLogService');
@@ -30,13 +36,54 @@ export function useClinicGuard() {
       } catch (e) {}
       logout();
       router.replace('/clinic/login' as any);
+      return;
+    }
+
+    // PHASE 1D: Block cancelled/inactive subscriptions from clinic screens
+    if (userRole === 'clinic' && isSubscribed === false) {
+      router.replace('/clinic/subscribe?reason=cancelled' as any);
+      return;
+    }
+  }, [userRole, loading, memberStatus, isSubscribed, logout]);
+}
+
+/**
+ * Lighter guard that checks role and member status but NOT subscription.
+ * Used on pages that cancelled clinics must still access (subscribe, payment).
+ */
+export function useClinicGuardNoSubscription() {
+  const router = useRouter();
+  const { userRole, loading, memberStatus, logout, userId, clinicId } = useAuth();
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (userRole === 'patient') {
+      router.replace('/patient' as any);
+      return;
+    }
+
+    if (userRole === 'clinic' && (memberStatus === 'DISABLED' || memberStatus === 'REMOVED')) {
+      try {
+        const action = memberStatus === 'REMOVED' ? 'SESSION_INVALIDATED' : 'LOGIN_BLOCKED';
+        const { writeAuditLog } = require('@/src/services/auditLogService');
+        writeAuditLog({
+          action,
+          actorId: userId,
+          clinicId: clinicId,
+          meta: { status: memberStatus },
+        });
+      } catch (e) {}
+      logout();
+      router.replace('/clinic/login' as any);
+      return;
     }
   }, [userRole, loading, memberStatus, logout]);
 }
 
 export function useClinicRoleGuard(allowedRoles: ClinicRole[]) {
   const router = useRouter();
-  const { userRole, clinicRole, memberStatus, loading, logout } = useAuth();
+  const { userRole, clinicRole, memberStatus, isSubscribed, loading, logout } = useAuth();
 
   useEffect(() => {
     if (loading) return;
@@ -53,10 +100,16 @@ export function useClinicRoleGuard(allowedRoles: ClinicRole[]) {
       return;
     }
 
+    // PHASE 1D: Block cancelled/inactive subscriptions
+    if (isSubscribed === false) {
+      router.replace('/clinic/subscribe?reason=cancelled' as any);
+      return;
+    }
+
     if (!allowedRoles.includes(clinicRole as ClinicRole)) {
       router.replace('/clinic/dashboard' as any);
     }
-  }, [allowedRoles, userRole, clinicRole, memberStatus, loading, logout]);
+  }, [allowedRoles, userRole, clinicRole, memberStatus, isSubscribed, loading, logout]);
 }
 
 /**
