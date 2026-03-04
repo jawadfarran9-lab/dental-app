@@ -6,10 +6,12 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, getDocs, query, where } from 'firebase/firestore';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
@@ -27,6 +29,7 @@ export default function ClinicLogin() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const biometricAttempted = useRef(false);
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
@@ -60,84 +63,183 @@ export default function ClinicLogin() {
     }, [])
   );
 
+  // ── Biometric auto-login on mount (opt-in only) ──
+  useEffect(() => {
+    const checkBiometricLogin = async () => {
+      if (biometricAttempted.current) return;
+      biometricAttempted.current = true;
+
+      // Only prompt if user explicitly opted in
+      const enabled = await SecureStore.getItemAsync('biometric_enabled');
+      if (enabled !== 'true') return;
+
+      const stored = await SecureStore.getItemAsync('clinic_credentials');
+      if (!stored) return;
+
+      const biometricAvailable = await LocalAuthentication.hasHardwareAsync();
+      if (!biometricAvailable) return;
+
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!enrolled) return;
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Login with Face ID',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) return;
+
+      try {
+        const { email: savedEmail, password: savedPassword } = JSON.parse(stored);
+        await onLoginAuto(savedEmail, savedPassword);
+      } catch {
+        // Silently fail — user can login manually
+      }
+    };
+
+    checkBiometricLogin();
+  }, []);
+
+  // ── Shared login logic (used by manual + biometric flows) ──
+  const performLogin = async (loginEmail: string, loginPassword: string) => {
+    const userCredential = await signInWithEmailAndPassword(
+      auth,
+      loginEmail,
+      loginPassword
+    );
+    const firebaseUid = userCredential.user.uid;
+
+    const q = query(
+      collection(db, 'clinics'),
+      where('ownerUid', '==', firebaseUid)
+    );
+    const snapshot = await getDocs(q);
+
+    if (snapshot.empty) {
+      Alert.alert(t('common.error'), t('auth.invalidCredentials'));
+      return;
+    }
+
+    const clinicDoc = snapshot.docs[0];
+    const clinicId = clinicDoc.id;
+    const clinicData = clinicDoc.data();
+    const isSubscribed = hasActiveSubscription(clinicData);
+    const clinicPlan = clinicData.subscriptionPlan || '';
+    const clinicType = clinicData.clinicType || null;
+
+    const ownerMember = await ensureOwnerMembership(clinicId, loginEmail);
+
+    await AsyncStorage.setItem('clinicUserEmail', loginEmail);
+    await AsyncStorage.setItem('clinicSubscriptionPlan', clinicPlan ? String(clinicPlan) : '');
+
+    await setClinicAuth({
+      clinicId,
+      memberId: ownerMember.id,
+      role: ownerMember.role,
+      status: ownerMember.status,
+    });
+
+    // Biometric opt-in: prompt user after first successful login
+    const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
+    if (biometricFlag === null) {
+      // First login — check if device supports biometrics before asking
+      const hasHw = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      if (hasHw && isEnrolled) {
+        await new Promise<void>((resolve) => {
+          Alert.alert(
+            'Enable Face ID',
+            'Enable Face ID / Fingerprint for faster login?',
+            [
+              {
+                text: 'Not now',
+                style: 'cancel',
+                onPress: async () => {
+                  await SecureStore.setItemAsync('biometric_enabled', 'false');
+                  resolve();
+                },
+              },
+              {
+                text: 'Enable',
+                onPress: async () => {
+                  await SecureStore.setItemAsync('biometric_enabled', 'true');
+                  await SecureStore.setItemAsync(
+                    'clinic_credentials',
+                    JSON.stringify({ email: loginEmail, password: loginPassword })
+                  );
+                  resolve();
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        });
+      }
+    } else if (biometricFlag === 'true') {
+      // Already opted in — update stored credentials
+      await SecureStore.setItemAsync(
+        'clinic_credentials',
+        JSON.stringify({ email: loginEmail, password: loginPassword })
+      );
+    }
+
+    if (!isSubscribed) {
+      Alert.alert(
+        t('common.attention'),
+        t('common.subscriptionInactive'),
+        [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe' as any) }]
+      );
+      return;
+    }
+
+    const homeRoute = getHomeRoute(clinicType);
+    router.replace(homeRoute as any);
+  };
+
+  // ── Biometric auto-login handler ──
+  const onLoginAuto = async (autoEmail: string, autoPassword: string) => {
+    setLoading(true);
+    try {
+      await performLogin(autoEmail, autoPassword);
+    } catch (err: any) {
+      // Clear stored credentials if they're invalid
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        await SecureStore.deleteItemAsync('clinic_credentials');
+        await SecureStore.deleteItemAsync('biometric_enabled');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const onLogin = async () => {
-    if (!email || !password) return Alert.alert(t('common.validation'), t('common.required'));
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Login Error', 'Please enter both email and password.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      Alert.alert('Login Error', 'Please enter a valid email address.');
+      return;
+    }
 
     setLoading(true);
     try {
-      const normalizedEmail = email.toLowerCase().trim();
-
-      // Firebase Auth sign-in — single source of identity
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        normalizedEmail,
-        password
-      );
-      const firebaseUid = userCredential.user.uid;
-
-      // Query clinic by ownerUid (set during signup via createUserWithEmailAndPassword)
-      const q = query(
-        collection(db, 'clinics'),
-        where('ownerUid', '==', firebaseUid)
-      );
-      const snapshot = await getDocs(q);
-
-      if (snapshot.empty) {
-        Alert.alert(t('common.error'), t('auth.invalidCredentials'));
-        setLoading(false);
-        return;
-      }
-
-      // Get clinic ID and check subscription status
-      const clinicDoc = snapshot.docs[0];
-      const clinicId = clinicDoc.id;
-      const clinicData = clinicDoc.data();
-      const isSubscribed = hasActiveSubscription(clinicData);
-      const clinicPlan = clinicData.subscriptionPlan || '';
-      const clinicType = clinicData.clinicType || null;  // ✅ Get clinic type
-
-      const ownerMember = await ensureOwnerMembership(clinicId, normalizedEmail);
-      
-      
-      // Store email for future password verification in protected actions
-      await AsyncStorage.setItem('clinicUserEmail', normalizedEmail);
-      await AsyncStorage.setItem('clinicSubscriptionPlan', clinicPlan ? String(clinicPlan) : '');
-      
-      await setClinicAuth({
-        clinicId,
-        memberId: ownerMember.id,
-        role: ownerMember.role,
-        status: ownerMember.status,
-      });
-      
-      // If not subscribed, redirect to subscription flow
-      if (!isSubscribed) {
-        setLoading(false);
-        Alert.alert(
-          t('common.attention'),
-          t('common.subscriptionInactive'),
-          [{ 
-            text: t('common.ok'), 
-            onPress: () => router.replace('/clinic/subscribe' as any) 
-          }]
-        );
-        return;
-      }
-      
-      // Subscription is active - Owner goes to home based on clinic type
-      setLoading(false);
-      const homeRoute = getHomeRoute(clinicType);
-      router.replace(homeRoute as any);
+      const normalizedEmail = email.trim().toLowerCase();
+      await performLogin(normalizedEmail, password);
     } catch (err: any) {
-      console.error('Login error:', err);
-      const code = err?.code || '';
-      let msg = err.message || t('common.error');
-      if (code === 'auth/invalid-credential' || code === 'auth/wrong-password' || code === 'auth/user-not-found') {
-        msg = t('auth.invalidCredentials');
-      } else if (code === 'auth/too-many-requests') {
-        msg = 'Too many attempts. Please wait and try again.';
-      }
-      Alert.alert(t('common.error'), msg);
+      const code = err?.code ?? '';
+      let msg = 'Login failed. Please try again.';
+
+      if (code === 'auth/invalid-email') msg = 'Invalid email format.';
+      else if (code === 'auth/user-not-found') msg = 'No account found for this email.';
+      else if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') msg = 'Incorrect password.';
+      else if (code === 'auth/too-many-requests') msg = 'Too many attempts. Try again later.';
+
+      Alert.alert('Login Error', msg);
+    } finally {
       setLoading(false);
     }
   };

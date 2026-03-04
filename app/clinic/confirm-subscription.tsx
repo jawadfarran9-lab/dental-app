@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { EmailAuthProvider, linkWithCredential } from 'firebase/auth';
+import { EmailAuthProvider, linkWithCredential, signOut } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -301,15 +301,16 @@ export default function ConfirmSubscription() {
 
       // Intercept hardware back button
       const onBackPress = () => {
-        if (!confirming) {
-          router.back();
-        }
+        // Block leaving during critical states
+        if (confirming || showSuccessModal) return true;
+
+        router.back();
         return true;
       };
 
       const subscription = BackHandler.addEventListener('hardwareBackPress', onBackPress);
       return () => subscription.remove();
-    }, [confirming])
+    }, [confirming, showSuccessModal])
   );
 
   const sendConfirmationEmail = async (userEmail: string, subscriptionDetails: any) => {
@@ -485,6 +486,17 @@ BeSmile AI Team
         'pendingPassword',
       ]);
 
+      // ✅ PHASE 2: Terminate Firebase auth session — user must login manually
+      await signOut(auth);
+
+      // ✅ PHASE 5: Purge auth session keys to prevent AuthContext auto-hydration
+      // setClinicAuth() (renew/upgrade) writes these; checkAuthState() would re-hydrate on remount
+      await AsyncStorage.multiRemove([
+        'clinicMemberId',
+        'clinicRole',
+        'clinicMemberStatus',
+        'clinicUserEmail',
+      ]);
 
       setConfirming(false);
       setShowSuccessModal(true);
@@ -500,9 +512,8 @@ BeSmile AI Team
   };
 
   const goBack = () => {
-    if (!confirming) {
-      router.back();
-    }
+    if (confirming || showSuccessModal) return;
+    router.back();
   };
 
   return (
@@ -948,7 +959,7 @@ BeSmile AI Team
               style={[styles.modalButton, { backgroundColor: SUBSCRIPTION_BLUE }]}
               onPress={() => {
                 setShowSuccessModal(false);
-                router.replace(homeRoute as any);
+                router.replace('/clinic/login' as any);
               }}
               activeOpacity={0.8}
             >

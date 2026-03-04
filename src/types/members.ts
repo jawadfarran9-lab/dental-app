@@ -17,7 +17,6 @@ export interface ClinicMember {
   updatedAt?: any;
   lastLoginAt?: any;
   disabledReason?: string;
-  password?: string;
 }
 
 export interface UserClinicProfile {
@@ -26,6 +25,5 @@ export interface UserClinicProfile {
   status: MemberStatus;
   email: string;
   displayName: string;
-  password?: string;
   lastLoginAt?: any;
 }

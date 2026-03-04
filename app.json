@@ -45,7 +45,10 @@
               "host": "*"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -72,7 +75,8 @@
           "photosPermission": "This app needs access to your photo library to let you add photos to your stories.",
           "cameraPermission": "This app needs access to your camera to take photos for stories."
         }
-      ]
+      ],
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,

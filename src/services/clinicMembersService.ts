@@ -197,7 +197,6 @@ async function addClinicMemberInternal(params: {
     phoneNumber: params.member.phoneNumber,
     createdAt: now,
     updatedAt: now,
-    password: params.member.password,
   };
 
   await setDoc(memberRef, newMember, { merge: true });
@@ -208,7 +207,6 @@ async function addClinicMemberInternal(params: {
     status: 'ACTIVE',
     email,
     displayName: params.member.displayName,
-    password: params.member.password,
     lastLoginAt: null,
   };
 

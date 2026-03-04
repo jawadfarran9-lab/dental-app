@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -238,19 +238,9 @@ export default function ClinicSubscribeLanding() {
         : SUBSCRIPTION_PRICING.aiPro;
       const finalPrice = selectedAIPro ? plan.basePrice + aiAdd : plan.basePrice;
 
-      // Create or get clinicId for this subscription flow
-      let targetClinicId = clinicId || (await AsyncStorage.getItem('clinicId'));
-      
-      if (!targetClinicId) {
-        // Create a minimal clinic document to track this subscription
-        const newClinicRef = await addDoc(collection(db, 'clinics'), {
-          subscribed: false, // Will be updated in payment step
-          createdAt: Date.now(),
-          status: 'pending_subscription',
-        });
-        targetClinicId = newClinicRef.id;
-        await AsyncStorage.setItem('clinicId', targetClinicId);
-      }
+      // Phase C: skeleton clinic creation removed.
+      // Clinic doc is now created in signup.tsx after Firebase Auth succeeds,
+      // guaranteeing every clinic doc has ownerUid from creation.
 
       // Save plan selection to AsyncStorage for next steps
       const priceData: Array<[string, string]> = [
@@ -270,7 +260,7 @@ export default function ClinicSubscribeLanding() {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Route to account creation screen with clinicId
-      router.push(`/clinic/signup?clinicId=${targetClinicId}` as any);
+      router.push('/clinic/signup' as any);
     } catch (error) {
       setSaving(false);
       console.error('[SUBSCRIBE ERROR]', error);

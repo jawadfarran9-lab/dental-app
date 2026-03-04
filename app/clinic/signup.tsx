@@ -8,8 +8,8 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { addDoc, collection, doc, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { addDoc, collection, doc, getDoc, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -479,20 +479,15 @@ export default function ClinicSignup() {
       );
       const ownerUid = userCredential.user.uid;
 
-      // Get or create clinic ID
-      let existingClinicId = await AsyncStorage.getItem('clinicId');
-      
-      if (!existingClinicId) {
-        // Create new clinic document if doesn't exist
-        const newClinicRef = await addDoc(collection(db, 'clinics'), {
-          ownerUid: ownerUid,
-          subscribed: false,
-          createdAt: Date.now(),
-          status: 'pending_subscription',
-        });
-        existingClinicId = newClinicRef.id;
-        await AsyncStorage.setItem('clinicId', existingClinicId);
-      }
+      // Phase C: Always create clinic doc after Auth success (guarantees ownerUid)
+      const newClinicRef = await addDoc(collection(db, 'clinics'), {
+        ownerUid: ownerUid,
+        subscribed: false,
+        createdAt: Date.now(),
+        status: 'pending_subscription',
+      });
+      const existingClinicId = newClinicRef.id;
+      await AsyncStorage.setItem('clinicId', existingClinicId);
 
       // Persist clinic + contact info + payment method and card details for confirmation
       const storageData: [string, string][] = [
@@ -567,7 +562,7 @@ export default function ClinicSignup() {
       // ✅ CRITICAL: Verify clinicId is saved before navigating
       const verifyClinicId = await AsyncStorage.getItem('clinicId');
       if (verifyClinicId !== existingClinicId) {
-        console.error('[SIGNUP] WARNING: clinicId mismatch!');
+        console.error('[SIGNUP] clinicId mismatch after save');
       }
 
       // Check if subscription is free (100% coupon applied)
@@ -579,14 +574,115 @@ export default function ClinicSignup() {
         // Navigate to confirmation page (instead of dashboard)
         // Clear draft keys on successful signup
         await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
-        router.push('/clinic/confirm-subscription' as any);
+        router.replace('/clinic/confirm-subscription' as any);
       } else {
         // Paid subscription — route to unified confirmation screen
         await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
         setLoading(false);
-        router.push('/clinic/confirm-subscription' as any);
+        router.replace('/clinic/confirm-subscription' as any);
       }
     } catch (err: any) {
+      // ── PHASE B: Idempotent recovery for email-already-in-use ──
+      if (err.code === 'auth/email-already-in-use') {
+        const normalizedEmail = email.trim().toLowerCase();
+        try {
+          // Prove ownership: sign in with same credentials
+          const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+          const ownerUid = cred.user.uid;
+
+          // ── ClinicId resolution (deterministic, no duplicates) ──
+          let recoveredClinicId = await AsyncStorage.getItem('clinicId');
+
+          if (recoveredClinicId) {
+            // Validate the existing doc
+            const snap = await getDoc(doc(db, 'clinics', recoveredClinicId));
+            if (snap.exists() && snap.data().ownerUid && snap.data().ownerUid !== ownerUid) {
+              // Doc belongs to a different user — create a new one
+              recoveredClinicId = null;
+            }
+          }
+
+          if (!recoveredClinicId) {
+            const newRef = await addDoc(collection(db, 'clinics'), {
+              ownerUid,
+              subscribed: false,
+              createdAt: Date.now(),
+              status: 'pending_subscription',
+            });
+            recoveredClinicId = newRef.id;
+            await AsyncStorage.setItem('clinicId', recoveredClinicId);
+          }
+
+          // Ensure clinic doc has ownerUid + minimum fields
+          await setDoc(doc(db, 'clinics', recoveredClinicId), {
+            ownerUid,
+            firstName,
+            lastName,
+            clinicName: clinicName.trim() || null,
+            clinicPhone: clinicPhone.trim() || null,
+            clinicType: clinicType,
+            email: normalizedEmail,
+            phone: phone || null,
+            countryCode: country || null,
+            city: city || null,
+            location: {
+              lat: clinicLocation?.lat ?? null,
+              lng: clinicLocation?.lng ?? null,
+              address: clinicLocation?.address ?? null,
+            },
+            workingHours,
+            accountCreatedAt: Date.now(),
+            status: isFree ? 'active' : 'pending_subscription',
+          }, { merge: true });
+
+          // Write pending keys (same as normal path)
+          const recoveryStorage: [string, string][] = [
+            ['pendingClinicName', clinicName.trim() || 'Clinic'],
+            ['pendingClinicPhone', clinicPhone.trim() || ''],
+            ['pendingSubscriptionEmail', normalizedEmail],
+            ['pendingPaymentMethod', selectedPaymentMethod || 'card'],
+            ['pendingAppliedCoupon', appliedCoupon || ''],
+            ['pendingFinalPrice', planPrice],
+            ['pendingSubscriptionPriceWithAIPro', planPrice],
+            ['pendingSubscriptionPlanName', planLabel],
+            ['pendingSubscriptionPrice', basePlanPrice],
+            ['pendingFirstName', firstName.trim() || ''],
+            ['pendingLastName', lastName.trim() || ''],
+            ['pendingCountry', country || ''],
+            ['pendingCity', city || ''],
+            ['pendingPhone', phone.trim() || ''],
+            ['pendingClinicType', clinicType || ''],
+            ['pendingWorkingHours', JSON.stringify(workingHours)],
+            ['pendingSubscriptionPlan', planLabel.includes('Annual') ? 'ANNUAL' : 'MONTHLY'],
+            ['pendingPassword', ''],
+            ['pendingIncludeAIPro', isFree ? 'true' : 'false'],
+          ];
+          if (selectedPaymentMethod === 'card') {
+            recoveryStorage.push(
+              ['pendingCardName', cardName],
+              ['pendingCardNumber', cardNumber],
+              ['pendingCardExpiry', cardExpiry]
+            );
+          }
+          await AsyncStorage.multiSet(recoveryStorage);
+          await AsyncStorage.multiRemove(['signupDraftForm', 'signupDraftLocation']);
+
+          setLoading(false);
+          router.replace('/clinic/confirm-subscription' as any);
+          return;
+        } catch (signInErr: any) {
+          // Wrong password for existing account → redirect to login
+          console.warn('[SIGNUP] Recovery sign-in failed:', signInErr.code);
+          setLoading(false);
+          Alert.alert(
+            t('common.attention'),
+            t('auth.accountExists', 'Account already exists. Please log in.'),
+            [{ text: t('common.ok'), onPress: () => router.replace('/clinic/login' as any) }]
+          );
+          return;
+        }
+      }
+
       console.error('clinic signup error', err);
       setLoading(false);
       

@@ -103,7 +103,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const clinicId = await AsyncStorage.getItem(CLINIC_ID_KEY);
       const storedMemberId = await AsyncStorage.getItem(CLINIC_MEMBER_ID_KEY);
+      const storedRole = await AsyncStorage.getItem(CLINIC_ROLE_KEY);
+      const storedStatus = await AsyncStorage.getItem(CLINIC_STATUS_KEY);
       const patientId = await AsyncStorage.getItem(PATIENT_ID_KEY);
+
+      // Phase 4: Only restore clinic session if ALL required keys exist.
+      // After confirm-subscription, clinicId is kept but member keys are purged —
+      // treat that as logged-out to prevent partial/unstable restore.
+      if (clinicId && (!storedMemberId || !storedRole || !storedStatus)) {
+        await AsyncStorage.removeItem(CLINIC_ID_KEY);
+        setAuthState({
+          userRole: null,
+          userId: null,
+          clinicId: null,
+          memberId: null,
+          clinicRole: null,
+          memberStatus: null,
+          isSubscribed: null,
+          isDetailsComplete: null,
+          loading: false,
+          error: null,
+        });
+        return;
+      }
 
       // Determine which role to use (clinic takes priority)
       if (clinicId) {
@@ -289,6 +311,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         CLINIC_STATUS_KEY,
         PATIENT_ID_KEY,
       ]);
+      // Clear biometric credentials on logout
+      try {
+        const SecureStore = require('expo-secure-store');
+        await SecureStore.deleteItemAsync('clinic_credentials');
+        await SecureStore.deleteItemAsync('biometric_enabled');
+      } catch {}
       // End Firebase Auth session so no ghost user persists
       await signOut(auth);
       setAuthState({

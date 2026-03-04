@@ -44,6 +44,16 @@ yarn-error.*
 .env
 .env*.local
 
+# Migration/reset scripts (local dev only)
+scripts/diagnosticCheck.js
+scripts/migrateRemovePlaintextPasswords.js
+scripts/fullEnvironmentReset.js
+scripts/deleteAllClinics.ts
+scripts/resetSubscription.ts
+scripts/createAdminTestAccount.js
+scripts/setupAdminAccount.ps1
+scripts/reset_output.txt
+
 # typescript
 *.tsbuildinfo
 
