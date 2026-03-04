@@ -107,15 +107,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedStatus = await AsyncStorage.getItem(CLINIC_STATUS_KEY);
       const patientId = await AsyncStorage.getItem(PATIENT_ID_KEY);
 
-      // Phase 4: Only restore clinic session if ALL required keys exist.
-      // After confirm-subscription, clinicId is kept but member keys are purged —
-      // treat that as logged-out to prevent partial/unstable restore.
+      // Phase 4: If clinicId exists but member keys are missing, treat as
+      // a partial session (e.g. post-confirm-subscription).  Keep clinicId so
+      // that subscribe.tsx can still read Firestore status for Renew flow.
       if (clinicId && (!storedMemberId || !storedRole || !storedStatus)) {
-        await AsyncStorage.removeItem(CLINIC_ID_KEY);
         setAuthState({
-          userRole: null,
-          userId: null,
-          clinicId: null,
+          userRole: 'clinic',
+          userId: clinicId,
+          clinicId,
           memberId: null,
           clinicRole: null,
           memberStatus: null,

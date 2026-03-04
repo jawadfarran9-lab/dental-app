@@ -16,6 +16,7 @@
  */
 
 import { auth, db } from '@/firebaseConfig';
+import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
@@ -218,11 +219,12 @@ export default function RenewLoginSheet({ visible, onClose, onAuthSuccess }: Ren
           style={[
             styles.sheet,
             {
-              backgroundColor: colors.card,
               borderColor: colors.cardBorder,
+              overflow: 'hidden',
             },
           ]}
         >
+          <PremiumGradientBackground isDark={isDark} showSparkles={false} />
           {/* ── Header ── */}
           <View style={styles.headerRow}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Renew Subscription</Text>

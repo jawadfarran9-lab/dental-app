@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 const ACCENT = '#3D9EFF';
+const INACTIVE_STATUSES = ['cancelled', 'expired', 'inactive', 'past_due'];
 const ACCENT_SOFT = 'rgba(61,158,255,0.12)';
 const ACCENT_BORDER = 'rgba(61,158,255,0.35)';
 
@@ -44,7 +45,7 @@ export default function ClinicSubscribeLanding() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const { userId, clinicId, userRole, clinicRole } = useAuth();
+  const { userId, clinicId, userRole, clinicRole, loading: authLoading } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
@@ -158,6 +159,8 @@ export default function ClinicSubscribeLanding() {
 
   // Load current subscription state on mount only (not on every focus to prevent delay)
   useEffect(() => {
+    if (authLoading) return; // Wait for auth state to resolve before loading subscription
+
     const loadSubscription = async () => {
       try {
         const storedId = clinicId
@@ -172,9 +175,8 @@ export default function ClinicSubscribeLanding() {
         }
 
         if (!storedId) {
-          setIsSubscribed(false);
-          setCurrentPlan(null);
-          setStatusLoaded(true);
+          // Do NOT finalize statusLoaded — keep it false so the UI
+          // does not permanently hide the Renew button due to a transient null.
           return;
         }
 
@@ -182,10 +184,14 @@ export default function ClinicSubscribeLanding() {
         if (clinicSnap.exists()) {
           const clinicData = clinicSnap.data();
           const plan = (clinicData.subscriptionPlan as PlanId) || null;
-          setCurrentPlan(plan);
+          const active = hasActiveSubscription(clinicData);
+          const status = (clinicData.status as string) || null;
+
+          // For inactive clinics, clear currentPlan so plan cards are not locked
+          setCurrentPlan(active ? plan : null);
           setSelectedPlan(plan);
-          setIsSubscribed(hasActiveSubscription(clinicData));
-          setClinicStatus((clinicData.status as string) || null);
+          setIsSubscribed(active);
+          setClinicStatus(status);
           setStatusLoaded(true);
           if (plan) {
             await AsyncStorage.setItem('clinicSubscriptionPlan', plan);
@@ -205,14 +211,15 @@ export default function ClinicSubscribeLanding() {
     };
 
     loadSubscription();
-  }, [clinicId, clinicRole, userRole]);
+  }, [clinicId, clinicRole, userRole, authLoading]);
 
-  // Phase R1: Auto-open Renew sheet ONLY when redirected due to cancelled subscription
+  // Phase R1: Auto-open Renew sheet when redirected due to inactive subscription
   useEffect(() => {
     if (
       reason === 'cancelled' &&
       statusLoaded &&
-      clinicStatus === 'cancelled' &&
+      clinicStatus != null &&
+      INACTIVE_STATUSES.includes(clinicStatus) &&
       !renewAutoOpened.current
     ) {
       renewAutoOpened.current = true;
@@ -259,8 +266,13 @@ export default function ClinicSubscribeLanding() {
       // Small delay to ensure AsyncStorage write is complete
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Route to account creation screen with clinicId
-      router.push('/clinic/signup' as any);
+      // Renewing clinic (already has account) → go to confirm-subscription
+      // New clinic (no account yet) → go to signup
+      if (effectiveClinicId) {
+        router.push('/clinic/confirm-subscription' as any);
+      } else {
+        router.push('/clinic/signup' as any);
+      }
     } catch (error) {
       setSaving(false);
       console.error('[SUBSCRIBE ERROR]', error);
@@ -613,8 +625,8 @@ export default function ClinicSubscribeLanding() {
           </GlassCard>
           </Animated.View>
 
-          {/* Phase R0: Manual Renew button — visible when subscription is not active */}
-          {statusLoaded && isSubscribed === false && effectiveClinicId && (
+          {/* Renew button — visible only for inactive/cancelled subscriptions */}
+          {statusLoaded && !isSubscribed && (
             <TouchableOpacity
               style={[styles.renewBtn, { backgroundColor: ACCENT }]}
               onPress={() => setIsRenewOpen(true)}

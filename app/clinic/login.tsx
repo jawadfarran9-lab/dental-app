@@ -2,7 +2,6 @@ import { auth, db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
-import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -34,9 +33,6 @@ export default function ClinicLogin() {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { setClinicAuth } = useAuth();
-
-  // PHASE F: Guard - prevent patients from accessing clinic pages
-  useClinicGuard();
 
   // ✅ Helper function to get home route based on clinic type
   const getHomeRoute = (clinicType: string | null | undefined): string => {
@@ -188,7 +184,7 @@ export default function ClinicLogin() {
       Alert.alert(
         t('common.attention'),
         t('common.subscriptionInactive'),
-        [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe' as any) }]
+        [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
       );
       return;
     }

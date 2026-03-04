@@ -2,7 +2,7 @@
  * Renew Subscription — Plan Selection Screen (Phase R2)
  *
  * Reached after successful Firebase Auth sign-in from the Renew Login Sheet.
- * Allows cancelled clinics to choose a new plan + AI Pro toggle, then
+ * Allows inactive clinics to choose a new plan + AI Pro toggle, then
  * writes pending keys to AsyncStorage and navigates to the payment screen.
  *
  * No Firestore writes. No upgrade-screen reuse.
@@ -114,8 +114,9 @@ export default function RenewSubscribeScreen() {
         }
 
         const data = snap.data();
-        if (data.status !== 'cancelled') {
-          // Not cancelled — send to home or subscribe
+        const INACTIVE_STATUSES = ['cancelled', 'expired', 'inactive', 'past_due'];
+        if (!INACTIVE_STATUSES.includes(data.status)) {
+          // Active or unknown — send to home or subscribe
           router.replace('/(tabs)/home' as any);
           return;
         }
