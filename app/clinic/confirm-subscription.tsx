@@ -14,7 +14,7 @@ import { EmailAuthProvider, linkWithCredential, signOut } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, BackHandler, Image, KeyboardAvoidingView, Modal, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 /** Subscription-wide primary blue — matches subscribe.tsx ACCENT */
 const SUBSCRIPTION_BLUE = '#3D9EFF';
@@ -63,12 +63,19 @@ export default function ConfirmSubscription() {
   const finalPriceOpacity = useRef(new Animated.Value(0)).current;
   const finalPriceScale = useRef(new Animated.Value(0.95)).current;
 
+  // ── Card content fade-in (UI-only) ──
+  const cardContentOpacity = useRef(new Animated.Value(0)).current;
+
+  // ── Hero badge float (UI-only) ──
+  const badgeFloat = useRef(new Animated.Value(0)).current;
+
   // ── Button press animation (UI-only) ──
   const buttonScale = useRef(new Animated.Value(1)).current;
   // ── Modal entrance animation (UI-only) ──
   const modalScale = useRef(new Animated.Value(0.85)).current;
   const modalOpacity = useRef(new Animated.Value(0)).current;
   const checkScale = useRef(new Animated.Value(0)).current;
+  const iconPulse = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (!priceReady) return;
@@ -76,15 +83,28 @@ export default function ConfirmSubscription() {
     discountOpacity.setValue(0);
     finalPriceOpacity.setValue(0);
     finalPriceScale.setValue(0.95);
-    Animated.stagger(200, [
-      Animated.timing(basePriceOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.timing(discountOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.parallel([
-        Animated.timing(finalPriceOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
-        Animated.spring(finalPriceScale, { toValue: 1, friction: 6, useNativeDriver: true }),
+    Animated.parallel([
+      Animated.timing(cardContentOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+      Animated.stagger(200, [
+        Animated.timing(basePriceOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.timing(discountOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        Animated.parallel([
+          Animated.timing(finalPriceOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
+          Animated.spring(finalPriceScale, { toValue: 1, friction: 6, useNativeDriver: true }),
+        ]),
       ]),
     ]).start();
   }, [priceReady]);
+
+  // ── Hero badge floating loop (UI-only) ──
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(badgeFloat, { toValue: -4, duration: 1800, useNativeDriver: true, easing: undefined }),
+        Animated.timing(badgeFloat, { toValue: 0, duration: 1800, useNativeDriver: true, easing: undefined }),
+      ])
+    ).start();
+  }, []);
 
   // ── Modal entrance animation ──
   useEffect(() => {
@@ -102,6 +122,12 @@ export default function ConfirmSubscription() {
         Animated.timing(checkScale, { toValue: 1.08, duration: 120, useNativeDriver: true }),
         Animated.spring(checkScale, { toValue: 1, friction: 5, useNativeDriver: true }),
       ]).start();
+      // ── Success icon pulse (heartbeat) ──
+      Animated.sequence([
+        Animated.timing(iconPulse, { toValue: 0.95, duration: 150, useNativeDriver: true }),
+        Animated.timing(iconPulse, { toValue: 1.05, duration: 150, useNativeDriver: true }),
+        Animated.timing(iconPulse, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
     });
   }, [showSuccessModal]);
 
@@ -109,13 +135,13 @@ export default function ConfirmSubscription() {
   const buttonOpacity = useRef(new Animated.Value(1)).current;
   const onButtonPressIn = () => {
     Animated.parallel([
-      Animated.timing(buttonScale, { toValue: 0.97, duration: 120, useNativeDriver: true }),
+      Animated.timing(buttonScale, { toValue: 0.96, duration: 100, useNativeDriver: true }),
       Animated.timing(buttonOpacity, { toValue: 0.82, duration: 100, useNativeDriver: true }),
     ]).start();
   };
   const onButtonPressOut = () => {
     Animated.parallel([
-      Animated.spring(buttonScale, { toValue: 1, friction: 5, tension: 100, useNativeDriver: true }),
+      Animated.spring(buttonScale, { toValue: 1, friction: 4, tension: 120, useNativeDriver: true }),
       Animated.timing(buttonOpacity, { toValue: 1, duration: 140, useNativeDriver: true }),
     ]).start();
   };
@@ -561,7 +587,7 @@ BeSmile AI Team
               {/* Floating blur circles — static depth */}
               <View style={styles.heroBlurCircle1} />
               <View style={styles.heroBlurCircle2} />
-              <View style={[styles.heroBadgePill, { backgroundColor: SUBSCRIPTION_BLUE, shadowColor: SUBSCRIPTION_BLUE, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3 }]}>
+              <Animated.View style={[styles.heroBadgePill, { backgroundColor: SUBSCRIPTION_BLUE, shadowColor: SUBSCRIPTION_BLUE, shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 3, transform: [{ translateY: badgeFloat }] }]}>
                 <Ionicons
                   name="shield-checkmark"
                   size={14}
@@ -571,7 +597,7 @@ BeSmile AI Team
                 <Text style={styles.heroBadgePillText}>
                   {theme.badge}
                 </Text>
-              </View>
+              </Animated.View>
               <Text style={[styles.heroHeadline, { color: colors.textPrimary }]}>
                 {isFree
                   ? (isRTL ? 'تم تفعيل الوصول المجاني' : 'Free Access Activated')
@@ -595,9 +621,9 @@ BeSmile AI Team
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* SECTION 1: CLINIC INFO */}
             {/* ═══════════════════════════════════════════════════════════════ */}
-            <GlassCardPro accent="blue" isDark={isDark}>
+            <GlassCardPro accent="blue" isDark={isDark} style={styles.cardDepth}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIconBox, { backgroundColor: SUBSCRIPTION_BLUE }]}>
+                <View style={[styles.sectionIconBox, styles.iconGlow, { backgroundColor: SUBSCRIPTION_BLUE }]}>
                   <Ionicons name="business" size={20} color="#fff" />
                 </View>
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -605,44 +631,46 @@ BeSmile AI Team
                 </Text>
               </View>
 
-              {/* Clinic Name */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'اسم العيادة' : 'Clinic Name'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-                  {clinicName || '—'}
-                </Text>
-              </View>
+              <Animated.View style={{ opacity: cardContentOpacity }}>
+                {/* Clinic Name */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'اسم العيادة' : 'Clinic Name'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                    {clinicName || '—'}
+                  </Text>
+                </View>
 
-              {/* Clinic Phone */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'هاتف العيادة' : 'Clinic Phone'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-                  {clinicPhone || '—'}
-                </Text>
-              </View>
+                {/* Clinic Phone */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'هاتف العيادة' : 'Clinic Phone'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                    {clinicPhone || '—'}
+                  </Text>
+                </View>
 
-              {/* Country + City */}
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'الموقع' : 'Location'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-                  {country && city ? `${city}, ${country}` : country || city || '—'}
-                </Text>
-              </View>
+                {/* Country + City */}
+                <View style={styles.infoRow}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'الموقع' : 'Location'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                    {country && city ? `${city}, ${country}` : country || city || '—'}
+                  </Text>
+                </View>
+              </Animated.View>
             </GlassCardPro>
 
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* SECTION: WORKING HOURS */}
             {/* ═══════════════════════════════════════════════════════════════ */}
             {workingHours && (
-              <GlassCardPro accent="blue" isDark={isDark}>
+              <GlassCardPro accent="blue" isDark={isDark} style={styles.cardDepth}>
                 <View style={styles.sectionHeader}>
-                  <View style={[styles.sectionIconBox, { backgroundColor: SUBSCRIPTION_BLUE }]}>
+                  <View style={[styles.sectionIconBox, styles.iconGlow, { backgroundColor: SUBSCRIPTION_BLUE }]}>
                     <Ionicons name="time" size={20} color="#fff" />
                   </View>
                   <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -650,32 +678,34 @@ BeSmile AI Team
                   </Text>
                 </View>
 
-                {DAYS_ORDER.map((day, idx) => {
-                  const ds = workingHours[day];
-                  const isLast = idx === DAYS_ORDER.length - 1;
-                  return (
-                    <View
-                      key={day}
-                      style={[styles.infoRow, !isLast && { borderBottomColor: colors.cardBorder }]}
-                    >
-                      <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                        {formatDayLabel(day)}
-                      </Text>
-                      <Text style={[styles.infoValue, { color: ds.enabled ? colors.textPrimary : colors.textSecondary }]}>
-                        {ds.enabled ? `${ds.open} – ${ds.close}` : (isRTL ? 'مغلق' : 'Closed')}
-                      </Text>
-                    </View>
-                  );
-                })}
+                <Animated.View style={{ opacity: cardContentOpacity }}>
+                  {DAYS_ORDER.map((day, idx) => {
+                    const ds = workingHours[day];
+                    const isLast = idx === DAYS_ORDER.length - 1;
+                    return (
+                      <View
+                        key={day}
+                        style={[styles.infoRow, !isLast && { borderBottomColor: colors.cardBorder }]}
+                      >
+                        <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                          {formatDayLabel(day)}
+                        </Text>
+                        <Text style={[styles.infoValue, { color: ds.enabled ? colors.textPrimary : colors.textSecondary }]}>
+                          {ds.enabled ? `${ds.open} – ${ds.close}` : (isRTL ? 'مغلق' : 'Closed')}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </Animated.View>
               </GlassCardPro>
             )}
 
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* SECTION 2: ACCOUNT INFO */}
             {/* ═══════════════════════════════════════════════════════════════ */}
-            <GlassCardPro accent="blue" isDark={isDark}>
+            <GlassCardPro accent="blue" isDark={isDark} style={styles.cardDepth}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIconBox, { backgroundColor: SUBSCRIPTION_BLUE }]}>
+                <View style={[styles.sectionIconBox, styles.iconGlow, { backgroundColor: SUBSCRIPTION_BLUE }]}>
                   <Ionicons name="person" size={20} color="#fff" />
                 </View>
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -683,43 +713,45 @@ BeSmile AI Team
                 </Text>
               </View>
 
-              {/* Full Name */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'الاسم الكامل' : 'Full Name'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-                  {firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || '—'}
-                </Text>
-              </View>
+              <Animated.View style={{ opacity: cardContentOpacity }}>
+                {/* Full Name */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'الاسم الكامل' : 'Full Name'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                    {firstName && lastName ? `${firstName} ${lastName}` : firstName || lastName || '—'}
+                  </Text>
+                </View>
 
-              {/* Email */}
-              <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'البريد الإلكتروني' : 'Email'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary, fontSize: 13 }]}>
-                  {email || '—'}
-                </Text>
-              </View>
+                {/* Email */}
+                <View style={[styles.infoRow, { borderBottomColor: colors.cardBorder }]}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'البريد الإلكتروني' : 'Email'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary, fontSize: 13 }]}>
+                    {email || '—'}
+                  </Text>
+                </View>
 
-              {/* Personal Phone */}
-              <View style={styles.infoRow}>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
-                  {isRTL ? 'الهاتف الشخصي' : 'Personal Phone'}
-                </Text>
-                <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
-                  {personalPhone || '—'}
-                </Text>
-              </View>
+                {/* Personal Phone */}
+                <View style={styles.infoRow}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>
+                    {isRTL ? 'الهاتف الشخصي' : 'Personal Phone'}
+                  </Text>
+                  <Text style={[styles.infoValue, { color: colors.textPrimary }]}>
+                    {personalPhone || '—'}
+                  </Text>
+                </View>
+              </Animated.View>
             </GlassCardPro>
 
             {/* ═══════════════════════════════════════════════════════════════ */}
             {/* SECTION 3: PLAN INFO */}
             {/* ═══════════════════════════════════════════════════════════════ */}
-            <GlassCardPro accent="blue" isDark={isDark}>
+            <GlassCardPro accent="blue" isDark={isDark} style={[styles.cardDepth, styles.planCardAccent]}>
               <View style={styles.sectionHeader}>
-                <View style={[styles.sectionIconBox, { backgroundColor: theme.primary }]}>
+                <View style={[styles.sectionIconBox, styles.iconGlow, { backgroundColor: theme.primary }]}>
                   <Ionicons name={theme.icon} size={20} color="#fff" />
                 </View>
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
@@ -775,9 +807,9 @@ BeSmile AI Team
               <View style={[styles.finalPriceDivider, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.10)' }]} />
 
               {/* Final Price — animated scale + fade */}
-              <Animated.View style={[styles.finalPriceBox, { opacity: finalPriceOpacity, transform: [{ scale: finalPriceScale }], overflow: 'hidden' as const }]}>
+              <Animated.View style={[styles.finalPriceBox, styles.finalPriceBoxEnhanced, { opacity: finalPriceOpacity, transform: [{ scale: finalPriceScale }], overflow: 'hidden' as const }]}>
                 <LinearGradient
-                  colors={isDark ? (['rgba(30,107,255,0.18)', 'rgba(61,158,255,0.08)'] as const) : (['rgba(61,158,255,0.10)', 'rgba(61,158,255,0.04)'] as const)}
+                  colors={isDark ? (['rgba(30,107,255,0.22)', 'rgba(61,158,255,0.10)'] as const) : (['rgba(61,158,255,0.12)', 'rgba(61,158,255,0.04)'] as const)}
                   style={StyleSheet.absoluteFill}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
@@ -937,23 +969,20 @@ BeSmile AI Team
       >
         <View style={styles.modalOverlay}>
           <Animated.View style={[styles.modalCard, { backgroundColor: colors.card, opacity: modalOpacity, transform: [{ scale: modalScale }] }]}>
-            <LinearGradient
-              colors={theme.gradient}
-              style={styles.modalIconCircle}
-            >
-              <Animated.View style={{ transform: [{ scale: checkScale }] }}>
-                <Ionicons name="checkmark" size={40} color="#fff" />
-              </Animated.View>
-            </LinearGradient>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-              {isFree
-                ? (isRTL ? 'تم التفعيل!' : 'Activated!')
-                : (isRTL ? 'تم بنجاح!' : 'Success!')}
+            <Image
+              source={require('../../assets/icon.png')}
+              style={styles.modalLogo}
+            />
+            <Text style={[styles.modalTitleLine1, { color: colors.textPrimary }]}>
+              {isRTL ? 'مرحبًا بك في' : 'Welcome to'}
+            </Text>
+            <Text style={[styles.modalTitleLine2, { color: colors.textPrimary }]}>
+              BeSmile AI
             </Text>
             <Text style={[styles.modalMessage, { color: colors.textSecondary }]}>
               {isFree
-                ? (isRTL ? 'حسابك المجاني جاهز للاستخدام.' : 'Your free account is ready to use.')
-                : (isRTL ? 'تم تأكيد اشتراكك بنجاح!' : 'Your subscription has been confirmed!')}
+                ? (isRTL ? 'تم تفعيل حسابك المجاني.\nعيادتك جاهزة لاستخدام الذكاء الاصطناعي.' : 'Your free account has been activated.\nYour clinic is ready to start using AI.')
+                : (isRTL ? 'تم تأكيد اشتراكك.\nعيادتك جاهزة لاستخدام الذكاء الاصطناعي.' : 'Your subscription has been confirmed.\nYour clinic is ready to start using AI.')}
             </Text>
             <TouchableOpacity
               style={[styles.modalButton, { backgroundColor: SUBSCRIPTION_BLUE }]}
@@ -966,7 +995,7 @@ BeSmile AI Team
               <View style={styles.confirmButtonInner}>
                 <Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginRight: 8 }} />
                 <Text style={styles.modalButtonText}>
-                  {isRTL ? 'المتابعة إلى لوحة التحكم' : 'Continue to Dashboard'}
+                  {isRTL ? 'المتابعة إلى العيادة' : 'Continue to Clinic'}
                 </Text>
               </View>
             </TouchableOpacity>
@@ -1215,6 +1244,28 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginHorizontal: 4,
   },
+  cardDepth: {
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 4,
+  },
+  iconGlow: {
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
+  planCardAccent: {
+    borderColor: 'rgba(61,158,255,0.35)',
+    borderWidth: 1,
+  },
+  finalPriceBoxEnhanced: {
+    borderWidth: 1,
+    borderColor: 'rgba(61,158,255,0.15)',
+  },
   finalPriceBox: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1336,6 +1387,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
+  },
+  modalLogo: {
+    width: 72,
+    height: 72,
+    borderRadius: 16,
+    marginBottom: 16,
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  modalTitleLine1: {
+    fontSize: 18,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  modalTitleLine2: {
+    fontSize: 26,
+    fontWeight: '800',
+    textAlign: 'center',
+    marginBottom: 8,
   },
   modalTitle: {
     fontSize: 24,
