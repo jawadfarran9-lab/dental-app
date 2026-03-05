@@ -40,6 +40,7 @@ export function useClinicGuard() {
     }
 
     // PHASE 1D: Block cancelled/inactive subscriptions from clinic screens
+    // Only redirect when isSubscribed is CONFIRMED false (not null/unknown)
     if (userRole === 'clinic' && isSubscribed === false) {
       router.replace('/clinic/subscribe?reason=cancelled' as any);
       return;

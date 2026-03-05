@@ -66,7 +66,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Check subscription status for clinic
    */
-  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean; detailsComplete: boolean }> => {
+  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean | null; detailsComplete: boolean }> => {
     try {
       const clinicRef = doc(db, 'clinics', clinicId);
       const clinicSnap = await getDoc(clinicRef);
@@ -89,7 +89,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return { subscribed, detailsComplete };
     } catch (error) {
       console.error('[AUTH] Error checking clinic subscription:', error);
-      return { subscribed: false, detailsComplete: false };
+      // Return null (unknown) — never flip to false on transient errors
+      return { subscribed: null, detailsComplete: false };
     }
   };
 
@@ -163,7 +164,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           memberId: resolvedMember.id,
           clinicRole: resolvedMember.role,
           memberStatus: resolvedMember.status,
-          isSubscribed: subscribed,
+          // Keep null (unknown) if Firestore errored; only set true/false on definitive read
+          isSubscribed: subscribed ?? null,
           isDetailsComplete: detailsComplete,
           loading: false,
           error: null,
@@ -239,11 +241,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Run subscription check and login record in background (non-blocking)
       Promise.all([
         checkClinicSubscription(clinicId).then(({ subscribed, detailsComplete }) => {
-          setAuthState(prev => ({
-            ...prev,
-            isSubscribed: subscribed,
-            isDetailsComplete: detailsComplete,
-          }));
+          // Only update state if we got a definitive answer (not null/error)
+          if (subscribed !== null) {
+            setAuthState(prev => ({
+              ...prev,
+              isSubscribed: subscribed,
+              isDetailsComplete: detailsComplete,
+            }));
+          }
         }),
         status === 'ACTIVE' ? recordMemberLogin(clinicId, memberId) : Promise.resolve(),
       ]).catch(() => {});
