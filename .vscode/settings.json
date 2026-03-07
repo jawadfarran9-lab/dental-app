@@ -3,5 +3,11 @@
     "source.fixAll": "explicit",
     "source.organizeImports": "explicit",
     "source.sortMembers": "explicit"
+  },
+  "files.watcherExclude": {
+    "**/SynologyDrive/**": true
+  },
+  "search.exclude": {
+    "**/SynologyDrive/**": true
   }
 }
