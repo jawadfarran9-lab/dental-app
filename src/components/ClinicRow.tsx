@@ -24,6 +24,7 @@ type ClinicRowProps = {
   clinicType?: 'dental' | 'laser' | 'beauty' | null;
   isOwn?: boolean;
   isDark?: boolean;
+  statusDot?: 'green' | 'red';
   onPress: () => void;
 };
 
@@ -39,6 +40,7 @@ const ClinicRow: React.FC<ClinicRowProps> = ({
   clinicType,
   isOwn = false,
   isDark = false,
+  statusDot,
   onPress,
 }) => {
   // Derive initials from clinic name
@@ -130,6 +132,9 @@ const ClinicRow: React.FC<ClinicRowProps> = ({
           )}
           {/* Line 1: Name + Rating inline */}
           <View style={rowStyles.line1}>
+            {statusDot && (
+              <View style={[rowStyles.statusDot, { backgroundColor: statusDot === 'green' ? '#10B981' : '#EF4444' }]} />
+            )}
             <Text style={[rowStyles.name, { color: nameFg }]} numberOfLines={1}>
               {name}
             </Text>
@@ -239,6 +244,11 @@ const rowStyles = StyleSheet.create({
   },
   dot: {
     fontSize: 10,
+  },
+  statusDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
   },
   distancePill: {
     flexDirection: 'row',

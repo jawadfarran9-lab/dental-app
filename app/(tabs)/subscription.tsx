@@ -7,7 +7,7 @@ export default function SubscriptionTabRedirect() {
 
 	useEffect(() => {
 		router.replace('/clinic/subscribe');
-	}, [router]);
+	}, []);
 
 	return null;
 }

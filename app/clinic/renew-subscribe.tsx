@@ -22,14 +22,14 @@ import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-    ActivityIndicator,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -268,7 +268,10 @@ export default function RenewSubscribeScreen() {
       // Small delay to ensure AsyncStorage flush
       await new Promise(r => setTimeout(r, 80));
 
-      router.replace('/clinic/confirm-subscription' as any);
+      router.replace({
+        pathname: '/clinic/confirm-subscription',
+        params: { flow: 'renew' },
+      } as any);
     } catch (err) {
       console.error('[RenewSubscribe] Confirm error:', err);
       setError('Something went wrong. Please try again.');

@@ -1,35 +1,40 @@
+import { db } from '@/firebaseConfig';
 import ClinicRow from '@/src/components/ClinicRow';
 import GlassCard from '@/src/components/GlassCard';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import RadiusSelector from '@/src/components/RadiusSelector';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
-import { useHasActiveSubscription } from '@/src/hooks/useHasActiveSubscription';
 import {
-    PublicClinic,
-    fetchPublishedClinics,
-    reverseGeocode,
+  PublicClinic,
+  fetchClinicPublicOwner,
+  fetchPublishedClinics,
+  reverseGeocode,
 } from '@/src/services/publicClinics';
+import { WeeklySchedule } from '@/src/types/clinicSchedule';
 import { getDistanceBetween } from '@/src/utils/geoDistance';
+import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
+import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import * as Location from 'expo-location';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Animated,
-    Easing,
-    FlatList,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  Easing,
+  FlatList,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 // ─── Animated FlatList (required for native onScroll driver) ───
@@ -125,18 +130,26 @@ const CategoryPill = React.memo(
   },
 );
 
-/**
- * Clinics List Screen (inside tabs)
- *
- * Route: /(tabs)/clinics
- * Shows all published clinics with search, subscribed clinic pinned first.
- */
+// ═══════════════════════════════════════════════════════════════════
+// CLINICS SCREEN — Single layout with conditional sections
+// ═══════════════════════════════════════════════════════════════════
+
 export default function ClinicsListScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
-  const { clinicId: ownClinicId, isSubscribed } = useAuth();
-  const hasSubscription = useHasActiveSubscription();
+  const { clinicId: ownClinicId, isSubscribed, loading: authLoading } = useAuth();
 
+  // ── Section visibility ──
+  // Owner + active subscription: show YOUR CLINIC section above Discover
+  // Everyone always sees the full Explore Clinics page (Discover + search + filters)
+  const showMyClinic = !!ownClinicId && isSubscribed === true;
+
+  // ── Own clinic state ──
+  const [ownClinic, setOwnClinic] = useState<PublicClinic | null>(null);
+  const [ownClinicLoading, setOwnClinicLoading] = useState(false);
+  const [ownWorkingHours, setOwnWorkingHours] = useState<WeeklySchedule | null>(null);
+
+  // ── Explore state ──
   const [clinics, setClinics] = useState<ClinicListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,7 +159,51 @@ export default function ClinicsListScreen() {
   const [locationLoading, setLocationLoading] = useState(false);
   const locationFetched = useRef(false);
 
-  // ─── Auto-request user GPS on mount (graceful, non-blocking) ───
+  // ── Fetch own clinic (public profile + private workingHours) ──
+  // Refetch on focus so manualClose changes from Profile are reflected
+  const fetchOwnClinic = useCallback(() => {
+    if (!ownClinicId) return;
+    let cancelled = false;
+    setOwnClinicLoading(true);
+    (async () => {
+      try {
+        const [clinic, privateSnap] = await Promise.all([
+          fetchClinicPublicOwner(ownClinicId),
+          getDoc(doc(db, 'clinics', ownClinicId)),
+        ]);
+        if (!cancelled) {
+          setOwnClinic(clinic);
+          const raw = privateSnap.exists() ? privateSnap.data()?.workingHours : undefined;
+          setOwnWorkingHours(parseWorkingHours(raw));
+        }
+      } catch {
+        // Silent
+      } finally {
+        if (!cancelled) setOwnClinicLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [ownClinicId]);
+
+  useFocusEffect(fetchOwnClinic);
+
+  // ── Own clinic entry animation ──
+  const entryAnim = useRef(new Animated.Value(0)).current;
+  const entryRan = useRef(false);
+  useEffect(() => {
+    if (ownClinic && !entryRan.current) {
+      entryRan.current = true;
+      Animated.timing(entryAnim, {
+        toValue: 1,
+        duration: 220,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [ownClinic, entryAnim]);
+
+  // ── GPS auto-request ──
+  const lastLocation = useRef<{ lat: number; lng: number } | null>(null);
   useEffect(() => {
     if (locationFetched.current) return;
     let cancelled = false;
@@ -163,13 +220,13 @@ export default function ClinicsListScreen() {
           }
         }
       } catch {
-        // Permission denied or GPS unavailable — silent fallback
+        // Silent
       }
     })();
     return () => { cancelled = true; };
   }, []);
 
-  // ─── Micro-motion: scroll-based filter depth ───
+  // ── Scroll handling ──
   const scrollY = useRef(new Animated.Value(0)).current;
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -178,12 +235,10 @@ export default function ClinicsListScreen() {
     () => Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: true }),
     [scrollY],
   );
-
   const onScrollBegin = useCallback(() => {
     if (scrollTimer.current) clearTimeout(scrollTimer.current);
     setIsScrolling(true);
   }, []);
-
   const onScrollEnd = useCallback(() => {
     scrollTimer.current = setTimeout(() => setIsScrolling(false), 200);
   }, []);
@@ -192,12 +247,10 @@ export default function ClinicsListScreen() {
     ? isDark ? 45 : 65
     : isDark ? 30 : 50;
 
-  // ─── Micro-motion: location button pulse ───
+  // ── Location pulse ──
   const locPulse = useRef(new Animated.Value(1)).current;
   const prevLocationRef = useRef(userLocation);
-
   useEffect(() => {
-    // Fire once when location transitions from null → non-null
     if (userLocation && !prevLocationRef.current) {
       Animated.sequence([
         Animated.timing(locPulse, { toValue: 1.25, duration: 150, easing: Easing.out(Easing.ease), useNativeDriver: true }),
@@ -207,16 +260,12 @@ export default function ClinicsListScreen() {
     prevLocationRef.current = userLocation;
   }, [userLocation, locPulse]);
 
-  // ─── Fetch all published clinics & enrich with reverse-geocode ───
+  // ── Fetch all published clinics ──
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
         const all = await fetchPublishedClinics();
-
-        // Reverse-geocode in parallel (best-effort).
-        // Only overwrite city/country if geocode succeeds AND the
-        // document didn't already have values from directory sync.
         const withLocations: ClinicListItem[] = await Promise.all(
           all.map(async (c) => {
             if (c.geo?.lat != null && c.geo?.lng != null) {
@@ -228,13 +277,12 @@ export default function ClinicsListScreen() {
                   country: place.country || c.country || '',
                 };
               } catch {
-                return c; // keep Firestore values
+                return c;
               }
             }
-            return c; // no geo — keep Firestore city/country as-is
+            return c;
           }),
         );
-
         setClinics(withLocations);
       } catch (err) {
         console.error('[CLINICS_LIST] Failed to fetch clinics:', err);
@@ -244,21 +292,16 @@ export default function ClinicsListScreen() {
     })();
   }, []);
 
-  // ─── Request user location (on tap) ───
-  const lastLocation = useRef<{ lat: number; lng: number } | null>(null);
+  // ── Toggle location ──
   const toggleLocation = useCallback(async () => {
     if (userLocation) {
-      // Turn off location sorting (keep cached coords for re-enable)
       setUserLocation(null);
       return;
     }
-
-    // Re-enable from cache if we already fetched once
     if (locationFetched.current && lastLocation.current) {
       setUserLocation(lastLocation.current);
       return;
     }
-
     setLocationLoading(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -270,80 +313,49 @@ export default function ClinicsListScreen() {
         locationFetched.current = true;
       }
     } catch {
-      // Silently fail — no location available
+      // Silent
     } finally {
       setLocationLoading(false);
     }
   }, [userLocation]);
 
-  // ─── Filtered + sorted list (memoised) ───
+  // ── Filtered + sorted clinics ──
   const filteredClinics = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
-
-    // 1. Apply search filter
-    let filtered = q
-      ? clinics.filter(
-          (c) =>
-            c.name.toLowerCase().includes(q) ||
-            (c.city && c.city.toLowerCase().includes(q)) ||
-            (c.country && c.country.toLowerCase().includes(q)),
-        )
+    let filtered = ownClinicId
+      ? clinics.filter((c) => c.clinicId !== ownClinicId)
       : clinics;
 
-    // 2. Apply category filter
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      filtered = filtered.filter(
+        (c) =>
+          c.name.toLowerCase().includes(q) ||
+          (c.city && c.city.toLowerCase().includes(q)) ||
+          (c.country && c.country.toLowerCase().includes(q)),
+      );
+    }
+
     if (activeCategory !== 'all') {
       filtered = filtered.filter((c) => deriveClinicType(c.specialty) === activeCategory);
     }
 
-    // 3. Apply radius filter (only when user location is available)
     if (userLocation) {
       filtered = filtered.filter((c) => {
-        if (!c.geo?.lat || !c.geo?.lng) return true; // keep clinics without geo
+        if (!c.geo?.lat || !c.geo?.lng) return true;
         return getDistanceBetween(userLocation, c.geo) <= radiusKm;
       });
     }
 
-    // 4. Sort: own clinic first, then by distance (if available) or alphabetical
     return [...filtered].sort((a, b) => {
-      const aIsOwn = isSubscribed && a.clinicId === ownClinicId ? 1 : 0;
-      const bIsOwn = isSubscribed && b.clinicId === ownClinicId ? 1 : 0;
-      if (aIsOwn !== bIsOwn) return bIsOwn - aIsOwn; // own first
-
-      // Distance sort when location available
       if (userLocation) {
         const aDist = a.geo ? getDistanceBetween(userLocation, a.geo) : Infinity;
         const bDist = b.geo ? getDistanceBetween(userLocation, b.geo) : Infinity;
         if (aDist !== bDist) return aDist - bDist;
       }
-
       return a.name.localeCompare(b.name);
     });
-  }, [clinics, searchQuery, ownClinicId, isSubscribed, activeCategory, userLocation, radiusKm]);
+  }, [clinics, searchQuery, activeCategory, userLocation, radiusKm, ownClinicId]);
 
-  // ─── Split into sections (memoised) ───
-  const ownClinicItem = useMemo(
-    () => (isSubscribed && ownClinicId
-      ? filteredClinics.find((c) => c.clinicId === ownClinicId) ?? null
-      : null),
-    [filteredClinics, isSubscribed, ownClinicId],
-  );
-
-  const discoverClinics = useMemo(
-    () => (ownClinicItem
-      ? filteredClinics.filter((c) => c.clinicId !== ownClinicId)
-      : filteredClinics),
-    [filteredClinics, ownClinicItem, ownClinicId],
-  );
-
-  // ─── Navigate to clinic profile (stays inside tabs) ───
-  const goToClinic = useCallback(
-    (id: string) => {
-      router.push(`/clinics/${id}` as any);
-    },
-    [router],
-  );
-
-  // ─── Compute distance for a clinic ───
   const getDistance = useCallback(
     (geo?: { lat: number; lng: number }): number | null => {
       if (!userLocation || !geo) return null;
@@ -352,7 +364,11 @@ export default function ClinicsListScreen() {
     [userLocation],
   );
 
-  // ─── Render row ───
+  const goToClinic = useCallback(
+    (id: string) => { router.push(`/clinics/${id}` as any); },
+    [router],
+  );
+
   const renderItem = useCallback(
     ({ item }: { item: ClinicListItem }) => (
       <ClinicRow
@@ -366,112 +382,99 @@ export default function ClinicsListScreen() {
         clinicType={deriveClinicType(item.specialty)}
         isOwn={false}
         isDark={isDark}
+        statusDot={item.manualClose ? 'red' : 'green'}
         onPress={() => goToClinic(item.clinicId)}
       />
     ),
     [goToClinic, isDark, getDistance],
   );
 
-  // ─── Section header for list ───
-  const sectionHeaderColor = isDark ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.32)';
-
-  // ─── Confidence entry animation (once on mount) ───
-  const ownEntryAnim = useRef(new Animated.Value(0)).current;
-  const entryRan = useRef(false);
-
-  useEffect(() => {
-    if (ownClinicItem && !entryRan.current) {
-      entryRan.current = true;
-      Animated.timing(ownEntryAnim, {
-        toValue: 1,
-        duration: 220,
-        easing: Easing.out(Easing.ease),
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [ownClinicItem, ownEntryAnim]);
-
+  // ── List header (includes optional "Your Clinic" + Discover label) ──
   const listHeader = useMemo(() => (
-    <View>
-      {/* YOUR CLINIC section */}
-      {ownClinicItem && (
+    <>
+      {showMyClinic && ownClinic && (
         <>
-          <Text style={[styles.sectionHeader, { color: sectionHeaderColor }]}>
+          <Text style={[styles.sectionHeader, { color: isDark ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.32)' }]}>
             YOUR CLINIC
           </Text>
           <Animated.View style={[
             styles.sectionContent,
             {
-              opacity: ownEntryAnim,
-              transform: [{ translateY: ownEntryAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+              opacity: entryAnim,
+              transform: [{ translateY: entryAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
             },
           ]}>
             <ClinicRow
-              clinicId={ownClinicItem.clinicId}
-              name={ownClinicItem.name}
-              city={ownClinicItem.city}
-              country={ownClinicItem.country}
-              imageUrl={ownClinicItem.heroImage}
-              rating={ownClinicItem.averageRating ?? null}
-              distanceKm={getDistance(ownClinicItem.geo)}
-              clinicType={deriveClinicType(ownClinicItem.specialty)}
+              clinicId={ownClinic.clinicId}
+              name={ownClinic.name}
+              city={ownClinic.city}
+              country={ownClinic.country}
+              imageUrl={ownClinic.heroImage}
+              rating={ownClinic.averageRating ?? null}
+              distanceKm={null}
+              clinicType={deriveClinicType(ownClinic.specialty)}
               isOwn
               isDark={isDark}
-              onPress={() => goToClinic(ownClinicItem.clinicId)}
+              statusDot={
+                ownClinic.manualClose
+                  ? 'red'
+                  : ownWorkingHours
+                    ? getClinicOpenStatus(ownWorkingHours).status === 'open' ? 'green' : 'red'
+                    : 'green'
+              }
+              onPress={() => router.push(`/clinics/${ownClinic.clinicId}` as any)}
             />
           </Animated.View>
         </>
       )}
-      {/* DISCOVER section label */}
-      <Text style={[styles.sectionHeader, { color: sectionHeaderColor }]}>
+      <Text style={[styles.sectionHeader, { color: isDark ? 'rgba(255,255,255,0.40)' : 'rgba(0,0,0,0.32)' }]}>
         DISCOVER
       </Text>
-    </View>
-  ), [ownClinicItem, isDark, sectionHeaderColor, getDistance, goToClinic]);
+    </>
+  ), [showMyClinic, ownClinic, isDark, entryAnim, router]);
 
-  // ─── Location icon color ───
   const locationIconColor = userLocation
     ? '#3D9EFF'
-    : isDark
-      ? '#6A7A8C'
-      : '#A0AAB8';
+    : isDark ? '#6A7A8C' : '#A0AAB8';
 
-  // ─── Adaptive header subtitle ───
   const subtitleConfig = useMemo(() => {
-    if (!userLocation) {
-      return { text: 'Enable location to discover nearby clinics', pressable: true };
-    }
-    if (discoverClinics.length === 0) {
-      return { text: 'No clinics found nearby', pressable: false };
-    }
+    if (!userLocation) return { text: 'Enable location to discover nearby clinics', pressable: true };
+    if (filteredClinics.length === 0) return { text: 'No clinics found nearby', pressable: false };
     return { text: 'Discover top-rated clinics near you', pressable: false };
-  }, [userLocation, discoverClinics.length]);
+  }, [userLocation, filteredClinics.length]);
+
+  // ── Auth loading gate ──
+  if (authLoading) {
+    return (
+      <View style={styles.container}>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  const headerTitle = 'Explore Clinics';
 
   return (
     <View style={styles.container}>
-      {/* Premium gradient background layer */}
       <PremiumGradientBackground isDark={isDark} showSparkles={false} />
-
       <SafeAreaView style={styles.safeArea}>
-        {/* ─── Header Bar ─── */}
+        {/* Header */}
         <View style={[styles.headerBar, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
           <View>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              Explore Clinics
-            </Text>
-            {subtitleConfig.pressable ? (
-              <TouchableOpacity onPress={toggleLocation} activeOpacity={0.7}>
-                <Text style={[styles.headerSubtitle, { color: '#3D9EFF' }]}>
-                  {subtitleConfig.text}
-                </Text>
-              </TouchableOpacity>
-            ) : (
-              <Text style={[styles.headerSubtitle, { color: isDark ? '#6A7A8C' : '#8A9AAC' }]}>
-                {subtitleConfig.text}
-              </Text>
-            )}
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{headerTitle}</Text>
+            {subtitleConfig.text ? (
+              subtitleConfig.pressable ? (
+                <TouchableOpacity onPress={toggleLocation} activeOpacity={0.7}>
+                  <Text style={[styles.headerSubtitle, { color: '#3D9EFF' }]}>{subtitleConfig.text}</Text>
+                </TouchableOpacity>
+              ) : (
+                <Text style={[styles.headerSubtitle, { color: isDark ? '#6A7A8C' : '#8A9AAC' }]}>{subtitleConfig.text}</Text>
+              )
+            ) : null}
           </View>
-          {hasSubscription && ownClinicId ? (
+          {showMyClinic && (
             <TouchableOpacity
               onPress={() => router.push(`/clinics/${ownClinicId}` as any)}
               style={[styles.profileBtn, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' }]}
@@ -479,184 +482,100 @@ export default function ClinicsListScreen() {
               <Ionicons name="person-circle-outline" size={18} color="#3D9EFF" />
               <Text style={styles.profileBtnText}>Profile</Text>
             </TouchableOpacity>
-          ) : null}
+          )}
         </View>
 
-        {/* ─── Sticky Floating Search + Filters Card ─── */}
+        {/* Filters */}
         <View style={[styles.stickyFilterWrap, isScrolling && styles.stickyFilterShadow]}>
-          <GlassCard
-            intensity={filterIntensity}
-            tint={isDark ? 'dark' : 'light'}
-            style={styles.filterCard}
-          >
-          {/* Search Bar — Ultra Glass */}
-          <View style={styles.searchBar}>
-            <BlurView
-              intensity={Platform.OS === 'ios' ? (isDark ? 60 : 70) : 0}
-              tint={isDark ? 'dark' : 'light'}
-              style={StyleSheet.absoluteFill}
-            />
-            {Platform.OS === 'android' && (
-              <View style={[
-                StyleSheet.absoluteFill,
-                { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.15)' },
-              ]} />
-            )}
-            <Ionicons
-              name="search"
-              size={17}
-              color={isDark ? '#5A6A7C' : '#A0AAB8'}
-            />
-            <TextInput
-              style={[styles.searchInput, { color: colors.textPrimary }]}
-              placeholder="Search clinics..."
-              placeholderTextColor={isDark ? '#5A6A7C' : '#A8B4C0'}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="search"
-            />
-            {searchQuery.length > 0 && (
-              <TouchableOpacity onPress={() => setSearchQuery('')}>
-                <Ionicons
-                  name="close-circle"
-                  size={17}
-                  color={isDark ? '#5A6A7C' : '#A0AAB8'}
-                />
-              </TouchableOpacity>
-            )}
-            {/* Location toggle — glass bubble */}
-            <TouchableOpacity
-              onPress={toggleLocation}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              activeOpacity={0.7}
-            >
-              <Animated.View style={{ transform: [{ scale: locPulse }] }}>
-                <GlassCard
-                  intensity={isDark ? 25 : 40}
+            <GlassCard intensity={filterIntensity} tint={isDark ? 'dark' : 'light'} style={styles.filterCard}>
+              {/* Search Bar */}
+              <View style={styles.searchBar}>
+                <BlurView
+                  intensity={Platform.OS === 'ios' ? (isDark ? 60 : 70) : 0}
                   tint={isDark ? 'dark' : 'light'}
-                  borderRadius={15}
-                  style={[
-                    styles.locationBtn,
-                    userLocation && styles.locationBtnActive,
-                  ]}
-                >
-                  {locationLoading ? (
-                    <ActivityIndicator size={14} color="#3D9EFF" />
-                  ) : (
-                    <Ionicons
-                      name={userLocation ? 'location' : 'location-outline'}
-                      size={16}
-                      color={locationIconColor}
-                    />
-                  )}
-                </GlassCard>
-              </Animated.View>
-            </TouchableOpacity>
+                  style={StyleSheet.absoluteFill}
+                />
+                {Platform.OS === 'android' && (
+                  <View style={[StyleSheet.absoluteFill, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.15)' }]} />
+                )}
+                <Ionicons name="search" size={17} color={isDark ? '#5A6A7C' : '#A0AAB8'} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.textPrimary }]}
+                  placeholder="Search clinics..."
+                  placeholderTextColor={isDark ? '#5A6A7C' : '#A8B4C0'}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <Ionicons name="close-circle" size={17} color={isDark ? '#5A6A7C' : '#A0AAB8'} />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity onPress={toggleLocation} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} activeOpacity={0.7}>
+                  <Animated.View style={{ transform: [{ scale: locPulse }] }}>
+                    <GlassCard intensity={isDark ? 25 : 40} tint={isDark ? 'dark' : 'light'} borderRadius={15} style={[styles.locationBtn, userLocation && styles.locationBtnActive]}>
+                      {locationLoading ? (
+                        <ActivityIndicator size={14} color="#3D9EFF" />
+                      ) : (
+                        <Ionicons name={userLocation ? 'location' : 'location-outline'} size={16} color={locationIconColor} />
+                      )}
+                    </GlassCard>
+                  </Animated.View>
+                </TouchableOpacity>
+              </View>
+
+              {/* Category Pills */}
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pillsContent}>
+                {CATEGORIES.map((cat) => (
+                  <CategoryPill
+                    key={cat.key}
+                    label={cat.label}
+                    icon={cat.icon}
+                    active={activeCategory === cat.key}
+                    isDark={isDark}
+                    onPress={() => setActiveCategory(cat.key)}
+                  />
+                ))}
+              </ScrollView>
+
+              {/* Radius filter */}
+              {userLocation && <RadiusSelector valueKm={radiusKm} onChangeKm={setRadiusKm} isDark={isDark} />}
+
+              {/* Map View */}
+              <TouchableOpacity
+                onPress={() =>
+                  router.push({ pathname: '/(tabs)/clinics/map', params: { category: activeCategory, radiusKm: String(radiusKm) } } as any)
+                }
+                activeOpacity={0.7}
+                style={[styles.mapViewBtn, { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' }]}
+              >
+                <Ionicons name="map-outline" size={15} color="#3D9EFF" />
+                <Text style={styles.mapViewBtnText}>Map View</Text>
+              </TouchableOpacity>
+            </GlassCard>
           </View>
 
-          {/* Category Pills */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.pillsContent}
-          >
-            {CATEGORIES.map((cat) => (
-              <CategoryPill
-                key={cat.key}
-                label={cat.label}
-                icon={cat.icon}
-                active={activeCategory === cat.key}
-                isDark={isDark}
-                onPress={() => setActiveCategory(cat.key)}
-              />
-            ))}
-          </ScrollView>
-          {/* Radius filter — visible only when location is active */}
-          {userLocation && (
-            <RadiusSelector valueKm={radiusKm} onChangeKm={setRadiusKm} isDark={isDark} />
-          )}
-          {/* Map View button */}
-          <TouchableOpacity
-            onPress={() =>
-              router.push({
-                pathname: '/(tabs)/clinics/map',
-                params: { category: activeCategory, radiusKm: String(radiusKm) },
-              } as any)
-            }
-            activeOpacity={0.7}
-            style={[
-              styles.mapViewBtn,
-              { backgroundColor: isDark ? 'rgba(61,158,255,0.12)' : 'rgba(61,158,255,0.08)' },
-            ]}
-          >
-            <Ionicons name="map-outline" size={15} color="#3D9EFF" />
-            <Text style={styles.mapViewBtnText}>Map View</Text>
-          </TouchableOpacity>
-          </GlassCard>
-        </View>
-
-        {/* List */}
+        {/* Content */}
         {loading ? (
           <View style={styles.center}>
             <ActivityIndicator size="large" color={colors.primary} />
           </View>
-        ) : filteredClinics.length === 0 && !ownClinicItem ? (
-          <View style={styles.center}>
-            <Ionicons
-              name="search-outline"
-              size={48}
-              color={isDark ? '#5A6A80' : '#B0BEC5'}
-            />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              {searchQuery || activeCategory !== 'all'
-                ? 'No clinics match your filters'
-                : 'No clinics available'}
-            </Text>
-          </View>
         ) : (
           <AnimatedFlatList
-            data={discoverClinics}
+            data={filteredClinics}
             keyExtractor={(c: ClinicListItem) => c.id}
             renderItem={renderItem}
             ListHeaderComponent={listHeader}
             ListEmptyComponent={
-              <GlassCard
-                intensity={isDark ? 25 : 40}
-                tint={isDark ? 'dark' : 'light'}
-                borderRadius={20}
-                style={styles.discoverPrompt}
-              >
-                <Ionicons
-                  name="compass-outline"
-                  size={32}
-                  color={isDark ? '#5A7A9A' : '#A0B8D0'}
-                  style={styles.discoverPromptIcon}
-                />
-                <Text style={[styles.discoverPromptTitle, { color: isDark ? '#E0E6EC' : '#2A3A4C' }]}>
-                  Find more clinics near you
+              <View style={{ alignItems: 'center', paddingTop: 40, gap: 12 }}>
+                <Ionicons name="search-outline" size={48} color={isDark ? '#5A6A80' : '#B0BEC5'} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {searchQuery || activeCategory !== 'all' ? 'No clinics match your filters' : 'No clinics available'}
                 </Text>
-                <Text style={[styles.discoverPromptSub, { color: isDark ? '#6A7A8C' : '#8A9AAC' }]}>
-                  Enable location to expand results
-                </Text>
-                {!userLocation && (
-                  <TouchableOpacity
-                    onPress={toggleLocation}
-                    activeOpacity={0.8}
-                    style={[styles.discoverPromptBtn, { backgroundColor: isDark ? 'rgba(61,158,255,0.15)' : 'rgba(61,158,255,0.10)' }]}
-                  >
-                    {locationLoading ? (
-                      <ActivityIndicator size={14} color="#3D9EFF" />
-                    ) : (
-                      <>
-                        <Ionicons name="location" size={14} color="#3D9EFF" />
-                        <Text style={styles.discoverPromptBtnText}>Enable Location</Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </GlassCard>
+              </View>
             }
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}

@@ -2,6 +2,7 @@ import { auth, db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import GlassCardPro from '@/src/components/GlassCardPro';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
@@ -9,7 +10,7 @@ import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useFocusEffect, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { EmailAuthProvider, linkWithCredential, signOut } from 'firebase/auth';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -30,7 +31,13 @@ export default function ConfirmSubscription() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  const { checkAuthState } = useAuth();
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
+
+  // Phase 2: Detect whether user arrived via renew or first-time flow
+  const params = useLocalSearchParams();
+  const flow = params?.flow ?? 'first';
+  console.log('[CONFIRM FLOW]', flow);
 
   const [planLabel, setPlanLabel] = useState('');
   const [basePrice, setBasePrice] = useState('');
@@ -523,6 +530,10 @@ BeSmile AI Team
         'clinicMemberStatus',
         'clinicUserEmail',
       ]);
+
+      // Hydrate AuthContext subscription state from Firestore immediately
+      // so isSubscribed=true is available before login
+      await checkAuthState();
 
       setConfirming(false);
       setShowSuccessModal(true);

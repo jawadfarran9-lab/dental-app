@@ -537,13 +537,16 @@ export default function ClinicSignup() {
 
 
       // Update existing clinic document with account credentials (use merge to avoid "No document" error)
-      await setDoc(doc(db, 'clinics', existingClinicId), {
+      // Read existing doc first so we never overwrite an active subscription
+      const existingSnap = await getDoc(doc(db, 'clinics', existingClinicId));
+      const existingStatus = existingSnap.exists() ? existingSnap.data()?.status : undefined;
+      const profilePayload: Record<string, any> = {
         ownerUid: ownerUid,
         firstName,
         lastName,
         clinicName: clinicName.trim() || null,
         clinicPhone: clinicPhone.trim() || null,
-        clinicType: clinicType, // ✅ Save clinic type to Firestore
+        clinicType: clinicType,
         email: email.toLowerCase().trim(),
         phone: phone || null,
         countryCode: country || null,
@@ -555,8 +558,13 @@ export default function ClinicSignup() {
         },
         workingHours,
         accountCreatedAt: Date.now(),
-        status: isFree ? 'active' : 'pending_subscription', // Only mark active for FREE; PAID waits for payment.tsx
-      }, { merge: true });
+      };
+      // Only set status if doc has no active subscription (never downgrade)
+      if (existingStatus !== 'active') {
+        profilePayload.status = isFree ? 'active' : 'pending_subscription';
+        if (isFree) profilePayload.subscribed = true;
+      }
+      await setDoc(doc(db, 'clinics', existingClinicId), profilePayload, { merge: true });
 
 
       // ✅ CRITICAL: Verify clinicId is saved before navigating
@@ -614,7 +622,10 @@ export default function ClinicSignup() {
           }
 
           // Ensure clinic doc has ownerUid + minimum fields
-          await setDoc(doc(db, 'clinics', recoveredClinicId), {
+          // Read existing doc first so we never overwrite an active subscription
+          const recoveredSnap = await getDoc(doc(db, 'clinics', recoveredClinicId));
+          const recoveredStatus = recoveredSnap.exists() ? recoveredSnap.data()?.status : undefined;
+          const recoveredPayload: Record<string, any> = {
             ownerUid,
             firstName,
             lastName,
@@ -632,8 +643,13 @@ export default function ClinicSignup() {
             },
             workingHours,
             accountCreatedAt: Date.now(),
-            status: isFree ? 'active' : 'pending_subscription',
-          }, { merge: true });
+          };
+          // Only set status if doc has no active subscription (never downgrade)
+          if (recoveredStatus !== 'active') {
+            recoveredPayload.status = isFree ? 'active' : 'pending_subscription';
+            if (isFree) recoveredPayload.subscribed = true;
+          }
+          await setDoc(doc(db, 'clinics', recoveredClinicId), recoveredPayload, { merge: true });
 
           // Write pending keys (same as normal path)
           const recoveryStorage: [string, string][] = [

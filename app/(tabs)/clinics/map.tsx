@@ -20,8 +20,25 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import ClusteredMapView from 'react-native-map-clustering';
-import MapView, { Marker, Region } from 'react-native-maps';
+
+// Inline type to avoid Metro resolving react-native-maps on web
+type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+// Platform-safe lazy imports — prevents Metro from resolving native-only
+// codegenNativeCommands on web, which crashes the bundler.
+let ClusteredMapView: any;
+let MapView: any;
+let Marker: any;
+if (Platform.OS !== 'web') {
+  ClusteredMapView = require('react-native-map-clustering').default;
+  const Maps = require('react-native-maps');
+  MapView = Maps.default;
+  Marker = Maps.Marker;
+} else {
+  ClusteredMapView = View;
+  MapView = View;
+  Marker = View;
+}
 
 // ─── Same category derivation as index.tsx ───
 type CategoryFilter = 'all' | 'dental' | 'laser' | 'beauty';
@@ -133,7 +150,7 @@ function ClinicsMapScreenInner() {
   /** Refresh indicator — true while debounce timer is active */
   const [isRefreshing, setIsRefreshing] = useState(false);
   const selectedId = selectedClinic?.id;
-  const mapRef = useRef<MapView | null>(null);
+  const mapRef = useRef<typeof MapView | null>(null);
   /** Always-current region — read inside useMemos without being a reactive dep */
   const regionRef = useRef<Region | null>(null);
   /** Refresh debounce timer */

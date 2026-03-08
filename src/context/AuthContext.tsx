@@ -8,8 +8,8 @@ import {
 import { ClinicRole, MemberStatus } from '@/src/types/members';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserRole = 'clinic' | 'patient' | null;
@@ -66,13 +66,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Check subscription status for clinic
    */
-  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean | null; detailsComplete: boolean }> => {
+  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean | null; detailsComplete: boolean; clinicMissing?: boolean }> => {
     try {
       const clinicRef = doc(db, 'clinics', clinicId);
       const clinicSnap = await getDoc(clinicRef);
 
       if (!clinicSnap.exists()) {
-        throw new Error('Clinic not found');
+        return { subscribed: null, detailsComplete: false, clinicMissing: true };
       }
 
       const clinicData = clinicSnap.data();
@@ -111,7 +111,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Phase 4: If clinicId exists but member keys are missing, treat as
       // a partial session (e.g. post-confirm-subscription).  Keep clinicId so
       // that subscribe.tsx can still read Firestore status for Renew flow.
+      // Phase 4b: Still check Firestore subscription status so isSubscribed
+      // is hydrated — otherwise all subscription-gated UI stays locked.
       if (clinicId && (!storedMemberId || !storedRole || !storedStatus)) {
+        const result = await checkClinicSubscription(clinicId);
+        if (result.clinicMissing) {
+          await AsyncStorage.multiRemove([CLINIC_ID_KEY, CLINIC_MEMBER_ID_KEY, CLINIC_ROLE_KEY, CLINIC_STATUS_KEY]);
+          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+          return;
+        }
         setAuthState({
           userRole: 'clinic',
           userId: clinicId,
@@ -119,8 +127,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           memberId: null,
           clinicRole: null,
           memberStatus: null,
-          isSubscribed: null,
-          isDetailsComplete: null,
+          isSubscribed: result.subscribed ?? null,
+          isDetailsComplete: result.detailsComplete,
           loading: false,
           error: null,
         });
@@ -129,10 +137,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Determine which role to use (clinic takes priority)
       if (clinicId) {
+        const clinicSnap = await getDoc(doc(db, 'clinics', clinicId));
+        if (!clinicSnap.exists()) {
+          await AsyncStorage.multiRemove([CLINIC_ID_KEY, CLINIC_MEMBER_ID_KEY, CLINIC_ROLE_KEY, CLINIC_STATUS_KEY]);
+          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+          return;
+        }
         const memberId = storedMemberId || clinicId;
         const memberProfile = await fetchMemberProfile(clinicId, memberId);
-        const clinicSnap = await getDoc(doc(db, 'clinics', clinicId));
-        const clinicEmail = clinicSnap.exists() ? clinicSnap.data()?.email : '';
+        const clinicEmail = clinicSnap.data()?.email || '';
         const resolvedMember =
           memberProfile || (await ensureOwnerMembership(clinicId, clinicEmail));
         const { subscribed, detailsComplete } = await checkClinicSubscription(clinicId);
@@ -183,6 +196,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           loading: false,
           error: null,
         });
+      } else if (auth.currentUser) {
+        // ── Fallback: AsyncStorage empty but Firebase Auth session exists ──
+        // This recovers the clinic identity on web (localStorage cleared)
+        // or after cache-clear on mobile, using the persistent Firebase token.
+        const firebaseUid = auth.currentUser.uid;
+        const clinicQuery = query(
+          collection(db, 'clinics'),
+          where('ownerUid', '==', firebaseUid),
+        );
+        const clinicSnap = await getDocs(clinicQuery);
+
+        if (!clinicSnap.empty) {
+          const clinicDoc = clinicSnap.docs[0];
+          const restoredClinicId = clinicDoc.id;
+          const clinicEmail = clinicDoc.data()?.email ?? '';
+          const ownerMember = await ensureOwnerMembership(restoredClinicId, clinicEmail);
+          const { subscribed, detailsComplete } = await checkClinicSubscription(restoredClinicId);
+
+          // Re-persist to AsyncStorage so next startup is fast
+          await AsyncStorage.multiSet([
+            [CLINIC_ID_KEY, restoredClinicId],
+            [CLINIC_MEMBER_ID_KEY, ownerMember.id],
+            [CLINIC_ROLE_KEY, ownerMember.role],
+            [CLINIC_STATUS_KEY, ownerMember.status],
+          ]);
+
+          setAuthState({
+            userRole: 'clinic',
+            userId: restoredClinicId,
+            clinicId: restoredClinicId,
+            memberId: ownerMember.id,
+            clinicRole: ownerMember.role,
+            memberStatus: ownerMember.status,
+            isSubscribed: subscribed ?? null,
+            isDetailsComplete: detailsComplete,
+            loading: false,
+            error: null,
+          });
+        } else {
+          // Firebase user exists but no clinic found — treat as guest
+          setAuthState({
+            userRole: null,
+            userId: null,
+            clinicId: null,
+            memberId: null,
+            clinicRole: null,
+            memberStatus: null,
+            isSubscribed: null,
+            isDetailsComplete: null,
+            loading: false,
+            error: null,
+          });
+        }
       } else {
         // No user logged in
         setAuthState({
@@ -341,10 +407,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   /**
-   * Run startup check on mount
+   * Run startup check on mount.
+   * Wait for Firebase Auth to resolve its persisted session first so that
+   * the fallback branch inside checkAuthState can read auth.currentUser.
    */
   useEffect(() => {
-    checkAuthState();
+    const unsubscribe = onAuthStateChanged(auth, () => {
+      // Called once Firebase Auth has determined the current user
+      // (either restored from token or null). Run our async check once.
+      unsubscribe();
+      checkAuthState();
+    });
+
+    return () => unsubscribe();
   }, []);
 
   return (

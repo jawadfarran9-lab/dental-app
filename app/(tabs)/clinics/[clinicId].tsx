@@ -5,10 +5,11 @@ import { useAuth } from '@/src/hooks/useAuth';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
 import { ClinicMedia } from '@/src/types/clinicMedia';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
+import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -219,20 +220,47 @@ export default function ClinicProfileScreen() {
   // ─── Clinic Data ───
   const [clinic, setClinic] = useState<ClinicData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [manualClose, setManualClose] = useState(false);
+  const [isPublished, setIsPublished] = useState<boolean | null>(null);
 
-  useEffect(() => {
+  // Refetch on focus so manualClose changes from Profile are reflected
+  const fetchClinic = useCallback(() => {
     if (!clinicId) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const data = await fetchClinicData(clinicId);
+      const [data, pub] = await Promise.all([
+        fetchClinicData(clinicId),
+        fetchClinicPublicOwner(clinicId),
+      ]);
       if (!cancelled) {
         setClinic(data);
+        setManualClose(pub?.manualClose === true);
+        setIsPublished(pub?.isPublished === true);
         setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, [clinicId]);
+
+  useFocusEffect(fetchClinic);
+
+  // ── Inactive state detection ──
+  const ownerInactive = isOwner && auth.isSubscribed !== true;
+  const visitorInactive = !isOwner && isPublished === false;
+
+  // ── Toggle manualClose (owner only, active subscription only) ──
+  const canToggleDot = isOwner && auth.isSubscribed === true;
+  const toggleManualClose = useCallback(async () => {
+    if (!canToggleDot || !clinicId) return;
+    const newValue = !manualClose;
+    setManualClose(newValue);
+    try {
+      await setDoc(doc(db, 'clinics_public', clinicId), { manualClose: newValue }, { merge: true });
+    } catch {
+      setManualClose(!newValue); // revert on failure
+    }
+  }, [canToggleDot, clinicId, manualClose]);
 
   // ─── Media Data ───
   const [allMedia, setAllMedia] = useState<ClinicMedia[]>([]);
@@ -327,6 +355,35 @@ export default function ClinicProfileScreen() {
     );
   }
 
+  // ─── Visitor inactive guard ───
+  if (visitorInactive) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: isDark ? colors.background : '#FFFFFF' }]}>
+        <View style={styles.backBar}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={24} color={isDark ? '#FFF' : '#1E3A5F'} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.inactiveWrap}>
+          <Ionicons name="business-outline" size={56} color={isDark ? '#3A4A5C' : '#C0C8D0'} />
+          <Text style={[styles.inactiveTitle, { color: isDark ? '#8A9AB5' : '#6B7C93' }]}>
+            Clinic Unavailable
+          </Text>
+          <Text style={[styles.inactiveSubtitle, { color: isDark ? '#5A6A80' : '#94A3B8' }]}>
+            This clinic is currently not available.
+          </Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // ─── Dot color logic ───
+  const dotColor = ownerInactive
+    ? '#94A3B8' // GRAY
+    : manualClose
+      ? '#EF4444' // RED
+      : '#10B981'; // GREEN
+
   // ─── Header component for FlatList ───
   const ListHeader = (
     <>
@@ -342,12 +399,21 @@ export default function ClinicProfileScreen() {
             <Ionicons name="arrow-back" size={24} color={isDark ? '#FFF' : '#1E3A5F'} />
           </TouchableOpacity>
 
-          {isOwner && (
+          {isOwner && !ownerInactive && (
             <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={openCreateSheet}>
               <Ionicons name="add" size={26} color={isDark ? '#FFF' : '#1E3A5F'} />
             </TouchableOpacity>
           )}
         </View>
+
+        <Pressable onPress={canToggleDot ? toggleManualClose : undefined} hitSlop={12} style={styles.dotWrap}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: dotColor },
+            ]}
+          />
+        </Pressable>
         <View style={styles.navRight}>
           {isOwner && (
             <>
@@ -365,6 +431,23 @@ export default function ClinicProfileScreen() {
           )}
         </View>
       </View>
+
+      {/* ══════ Owner Inactive Banner ══════ */}
+      {ownerInactive && (
+        <View style={[styles.inactiveBanner, { backgroundColor: isDark ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.08)' }]}>
+          <Ionicons name="alert-circle-outline" size={20} color="#94A3B8" />
+          <Text style={[styles.inactiveBannerText, { color: isDark ? '#8A9AB5' : '#64748B' }]}>
+            Your subscription is inactive. Renew to reactivate your clinic.
+          </Text>
+          <TouchableOpacity
+            style={styles.renewCta}
+            activeOpacity={0.7}
+            onPress={() => router.push('/clinic/subscribe' as any)}
+          >
+            <Text style={styles.renewCtaText}>Renew</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* ══════ Profile Header ══════ */}
       <View style={styles.profileSection}>
@@ -599,6 +682,45 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  inactiveWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    gap: 12,
+  },
+  inactiveTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  inactiveSubtitle: {
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  inactiveBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  inactiveBannerText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  renewCta: {
+    backgroundColor: '#4A90D9',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 6,
+  },
+  renewCtaText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
   /* ── Back Bar (loading state) ── */
   backBar: {
@@ -649,13 +771,14 @@ const styles = StyleSheet.create({
 
   /* ── Profile Section ── */
   profileSection: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingTop: 12,
     paddingBottom: 24,
     paddingHorizontal: 24,
   },
   avatarWrap: {
     marginBottom: 16,
+    marginLeft: 8,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -678,8 +801,25 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
     gap: 6,
     marginBottom: 8,
+    marginTop: -4,
+  },
+  dotWrap: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
   },
   clinicName: {
     fontSize: 24,

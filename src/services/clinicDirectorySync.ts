@@ -14,6 +14,7 @@
  */
 
 import { db } from '@/firebaseConfig';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 /**
@@ -36,7 +37,7 @@ export async function ensureClinicPublished(
     }
 
     // ── 2. Gate: only publish when subscription is active + name exists ─
-    if (clinicData.subscribed !== true) return;
+    if (!hasActiveSubscription(clinicData)) return;
     const name = (clinicData.clinicName || '').trim();
     if (!name) return;
 

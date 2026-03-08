@@ -8,7 +8,7 @@ declare module 'invariant' {
 
 declare module '@react-native-community/datetimepicker' {
   import * as React from 'react';
-    import { ViewProps } from 'react-native';
+  import { ViewProps } from 'react-native';
 
   export type AndroidMode = 'date' | 'time' | 'datetime' | 'countdown';
   export type Display = 'default' | 'spinner' | 'compact' | 'inline' | 'clock' | 'calendar';

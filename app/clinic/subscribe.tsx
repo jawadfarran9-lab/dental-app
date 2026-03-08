@@ -11,7 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, SafeAreaView, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
@@ -45,7 +45,7 @@ export default function ClinicSubscribeLanding() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const { userId, clinicId, userRole, clinicRole, loading: authLoading } = useAuth();
+  const { userId, clinicId, userRole, clinicRole, loading: authLoading, checkAuthState } = useAuth();
   const [selectedPlan, setSelectedPlan] = useState<PlanId | null>(null);
   const [currentPlan, setCurrentPlan] = useState<PlanId | null>(null);
   const [isSubscribed, setIsSubscribed] = useState<boolean | null>(null);
@@ -169,14 +169,15 @@ export default function ClinicSubscribeLanding() {
 
         setEffectiveClinicId(storedId);
 
-        if (userRole === 'clinic' && clinicRole !== 'owner') {
+        if (userRole === 'clinic' && clinicRole && clinicRole !== 'owner') {
           router.replace('/(tabs)/home' as any);
           return;
         }
 
         if (!storedId) {
-          // Do NOT finalize statusLoaded — keep it false so the UI
-          // does not permanently hide the Renew button due to a transient null.
+          // No clinic ID found — treat as non-subscribed so the Renew button renders
+          setIsSubscribed(false);
+          setStatusLoaded(true);
           return;
         }
 
@@ -305,6 +306,8 @@ export default function ClinicSubscribeLanding() {
                   subscriptionPlan: null,
                   includeAIPro: false,
                 });
+                // Unpublish from public directory so clinic disappears from Explore
+                await setDoc(doc(db, 'clinics_public', targetId), { isPublished: false }, { merge: true });
               }
 
               await AsyncStorage.multiRemove([
@@ -321,6 +324,8 @@ export default function ClinicSubscribeLanding() {
               setSelectedPlan(null);
               setSelectedAIPro(false);
               setEffectiveClinicId(null);
+              // Propagate cancellation to global AuthContext state
+              await checkAuthState();
               // Stay on same page - no navigation, no alert that blocks
             } catch (error) {
               Alert.alert('Error', 'Failed to remove subscription. Try again.');

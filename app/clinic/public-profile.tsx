@@ -36,6 +36,7 @@ export default function PublicProfileSettings() {
   const [derivedCity, setDerivedCity] = useState<string>('');
   const [derivedCountry, setDerivedCountry] = useState<string>('');
   const [isPublished, setIsPublished] = useState(false);
+  const [manualClose, setManualClose] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -51,6 +52,7 @@ export default function PublicProfileSettings() {
         if (docData.geo?.lat != null) setLat(String(docData.geo.lat));
         if (docData.geo?.lng != null) setLng(String(docData.geo.lng));
         setIsPublished(!!docData.isPublished);
+        setManualClose(!!docData.manualClose);
         const derived = await reverseGeocode(docData.geo?.lat, docData.geo?.lng);
         setDerivedCity(derived.city || '');
         setDerivedCountry(derived.country || '');
@@ -90,6 +92,12 @@ export default function PublicProfileSettings() {
     if (!clinicId) return;
     if (!isOwner) { Alert.alert(t('common.error'), t('publicProfile.ownerOnly')); return; }
     if (!name.trim()) { Alert.alert(t('common.error'), t('publicProfile.nameRequired')); return; }
+    // Block publishing if subscription is not active
+    if (isPublished && auth?.isSubscribed !== true) {
+      Alert.alert(t('common.error'), 'An active subscription is required to publish your clinic.');
+      setIsPublished(false);
+      return;
+    }
     const ownerUid = (auth as any)?.uid || (auth as any)?.memberId || clinicId || '';
     if (!ownerUid) { Alert.alert(t('common.error'), t('publicProfile.ownerIdMissing')); return; }
     setSaving(true);
@@ -114,6 +122,7 @@ export default function PublicProfileSettings() {
         geo: numLat != null && numLng != null ? { lat: numLat, lng: numLng } : undefined,
         geohash,
         isPublished,
+        manualClose: auth?.isSubscribed === true ? manualClose : false,
         country: derived.country || '',
         city: derived.city || '',
       } as any;
@@ -335,6 +344,16 @@ export default function PublicProfileSettings() {
         <Text style={[styles.label, { marginBottom: 0 }]}>{t('publicProfile.publish')}</Text>
         <Switch value={isPublished} onValueChange={setIsPublished} trackColor={{ true: '#1B3C73' }} />
       </View>
+
+      {auth?.isSubscribed === true && (
+        <View style={styles.publishRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.label, { marginBottom: 0 }]}>Temporarily Closed</Text>
+            <Text style={{ color: '#6b7280', fontSize: 12 }}>Mark your clinic as closed without unpublishing</Text>
+          </View>
+          <Switch value={manualClose} onValueChange={setManualClose} trackColor={{ true: '#EF4444' }} />
+        </View>
+      )}
 
       <TouchableOpacity style={[styles.saveBtn, saving && { opacity: 0.7 }]} disabled={saving} onPress={handleSave}>
       <Text style={styles.saveText}>{saving ? t('common.loading') : t('common.save')}</Text>

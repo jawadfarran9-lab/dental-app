@@ -20,6 +20,7 @@ export type PublicClinic = {
   specialty?: 'general' | 'orthodontics' | 'cosmetic' | 'pediatric' | 'surgery' | 'endodontics' | 'periodontics' | 'prosthodontics'; // Clinic specialty
   city?: string;    // From directory sync or public profile
   country?: string; // From directory sync or public profile
+  manualClose?: boolean; // Owner override: temporarily closed
 };
 
 export type DerivedPlace = {

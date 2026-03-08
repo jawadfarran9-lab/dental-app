@@ -12,7 +12,16 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import MapView, { Region } from 'react-native-maps';
+
+// Inline type to avoid Metro resolving react-native-maps on web
+type Region = { latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number };
+
+// Platform-safe lazy import — prevents Metro from resolving native-only
+// codegenNativeCommands on web, which crashes the bundler.
+let MapView: any = View;
+if (Platform.OS !== 'web') {
+  MapView = require('react-native-maps').default;
+}
 
 // ─── Constants ───
 const ACCENT = '#3D9EFF';
@@ -50,7 +59,7 @@ export default function LocationPickerScreen() {
   const params = useLocalSearchParams<{ lat?: string; lng?: string }>();
   const { colors, isDark } = useTheme();
 
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<typeof MapView>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ─── State ───

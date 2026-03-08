@@ -111,6 +111,8 @@ export default function RenewLoginSheet({ visible, onClose, onAuthSuccess }: Ren
       return;
     }
 
+    let loginSucceeded = false;
+
     try {
       setIsSubmitting(true);
 
@@ -156,19 +158,24 @@ export default function RenewLoginSheet({ visible, onClose, onAuthSuccess }: Ren
         status: ownerMember.status,
       });
 
-      // Success — clear password, then notify parent
+      // Success — clear password
       setPassword('');
       setError(null);
-      onAuthSuccess();
+      loginSucceeded = true;
     } catch (err: any) {
       const code: string = err?.code ?? '';
       console.error('[RENEW SIGNIN ERROR]', err?.code, err?.message);
       setError(friendlyAuthError(code));
       // Clear password on failure as well (security best practice)
       setPassword('');
+      return; // HARD STOP — no callback, no navigation
     } finally {
       setIsSubmitting(false);
     }
+
+    // onAuthSuccess is only reachable when login fully succeeded
+    if (!loginSucceeded) return;
+    onAuthSuccess();
   };
 
   // ── Forgot Password ─────────────────────────────────────────────────
