@@ -1,22 +1,22 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  FlatList,
-  TextInput,
-  ActivityIndicator,
-  Platform,
-} from 'react-native';
-import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
+import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useLocationSelection } from '@/src/context/LocationSelectionContext';
-import { db } from '@/firebaseConfig';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
+import { useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
+import React, { useCallback, useEffect, useState } from 'react';
+import {
+    ActivityIndicator,
+    FlatList,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
+} from 'react-native';
 
 // ========== Types ==========
 interface LocationItem {
