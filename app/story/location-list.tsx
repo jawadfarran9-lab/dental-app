@@ -44,7 +44,7 @@ const ALLOWED_PLACE_TYPES = [
 ];
 
 // ========== Constants ==========
-const GOOGLE_PLACES_API_KEY = 'AIzaSyB7aLO_UubjP3vw3xwc7xHb6mgGsQy5kWs';
+const GOOGLE_PLACES_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
 // ========== Utility Functions ==========
 const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {

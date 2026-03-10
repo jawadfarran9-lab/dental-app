@@ -1,17 +1,22 @@
 import { db, storage } from '@/firebaseConfig';
+import ClinicProfileMapCard from '@/src/components/ClinicProfileMapCard';
+import ClinicTypeBadge from '@/src/components/ClinicTypeBadge';
 import StarAvatar from '@/src/components/StarAvatar';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
+import { getDrivingDistance } from '@/src/services/googleMapsService';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { ClinicMedia } from '@/src/types/clinicMedia';
 import { DAYS_ORDER, formatDayLabel } from '@/src/types/clinicSchedule';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
+import { getDistanceKm } from '@/src/utils/geoDistance';
 import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
@@ -46,11 +51,9 @@ const MediaGridItem = React.memo(
   ({
     item,
     onPress,
-    isDark,
   }: {
     item: ClinicMedia;
     onPress: (id: string) => void;
-    isDark: boolean;
   }) => (
     <TouchableOpacity
       activeOpacity={0.85}
@@ -306,6 +309,69 @@ export default function ClinicProfileScreen() {
   const displayName = clinic?.clinicName || 'Clinic';
   const displayCity = clinic?.city || '';
   const displayCountry = clinic?.countryCode || '';
+
+  // ─── User location (for distance display) ───
+  const [userCoords, setUserCoords] = useState<{ latitude: number; longitude: number } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted' || cancelled) return;
+      const loc = await Location.getCurrentPositionAsync({});
+      if (!cancelled) setUserCoords(loc.coords);
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ─── Distance + Drive time (Google Directions → Haversine fallback) ───
+  const [distanceText, setDistanceText] = useState<string | undefined>(undefined);
+  const [driveTimeText, setDriveTimeText] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    if (!userCoords || !clinic?.location?.lat || !clinic?.location?.lng) {
+      setDistanceText(undefined);
+      setDriveTimeText(undefined);
+      return;
+    }
+
+    let cancelled = false;
+
+    // Immediate Haversine fallback for both values
+    const km = getDistanceKm(userCoords.latitude, userCoords.longitude, clinic.location.lat, clinic.location.lng);
+    if (isFinite(km)) {
+      setDistanceText(km < 1 ? `${Math.round(km * 1000)} m away` : `${km} km away`);
+      const mins = Math.round((km / 50) * 60);
+      if (mins < 1) setDriveTimeText('~1 min drive');
+      else if (mins < 60) setDriveTimeText(`~${mins} min drive`);
+      else {
+        const h = Math.floor(mins / 60);
+        const m = mins % 60;
+        setDriveTimeText(m > 0 ? `~${h}h ${m}m drive` : `~${h}h drive`);
+      }
+    }
+
+    // Upgrade BOTH with Google Directions when available
+    getDrivingDistance(
+      userCoords.latitude, userCoords.longitude,
+      clinic.location.lat, clinic.location.lng,
+    ).then((result) => {
+      if (cancelled || !result) return;
+      // Distance from Google route
+      if (result.distanceText) setDistanceText(`${result.distanceText} away`);
+      // Duration from Google route
+      const m = result.durationMinutes;
+      if (m < 60) setDriveTimeText(`~${m} min drive`);
+      else {
+        const h = Math.floor(m / 60);
+        const r = m % 60;
+        setDriveTimeText(r > 0 ? `~${h}h ${r}m drive` : `~${h}h drive`);
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [userCoords, clinic?.location?.lat, clinic?.location?.lng]);
+
   const locationLine = [displayCity, displayCountry].filter(Boolean).join(', ');
   const phone = clinic?.clinicPhone || clinic?.phone || '';
   const profileImageUri =
@@ -484,9 +550,9 @@ export default function ClinicProfileScreen() {
 
   const renderMediaItem = useCallback(
     ({ item }: { item: ClinicMedia }) => (
-      <MediaGridItem item={item} onPress={handleMediaPress} isDark={isDark} />
+      <MediaGridItem item={item} onPress={handleMediaPress} />
     ),
-    [handleMediaPress, isDark],
+    [handleMediaPress],
   );
 
   const ItemSeparator = useCallback(() => <View style={{ height: GRID_GAP }} />, []);
@@ -714,12 +780,6 @@ export default function ClinicProfileScreen() {
           >
             <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
           </TouchableOpacity>
-
-          {isOwner && !ownerInactive && (
-            <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={openCreateSheet}>
-              <Ionicons name="add" size={26} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
-            </TouchableOpacity>
-          )}
         </View>
 
         {/* Centered clinic name in header */}
@@ -821,14 +881,24 @@ export default function ClinicProfileScreen() {
 
       {/* ══════ Profile Header ══════ */}
       <View style={styles.profileSection}>
-        <View style={styles.avatarWrap}>
-          <StarAvatar size={110} uri={profileImageUri} borderWidth={3} />
-          {uploadingImage && (
-            <View style={styles.avatarOverlay}>
-              <ActivityIndicator size="small" color="#FFF" />
-            </View>
+        <View style={styles.avatarRow}>
+          <View style={styles.avatarWrap}>
+            <StarAvatar size={110} uri={profileImageUri} borderWidth={3} />
+            {uploadingImage && (
+              <View style={styles.avatarOverlay}>
+                <ActivityIndicator size="small" color="#FFF" />
+              </View>
+            )}
+          </View>
+
+          {isOwner && !ownerInactive && (
+            <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={openCreateSheet}>
+              <Ionicons name="add" size={26} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+            </TouchableOpacity>
           )}
         </View>
+
+        <ClinicTypeBadge clinicType={clinic?.clinicType} />
 
         <View style={styles.profileRow}>
           {/* ── Left: Contact Column ── */}
@@ -849,14 +919,6 @@ export default function ClinicProfileScreen() {
               </TouchableOpacity>
             )}
 
-            {!!(clinic?.location?.lat && clinic?.location?.lng) && (
-              <TouchableOpacity style={styles.infoRow} onPress={handleGetDirections} activeOpacity={0.6}>
-                <Ionicons name="navigate-outline" size={16} color="#3D9EFF" />
-                <Text style={[styles.infoText, { color: '#3D9EFF' }]}>
-                  Get Directions
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
 
           {/* ── Right: Working Hours Column ── */}
@@ -883,6 +945,19 @@ export default function ClinicProfileScreen() {
             </View>
           )}
         </View>
+
+        {/* ── Map Preview Card ── */}
+        {!!(clinic?.location?.lat && clinic?.location?.lng) && (
+          <ClinicProfileMapCard
+            latitude={clinic.location.lat}
+            longitude={clinic.location.lng}
+            clinicName={displayName}
+            address={clinic.location.address}
+            distanceText={distanceText}
+            driveTimeText={driveTimeText}
+            onPress={handleGetDirections}
+          />
+        )}
       </View>
 
       {/* ══════ Section Divider + Posts / Reels ══════ */}
@@ -1635,8 +1710,13 @@ const styles = StyleSheet.create({
   profileSection: {
     alignItems: 'flex-start',
     paddingTop: 12,
-    paddingBottom: 14,
+    paddingBottom: 0,
     paddingHorizontal: 18,
+  },
+  avatarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   avatarWrap: {
     marginBottom: 12,
@@ -1752,12 +1832,12 @@ const styles = StyleSheet.create({
   },
   profileDivider: {
     height: 1,
-    marginTop: 16,
+    marginTop: 0,
     marginBottom: 12,
     marginHorizontal: 16,
   },
   tabsContainer: {
-    marginTop: 56,
+    marginTop: 0,
   },
 
   /* ── Tabs ── */

@@ -5,8 +5,7 @@
  * React Native <Image> can cache it properly.
  */
 
-// Same key used elsewhere in the app (story/location-list.tsx)
-const DEFAULT_API_KEY = 'AIzaSyB7aLO_UubjP3vw3xwc7xHb6mgGsQy5kWs';
+const DEFAULT_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ?? '';
 
 export interface StaticMapOptions {
   lat: number;
