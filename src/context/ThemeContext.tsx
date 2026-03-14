@@ -71,7 +71,7 @@ const LIGHT_COLORS: ThemeColors = {
   cardBackground: '#FFFFFF',
   accentGreen: '#10B981',
   accentBrown: '#92400E',
-  premiumSheet: '#DCEBFF',
+  premiumSheet: '#F6F9FF',
 };
 
 const DARK_COLORS: ThemeColors = {

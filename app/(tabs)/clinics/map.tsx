@@ -1,9 +1,10 @@
 import ClinicBottomCard from '@/src/components/ClinicBottomCard';
 import MapErrorBoundary from '@/src/components/MapErrorBoundary';
+import SparkleOverlay from '@/src/components/ui/SparkleOverlay';
 import { useTheme } from '@/src/context/ThemeContext';
 import {
-  PublicClinic,
-  fetchPublishedClinics,
+    PublicClinic,
+    fetchPublishedClinics,
 } from '@/src/services/publicClinics';
 import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,14 +12,14 @@ import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 // Inline type to avoid Metro resolving react-native-maps on web
@@ -316,6 +317,21 @@ function ClinicsMapScreenInner() {
     );
   }, [userLocation, radiusKm]);
 
+  // ─── Zoom in / out ───
+  const handleZoom = useCallback((factor: number) => {
+    if (!mapRef.current) return;
+    const r = regionRef.current ?? initialRegion;
+
+    const newRegion = {
+      latitude: r.latitude,
+      longitude: r.longitude,
+      latitudeDelta: Math.max(0.001, Math.min(100, r.latitudeDelta * factor)),
+      longitudeDelta: Math.max(0.001, Math.min(100, r.longitudeDelta * factor)),
+    };
+
+    (mapRef.current as any).animateToRegion(newRegion, 250);
+  }, [initialRegion]);
+
   // ─── Theme colors (memoized to prevent inline object re-creation) ───
   const headerBg = isDark ? 'rgba(22,28,36,0.85)' : 'rgba(255,255,255,0.90)';
   const textColor = isDark ? '#E8EDF2' : '#1A2A3A';
@@ -343,6 +359,7 @@ function ClinicsMapScreenInner() {
       for (let i = 0; i < clinic.id.length; i++) h += clinic.id.charCodeAt(i);
       const staggerPad = h % 2 === 0 ? STAGGER_EVEN_PAD : STAGGER_ODD_PAD;
       const sel = selectedId === clinic.id;
+      const dotColor = clinic.status === 'open' ? '#22c55e' : '#ef4444';
       return (
         <Marker
           key={clinic.id}
@@ -359,6 +376,7 @@ function ClinicsMapScreenInner() {
             isSelected={sel}
             isDark={isDark}
             staggerPadTop={staggerPad}
+            statusDotColor={dotColor}
           />
         </Marker>
       );
@@ -431,7 +449,7 @@ function ClinicsMapScreenInner() {
           clusteringEnabled
           radius={60}
           minPoints={2}
-          maxZoom={16}
+          maxZoom={20}
           renderCluster={renderClusterMarker}
           animationEnabled={Platform.OS === 'ios'}
           tracksViewChanges={false}
@@ -471,6 +489,17 @@ function ClinicsMapScreenInner() {
         </View>
       </SafeAreaView>
 
+      {/* Zoom controls */}
+      <View style={[styles.zoomControls, { backgroundColor: isDark ? 'rgba(22,28,36,0.85)' : 'rgba(255,255,255,0.90)' }]}>
+        <TouchableOpacity onPress={() => handleZoom(0.5)} activeOpacity={0.7} style={styles.zoomBtn}>
+          <Ionicons name="add" size={22} color={isDark ? '#E8EDF2' : '#1A2A3A'} />
+        </TouchableOpacity>
+        <View style={[styles.zoomDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.10)' }]} />
+        <TouchableOpacity onPress={() => handleZoom(2)} activeOpacity={0.7} style={styles.zoomBtn}>
+          <Ionicons name="remove" size={22} color={isDark ? '#E8EDF2' : '#1A2A3A'} />
+        </TouchableOpacity>
+      </View>
+
       {/* Recenter button */}
       {userLocation && (
         <TouchableOpacity
@@ -481,6 +510,9 @@ function ClinicsMapScreenInner() {
           <Ionicons name="locate" size={20} color="#3D9EFF" />
         </TouchableOpacity>
       )}
+
+      {/* Sparkle micro-interaction */}
+      <SparkleOverlay visible={!!selectedClinic} />
 
       {/* Bottom Preview Card */}
       <ClinicBottomCard
@@ -582,6 +614,37 @@ const styles = StyleSheet.create({
       android: { elevation: 4 },
     }),
   },
+  zoomControls: {
+    position: 'absolute',
+    bottom: 196,
+    right: 16,
+    width: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    zIndex: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(61,158,255,0.25)',
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#0D1B2A',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+      },
+      android: { elevation: 4 },
+    }),
+  },
+  zoomBtn: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomDivider: {
+    width: 28,
+    height: StyleSheet.hairlineWidth,
+  },
   refreshWrap: {
     position: 'absolute',
     top: 100,
@@ -627,11 +690,12 @@ const MARKER_WRAP_H = 58;
 
 // ─── Clinic marker view — DOT + NAME always together (atomic) ───
 const ClinicMarkerView = React.memo(
-  ({ name, isSelected, isDark, staggerPadTop = 0 }: {
+  ({ name, isSelected, isDark, staggerPadTop = 0, statusDotColor }: {
     name: string;
     isSelected: boolean;
     isDark: boolean;
     staggerPadTop?: number;
+    statusDotColor?: string;
   }) => {
     const bg = isSelected
       ? (isDark ? 'rgba(30,40,55,0.95)' : 'rgba(255,255,255,0.98)')
@@ -655,12 +719,17 @@ const ClinicMarkerView = React.memo(
             { backgroundColor: bg, borderColor: border },
           ]}
         >
-          <Text
-            style={[markerStyles.name, { color: textColor }]}
-            numberOfLines={1}
-          >
-            {name}
-          </Text>
+          <View style={markerStyles.bubbleRow}>
+            {statusDotColor ? (
+              <View style={[markerStyles.statusDot, { backgroundColor: statusDotColor }]} />
+            ) : null}
+            <Text
+              style={[markerStyles.name, { color: textColor }]}
+              numberOfLines={1}
+            >
+              {name}
+            </Text>
+          </View>
         </View>
         <View style={[markerStyles.dot, { backgroundColor: dotBg, borderColor: dotBorder }]} />
       </View>
@@ -675,6 +744,16 @@ const markerStyles = StyleSheet.create({
     justifyContent: 'flex-end',
     minHeight: MARKER_WRAP_H,
     minWidth: 50,
+  },
+  bubbleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginRight: 6,
   },
   bubble: {
     maxWidth: 140,

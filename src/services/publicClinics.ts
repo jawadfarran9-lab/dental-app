@@ -22,6 +22,7 @@ export type PublicClinic = {
   country?: string; // From directory sync or public profile
   manualClose?: boolean; // Owner override: temporarily closed
   manualOpen?: boolean;  // Owner override: temporarily open
+  status?: 'open' | 'closed'; // Derived open/closed state for lightweight reads (map, list)
 };
 
 export type DerivedPlace = {

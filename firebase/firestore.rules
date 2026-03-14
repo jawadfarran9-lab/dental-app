@@ -146,7 +146,9 @@ service cloud.firestore {
         (request.resource.data.geo == null || (request.resource.data.geo.lat is number && request.resource.data.geo.lng is number)) &&
         (request.resource.data.geohash == null || request.resource.data.geohash is string) &&
         (request.resource.data.isPublished is bool) &&
-        (request.resource.data.manualClose == null || request.resource.data.manualClose is bool);
+        (request.resource.data.manualClose == null || request.resource.data.manualClose is bool) &&
+        (request.resource.data.manualOpen == null || request.resource.data.manualOpen is bool) &&
+        (request.resource.data.status == null || request.resource.data.status in ['open', 'closed']);
     }
     
     // CLINIC AUTHENTICATION & BASIC DATA

@@ -261,11 +261,14 @@ export default function ClinicsListScreen() {
   }, [userLocation, locPulse]);
 
   // ── Fetch all published clinics ──
-  useEffect(() => {
+  const initialFetchDone = useRef(false);
+  const fetchClinics = useCallback(() => {
+    let cancelled = false;
     (async () => {
-      setLoading(true);
+      if (!initialFetchDone.current) setLoading(true);
       try {
         const all = await fetchPublishedClinics();
+        if (cancelled) return;
         const withLocations: ClinicListItem[] = await Promise.all(
           all.map(async (c) => {
             if (c.geo?.lat != null && c.geo?.lng != null) {
@@ -283,14 +286,20 @@ export default function ClinicsListScreen() {
             return c;
           }),
         );
-        setClinics(withLocations);
+        if (!cancelled) setClinics(withLocations);
       } catch (err) {
         console.error('[CLINICS_LIST] Failed to fetch clinics:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+          initialFetchDone.current = true;
+        }
       }
     })();
+    return () => { cancelled = true; };
   }, []);
+
+  useFocusEffect(fetchClinics);
 
   // ── Toggle location ──
   const toggleLocation = useCallback(async () => {
@@ -346,12 +355,47 @@ export default function ClinicsListScreen() {
       });
     }
 
-    return [...filtered].sort((a, b) => {
-      if (userLocation) {
-        const aDist = a.geo ? getDistanceBetween(userLocation, a.geo) : Infinity;
-        const bDist = b.geo ? getDistanceBetween(userLocation, b.geo) : Infinity;
-        if (aDist !== bDist) return aDist - bDist;
+    // ── Smart weighted ranking ──
+    const REVIEW_CAP = 100;
+
+    // Pre-compute distance for each clinic once (O(n))
+    const distMap = new Map<string, number>();
+    let maxDist = 0;
+    if (userLocation) {
+      for (const c of filtered) {
+        const d = c.geo ? getDistanceBetween(userLocation, c.geo) : Infinity;
+        distMap.set(c.id, d);
+        if (isFinite(d) && d > maxDist) maxDist = d;
       }
+    }
+
+    // Composite score: higher = better
+    const PRO_BOOST = 1.12;
+    const score = (c: ClinicListItem): number => {
+      const r = (c.averageRating ?? 0) / 5;
+      const rv = Math.min(c.totalReviews ?? 0, REVIEW_CAP) / REVIEW_CAP;
+      const t = c.tier === 'pro' ? 1 : 0;
+
+      let base: number;
+      if (userLocation && maxDist > 0) {
+        const dist = distMap.get(c.id) ?? Infinity;
+        const ds = isFinite(dist) ? 1 - dist / maxDist : 0;
+        base = ds * 0.4 + r * 0.3 + rv * 0.2 + t * 0.1;
+      } else {
+        // No location: redistribute weights
+        base = r * 0.5 + rv * 0.3 + t * 0.2;
+      }
+
+      return c.tier === 'pro' ? base * PRO_BOOST : base;
+    };
+
+    // Pre-compute scores once (O(n))
+    const scoreMap = new Map<string, number>();
+    for (const c of filtered) scoreMap.set(c.id, score(c));
+
+    return [...filtered].sort((a, b) => {
+      const diff = (scoreMap.get(b.id) ?? 0) - (scoreMap.get(a.id) ?? 0);
+      if (diff !== 0) return diff;
       return a.name.localeCompare(b.name);
     });
   }, [clinics, searchQuery, activeCategory, userLocation, radiusKm, ownClinicId]);
@@ -382,7 +426,7 @@ export default function ClinicsListScreen() {
         clinicType={deriveClinicType(item.specialty)}
         isOwn={false}
         isDark={isDark}
-        statusDot={item.manualClose ? 'red' : 'green'}
+        statusDot={item.status === 'open' ? 'green' : item.status === 'closed' ? 'red' : item.manualClose ? 'red' : 'green'}
         onPress={() => goToClinic(item.clinicId)}
       />
     ),
@@ -416,11 +460,15 @@ export default function ClinicsListScreen() {
               isOwn
               isDark={isDark}
               statusDot={
-                ownClinic.manualClose
-                  ? 'red'
-                  : ownWorkingHours
-                    ? getClinicOpenStatus(ownWorkingHours).status === 'open' ? 'green' : 'red'
-                    : 'green'
+                ownClinic.status === 'open'
+                  ? 'green'
+                  : ownClinic.status === 'closed'
+                    ? 'red'
+                    : ownClinic.manualClose
+                      ? 'red'
+                      : ownWorkingHours
+                        ? getClinicOpenStatus(ownWorkingHours).status === 'open' ? 'green' : 'red'
+                        : 'green'
               }
               onPress={() => router.push(`/clinics/${ownClinic.clinicId}` as any)}
             />

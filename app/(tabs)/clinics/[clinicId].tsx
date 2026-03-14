@@ -22,21 +22,21 @@ import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  FlatList,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    FlatList,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -269,15 +269,28 @@ export default function ClinicProfileScreen() {
       mode === 'open'     ? { manualClose: false, manualOpen: true } :
       mode === 'close'    ? { manualClose: true,  manualOpen: false } :
       /* schedule */        { manualClose: false, manualOpen: false };
+
+    // Derive status for lightweight public reads (map markers, list cards)
+    let derivedStatus: 'open' | 'closed' = 'closed';
+    if (next.manualClose) {
+      derivedStatus = 'closed';
+    } else if (next.manualOpen) {
+      derivedStatus = 'open';
+    } else if (clinic?.workingHours) {
+      derivedStatus = getClinicOpenStatus(clinic.workingHours).status === 'open' ? 'open' : 'closed';
+    }
+
     setManualClose(next.manualClose);
     setManualOpen(next.manualOpen);
     try {
-      await setDoc(doc(db, 'clinics_public', clinicId), next, { merge: true });
-    } catch {
+      await setDoc(doc(db, 'clinics_public', clinicId), { ...next, status: derivedStatus }, { merge: true });
+    } catch (err) {
+      console.error('Clinic status update failed:', err);
       setManualClose(prev.manualClose);
       setManualOpen(prev.manualOpen);
+      Alert.alert('Status Update Failed', 'Unable to update clinic status. Please try again.');
     }
-  }, [canToggleDot, clinicId, manualClose, manualOpen]);
+  }, [canToggleDot, clinicId, manualClose, manualOpen, clinic?.workingHours]);
 
   // ─── Media Data ───
   const [allMedia, setAllMedia] = useState<ClinicMedia[]>([]);

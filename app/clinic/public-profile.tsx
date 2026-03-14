@@ -123,6 +123,7 @@ export default function PublicProfileSettings() {
         geohash,
         isPublished,
         manualClose: auth?.isSubscribed === true ? manualClose : false,
+        status: (auth?.isSubscribed === true && manualClose) ? 'closed' as const : 'open' as const,
         country: derived.country || '',
         city: derived.city || '',
       } as any;
