@@ -17,7 +17,7 @@ export type PublicClinic = {
   tier?: 'pro' | 'standard'; // G1: UI-only tier signal (defaults to standard)
   averageRating?: number; // Average rating from 1-5
   totalReviews?: number; // Total number of reviews
-  specialty?: 'general' | 'orthodontics' | 'cosmetic' | 'pediatric' | 'surgery' | 'endodontics' | 'periodontics' | 'prosthodontics'; // Clinic specialty
+  specialty?: 'dental' | 'beauty' | 'laser' | 'general' | 'orthodontics' | 'cosmetic' | 'pediatric' | 'surgery' | 'endodontics' | 'periodontics' | 'prosthodontics'; // Clinic specialty
   city?: string;    // From directory sync or public profile
   country?: string; // From directory sync or public profile
   manualClose?: boolean; // Owner override: temporarily closed

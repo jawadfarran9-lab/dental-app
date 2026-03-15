@@ -1,6 +1,6 @@
 import { useTheme } from '@/src/context/ThemeContext';
+import { useClinicDistance } from '@/src/hooks/useClinicDistance';
 import { PublicClinic } from '@/src/services/publicClinics';
-import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -216,11 +216,8 @@ function ClinicBottomCard({ clinic, userLocation, isDark, onOpen, onClose }: Pro
     springTo(SNAP_HIDDEN, onClose);
   }, [springTo, onClose]);
 
-  // ─── Distance ───
-  const distanceKm = useMemo(() => {
-    if (!clinic || !userLocation || !clinic.geo?.lat || !clinic.geo?.lng) return null;
-    return getDistanceBetween(userLocation, clinic.geo);
-  }, [userLocation, clinic]);
+  // ─── Distance (Haversine → Google Directions upgrade) ───
+  const { distanceText } = useClinicDistance(userLocation, clinic?.geo ?? null);
 
   // ─── Carousel page tracking ───
   const handleCarouselScroll = useCallback(
@@ -383,14 +380,10 @@ function ClinicBottomCard({ clinic, userLocation, isDark, onOpen, onClose }: Pro
                 </Text>
               </View>
             )}
-            {distanceKm !== null && (
+            {distanceText !== null && (
               <View style={[styles.badge, { backgroundColor: badgeBg }]}>
                 <Ionicons name="navigate" size={11} color="#3D9EFF" />
-                <Text style={styles.badgeText}>
-                  {distanceKm < 1
-                    ? `${Math.round(distanceKm * 1000)} m`
-                    : `${distanceKm.toFixed(1)} km`}
-                </Text>
+                <Text style={styles.badgeText}>{distanceText}</Text>
               </View>
             )}
             {clinic?.tier === 'pro' && (

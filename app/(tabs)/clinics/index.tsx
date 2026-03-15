@@ -53,11 +53,41 @@ const CATEGORIES: { key: CategoryFilter; label: string; icon: keyof typeof Ionic
   { key: 'beauty', label: 'Beauty', icon: 'sparkles' },
 ];
 
+// ─── Per-card distance wrapper (module-level → stable component type) ───
+function ExploreClinicRow({
+  item,
+  isDark,
+  goToClinic,
+}: {
+  item: ClinicListItem;
+  isDark: boolean;
+  goToClinic: (id: string) => void;
+}) {
+  return (
+    <ClinicRow
+      clinicId={item.clinicId}
+      name={item.name}
+      city={item.city}
+      country={item.country}
+      imageUrl={item.heroImage}
+      rating={item.averageRating ?? null}
+      distanceKm={null}
+      distanceText={null}
+      clinicType={deriveClinicType(item.specialty)}
+      isOwn={false}
+      isDark={isDark}
+      statusDot={item.status === 'open' ? 'green' : item.status === 'closed' ? 'red' : item.manualClose ? 'red' : 'green'}
+      onPress={() => goToClinic(item.clinicId)}
+    />
+  );
+}
+
 // ─── Derive clinicType from specialty (module-level, stable) ───
 function deriveClinicType(specialty?: string): 'dental' | 'laser' | 'beauty' | null {
   if (!specialty) return null;
   const s = specialty.toLowerCase();
   if (
+    s === 'dental' ||
     s === 'general' ||
     s === 'orthodontics' ||
     s === 'cosmetic' ||
@@ -156,6 +186,7 @@ export default function ClinicsListScreen() {
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('all');
   const [radiusKm, setRadiusKm] = useState(25);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'resolving' | 'available' | 'unavailable'>('resolving');
   const [locationLoading, setLocationLoading] = useState(false);
   const locationFetched = useRef(false);
 
@@ -216,11 +247,14 @@ export default function ClinicsListScreen() {
             const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
             lastLocation.current = coords;
             setUserLocation(coords);
+            setLocationStatus('available');
             locationFetched.current = true;
           }
+        } else if (!cancelled) {
+          setLocationStatus('unavailable');
         }
       } catch {
-        // Silent
+        if (!cancelled) setLocationStatus('unavailable');
       }
     })();
     return () => { cancelled = true; };
@@ -330,7 +364,9 @@ export default function ClinicsListScreen() {
 
   // ── Filtered + sorted clinics ──
   const filteredClinics = useMemo(() => {
-    let filtered = ownClinicId
+    // Exclude owner clinic from DISCOVER only when YOUR CLINIC section is visible,
+    // so the clinic never disappears from both sections simultaneously.
+    let filtered = showMyClinic && ownClinicId
       ? clinics.filter((c) => c.clinicId !== ownClinicId)
       : clinics;
 
@@ -398,15 +434,7 @@ export default function ClinicsListScreen() {
       if (diff !== 0) return diff;
       return a.name.localeCompare(b.name);
     });
-  }, [clinics, searchQuery, activeCategory, userLocation, radiusKm, ownClinicId]);
-
-  const getDistance = useCallback(
-    (geo?: { lat: number; lng: number }): number | null => {
-      if (!userLocation || !geo) return null;
-      return getDistanceBetween(userLocation, geo);
-    },
-    [userLocation],
-  );
+  }, [clinics, searchQuery, activeCategory, userLocation, radiusKm, ownClinicId, showMyClinic]);
 
   const goToClinic = useCallback(
     (id: string) => { router.push(`/clinics/${id}` as any); },
@@ -415,22 +443,9 @@ export default function ClinicsListScreen() {
 
   const renderItem = useCallback(
     ({ item }: { item: ClinicListItem }) => (
-      <ClinicRow
-        clinicId={item.clinicId}
-        name={item.name}
-        city={item.city}
-        country={item.country}
-        imageUrl={item.heroImage}
-        rating={item.averageRating ?? null}
-        distanceKm={getDistance(item.geo)}
-        clinicType={deriveClinicType(item.specialty)}
-        isOwn={false}
-        isDark={isDark}
-        statusDot={item.status === 'open' ? 'green' : item.status === 'closed' ? 'red' : item.manualClose ? 'red' : 'green'}
-        onPress={() => goToClinic(item.clinicId)}
-      />
+      <ExploreClinicRow item={item} isDark={isDark} goToClinic={goToClinic} />
     ),
-    [goToClinic, isDark, getDistance],
+    [isDark, goToClinic],
   );
 
   // ── List header (includes optional "Your Clinic" + Discover label) ──
@@ -491,8 +506,11 @@ export default function ClinicsListScreen() {
     return { text: 'Discover top-rated clinics near you', pressable: false };
   }, [userLocation, filteredClinics.length]);
 
-  // ── Auth loading gate ──
-  if (authLoading) {
+  // ── Auth + location loading gate ──
+  // Hold the spinner while auth or GPS is still resolving.
+  // Once location is definitively available or unavailable, lift the gate
+  // so the screen renders (with or without radius filtering).
+  if (authLoading || locationStatus === 'resolving') {
     return (
       <View style={styles.container}>
         <View style={styles.center}>

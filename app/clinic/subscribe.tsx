@@ -267,13 +267,11 @@ export default function ClinicSubscribeLanding() {
       // Small delay to ensure AsyncStorage write is complete
       await new Promise(resolve => setTimeout(resolve, 100));
 
-      // Renewing clinic (already has account) → go to confirm-subscription
-      // New clinic (no account yet) → go to signup
-      if (effectiveClinicId) {
-        router.push('/clinic/confirm-subscription' as any);
-      } else {
-        router.push('/clinic/signup' as any);
-      }
+      // Always route to signup for plan selection.
+      // Active subscribers are already redirected to /clinic/upgrade above.
+      // Renewals use their own path (renew-subscribe.tsx → confirm-subscription).
+      // A stale clinicId in storage must never skip the signup/payment form.
+      router.push('/clinic/signup' as any);
     } catch (error) {
       setSaving(false);
       console.error('[SUBSCRIBE ERROR]', error);

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, useColorScheme, View } from 'react-native';
 
@@ -142,6 +142,7 @@ const TabIcon: React.FC<{
 export default function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const router = useRouter();
 
   // Premium glassmorphism colors
   const activeColor = '#3D9EFF'; // Bright blue
@@ -269,6 +270,13 @@ export default function TabsLayout() {
             tabBarIcon: ({ color, focused }) => (
               <TabIcon name="medical" focused={focused} color={color} isDark={isDark} />
             ),
+          }}
+          listeners={{
+            tabPress: () => {
+              // Always reset to Explore Clinics index when tab is pressed,
+              // even if the user is currently on /clinics/map or /clinics/[id].
+              router.replace('/(tabs)/clinics' as any);
+            },
           }}
         />
 

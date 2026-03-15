@@ -37,6 +37,7 @@ export default function PublicProfileSettings() {
   const [derivedCountry, setDerivedCountry] = useState<string>('');
   const [isPublished, setIsPublished] = useState(false);
   const [manualClose, setManualClose] = useState(false);
+  const [specialty, setSpecialty] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const load = async () => {
@@ -53,6 +54,7 @@ export default function PublicProfileSettings() {
         if (docData.geo?.lng != null) setLng(String(docData.geo.lng));
         setIsPublished(!!docData.isPublished);
         setManualClose(!!docData.manualClose);
+        setSpecialty(docData.specialty);
         const derived = await reverseGeocode(docData.geo?.lat, docData.geo?.lng);
         setDerivedCity(derived.city || '');
         setDerivedCountry(derived.country || '');
@@ -92,8 +94,8 @@ export default function PublicProfileSettings() {
     if (!clinicId) return;
     if (!isOwner) { Alert.alert(t('common.error'), t('publicProfile.ownerOnly')); return; }
     if (!name.trim()) { Alert.alert(t('common.error'), t('publicProfile.nameRequired')); return; }
-    // Block publishing if subscription is not active
-    if (isPublished && auth?.isSubscribed !== true) {
+    // Block publishing if subscription is confirmed inactive (not merely unknown/loading)
+    if (isPublished && auth?.isSubscribed === false) {
       Alert.alert(t('common.error'), 'An active subscription is required to publish your clinic.');
       setIsPublished(false);
       return;
@@ -124,6 +126,7 @@ export default function PublicProfileSettings() {
         isPublished,
         manualClose: auth?.isSubscribed === true ? manualClose : false,
         status: (auth?.isSubscribed === true && manualClose) ? 'closed' as const : 'open' as const,
+        specialty: specialty || 'general',
         country: derived.country || '',
         city: derived.city || '',
       } as any;

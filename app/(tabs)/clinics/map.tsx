@@ -30,6 +30,10 @@ type Region = { latitude: number; longitude: number; latitudeDelta: number; long
 let ClusteredMapView: any;
 let MapView: any;
 let Marker: any;
+// Web-only: Google Maps JS API components
+let GoogleMap: any;
+let GoogleMarker: any;
+let GoogleAPIProvider: any;
 if (Platform.OS !== 'web') {
   ClusteredMapView = require('react-native-map-clustering').default;
   const Maps = require('react-native-maps');
@@ -39,6 +43,10 @@ if (Platform.OS !== 'web') {
   ClusteredMapView = View;
   MapView = View;
   Marker = View;
+  const GM = require('@vis.gl/react-google-maps');
+  GoogleMap = GM.Map;
+  GoogleMarker = GM.AdvancedMarker;
+  GoogleAPIProvider = GM.APIProvider;
 }
 
 // ─── Same category derivation as index.tsx ───
@@ -49,6 +57,7 @@ function deriveClinicType(specialty?: string): 'dental' | 'laser' | 'beauty' | n
   if (!specialty) return null;
   const s = specialty.toLowerCase();
   if (
+    s === 'dental' ||
     s === 'general' ||
     s === 'orthodontics' ||
     s === 'cosmetic' ||
@@ -427,6 +436,128 @@ function ClinicsMapScreenInner() {
     [isDark],
   );
 
+  // ─── Web: Google Maps JavaScript API with real markers ───
+  if (Platform.OS === 'web') {
+    const apiKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+    const center = {
+      lat: userLocation?.lat ?? initialRegion.latitude,
+      lng: userLocation?.lng ?? initialRegion.longitude,
+    };
+
+    return (
+      <View style={styles.container}>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#3D9EFF" />
+          </View>
+        ) : (
+          <View style={StyleSheet.absoluteFill}>
+            <GoogleAPIProvider apiKey={apiKey}>
+              <GoogleMap
+                defaultCenter={center}
+                defaultZoom={12}
+                gestureHandling="greedy"
+                disableDefaultUI={false}
+                mapId="explore-map"
+                style={{ width: '100%', height: '100%' }}
+              >
+                {filteredClinics.map((clinic) => {
+                  const isSelected = selectedId === clinic.id;
+                  const dotColor = clinic.status === 'open' ? '#22c55e' : '#ef4444';
+                  return (
+                    <GoogleMarker
+                      key={clinic.id}
+                      position={{ lat: clinic.geo!.lat, lng: clinic.geo!.lng }}
+                      onClick={() => handleMarkerPress(clinic)}
+                    >
+                      {/* Custom label matching native ClinicMarkerView style */}
+                      <div style={{
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                      }}>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 5,
+                          background: isSelected
+                            ? 'rgba(255,255,255,0.98)'
+                            : 'rgba(255,255,255,0.92)',
+                          padding: '4px 10px',
+                          borderRadius: 14,
+                          border: `1.5px solid ${isSelected ? '#3D9EFF' : 'rgba(61,158,255,0.18)'}`,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                          whiteSpace: 'nowrap' as const,
+                          maxWidth: 140,
+                        }}>
+                          <div style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: '50%',
+                            background: dotColor,
+                            flexShrink: 0,
+                          }} />
+                          <span style={{
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#1A2A3A',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}>{clinic.name}</span>
+                        </div>
+                        <div style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: '50%',
+                          background: isSelected ? '#2B8AE8' : '#3D9EFF',
+                          border: '2px solid #fff',
+                          marginTop: 3,
+                          boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+                        }} />
+                      </div>
+                    </GoogleMarker>
+                  );
+                })}
+              </GoogleMap>
+            </GoogleAPIProvider>
+          </View>
+        )}
+
+        {/* Top bar — same as native */}
+        <SafeAreaView style={styles.topSafe}>
+          <View style={topBarStyle}>
+            <TouchableOpacity
+              onPress={handleGoBack}
+              hitSlop={HIT_SLOP_8}
+              activeOpacity={0.7}
+              style={styles.backBtn}
+            >
+              <Ionicons name="chevron-back" size={22} color={textColor} />
+            </TouchableOpacity>
+            <View style={styles.topBarCenter}>
+              <Text style={titleStyle}>Map View</Text>
+              <Text style={subtitleStyle}>
+                {filterLabel} · {filteredClinics.length} clinic{filteredClinics.length !== 1 ? 's' : ''}
+              </Text>
+            </View>
+            <View style={styles.backBtn} />
+          </View>
+        </SafeAreaView>
+
+        {/* Bottom Preview Card */}
+        <ClinicBottomCard
+          clinic={selectedClinic}
+          userLocation={userLocation}
+          isDark={isDark}
+          onOpen={handleOpenClinic}
+          onClose={handleClosePreview}
+        />
+      </View>
+    );
+  }
+
+  // ─── Native: full interactive clustered map (unchanged) ───
   return (
     <View style={styles.container}>
       {/* Map */}

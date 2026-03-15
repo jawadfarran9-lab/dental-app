@@ -37,7 +37,6 @@ export default function ConfirmSubscription() {
   // Phase 2: Detect whether user arrived via renew or first-time flow
   const params = useLocalSearchParams();
   const flow = params?.flow ?? 'first';
-  console.log('[CONFIRM FLOW]', flow);
 
   const [planLabel, setPlanLabel] = useState('');
   const [basePrice, setBasePrice] = useState('');

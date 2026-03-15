@@ -21,6 +21,7 @@ type ClinicRowProps = {
   imageUrl?: string | null;
   rating?: number | null;
   distanceKm?: number | null;
+  distanceText?: string | null;
   clinicType?: 'dental' | 'laser' | 'beauty' | null;
   isOwn?: boolean;
   isDark?: boolean;
@@ -37,6 +38,7 @@ const ClinicRow: React.FC<ClinicRowProps> = ({
   imageUrl,
   rating,
   distanceKm,
+  distanceText,
   clinicType,
   isOwn = false,
   isDark = false,
@@ -58,11 +60,13 @@ const ClinicRow: React.FC<ClinicRowProps> = ({
   const hasRating = rating != null && rating > 0;
 
   const distanceLabel =
-    distanceKm != null
-      ? distanceKm < 1
-        ? `${Math.round(distanceKm * 1000)} m`
-        : `${distanceKm.toFixed(1)} km`
-      : null;
+    distanceText
+      ? distanceText
+      : distanceKm != null
+        ? distanceKm < 1
+          ? `${Math.round(distanceKm * 1000)} m`
+          : `${distanceKm.toFixed(1)} km`
+        : null;
 
   // ── Colors (theme-aware) ──
   const accentClr = isDark ? '#3D9EFF' : '#2B7FD4';

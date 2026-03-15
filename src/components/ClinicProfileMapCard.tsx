@@ -1,14 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import {
     Animated,
+    Image,
     Platform,
+    Pressable,
     StyleSheet,
     Text,
     View,
 } from 'react-native';
+import { getStaticMapUrl } from '@/src/utils/googleStaticMap';
 
 // Platform-safe lazy imports — prevents Metro from resolving native-only
 // codegenNativeCommands on web, which crashes the bundler.
@@ -79,15 +82,44 @@ export default function ClinicProfileMapCard({
   }, [cardScale]);
 
   // ─── Web fallback ───
+  const staticMapUri = useMemo(
+    () => getStaticMapUrl({ lat: latitude, lng: longitude, width: 600, height: 300, zoom: 15, scale: 2 }),
+    [latitude, longitude],
+  );
+
   if (Platform.OS === 'web' || !RNMapView) {
     return (
       <Animated.View style={[styles.card, { transform: [{ scale: cardScale }] }]}>
-        <View style={styles.webFallback}>
-          <Ionicons name="map-outline" size={32} color="#3D9EFF" />
-          <Text style={styles.webFallbackTitle}>{clinicName}</Text>
-          {!!address && <Text style={styles.webFallbackAddress}>{address}</Text>}
-          <Text style={styles.webFallbackCta}>Tap to open Maps</Text>
-        </View>
+        <Pressable
+          onPressIn={handlePressIn}
+          onPressOut={handlePressOut}
+          onPress={onPress}
+          style={styles.touchable}
+        >
+          <View style={styles.mapContainer}>
+            {staticMapUri ? (
+              <Image source={{ uri: staticMapUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            ) : (
+              <View style={[StyleSheet.absoluteFill, { backgroundColor: '#E8EDF2', alignItems: 'center', justifyContent: 'center' }]}>
+                <Ionicons name="map-outline" size={36} color="#94A3B8" />
+              </View>
+            )}
+          </View>
+
+          {/* Route info panel */}
+          {!!(distanceText || driveTimeText) && (
+            <View style={styles.routeInfoPanel}>
+              {!!distanceText && <Text style={styles.routeDistance}>📍 {distanceText}</Text>}
+              {!!driveTimeText && <Text style={styles.routeTime}>🚗 {driveTimeText}</Text>}
+            </View>
+          )}
+
+          {/* Bottom overlay */}
+          <View style={styles.webOverlay}>
+            <Text style={styles.clinicName} numberOfLines={1}>{clinicName}</Text>
+            <Text style={styles.openMaps}>Click to open in Maps</Text>
+          </View>
+        </Pressable>
       </Animated.View>
     );
   }
@@ -276,28 +308,14 @@ const styles = StyleSheet.create({
     }),
   },
 
-  /* ── Web fallback ── */
-  webFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F0F4F8',
-    gap: 4,
-  },
-  webFallbackTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#1A2B3F',
-    marginTop: 4,
-  },
-  webFallbackAddress: {
-    fontSize: 12,
-    color: '#6A7A8C',
-  },
-  webFallbackCta: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#3D9EFF',
-    marginTop: 2,
+  /* ── Web overlay ── */
+  webOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
 });

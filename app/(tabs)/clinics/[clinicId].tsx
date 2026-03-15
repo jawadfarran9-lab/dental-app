@@ -5,12 +5,11 @@ import StarAvatar from '@/src/components/StarAvatar';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
-import { getDrivingDistance } from '@/src/services/googleMapsService';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { ClinicMedia } from '@/src/types/clinicMedia';
 import { DAYS_ORDER, formatDayLabel } from '@/src/types/clinicSchedule';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
-import { getDistanceKm } from '@/src/utils/geoDistance';
+import { useClinicDistance } from '@/src/hooks/useClinicDistance';
 import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
@@ -256,7 +255,8 @@ export default function ClinicProfileScreen() {
   useFocusEffect(fetchClinic);
 
   // ── Inactive state detection ──
-  const ownerInactive = isOwner && auth.isSubscribed !== true;
+  // Use === false (not !== true) so null (unknown/loading) is NOT treated as inactive
+  const ownerInactive = isOwner && auth.isSubscribed === false;
   const visitorInactive = !isOwner && isPublished === false;
 
   // ── Manual status override (owner only, active subscription only) ──
@@ -337,53 +337,35 @@ export default function ClinicProfileScreen() {
     return () => { cancelled = true; };
   }, []);
 
-  // ─── Distance + Drive time (Google Directions → Haversine fallback) ───
-  const [distanceText, setDistanceText] = useState<string | undefined>(undefined);
-  const [driveTimeText, setDriveTimeText] = useState<string | undefined>(undefined);
+  // ─── Distance (shared hook: Haversine → Google upgrade) ───
+  const clinicGeo = clinic?.location?.lat && clinic?.location?.lng
+    ? { lat: clinic.location.lat, lng: clinic.location.lng }
+    : null;
+  const userGeo = userCoords
+    ? { lat: userCoords.latitude, lng: userCoords.longitude }
+    : null;
+  const { distanceKm, distanceText: rawDistanceText, durationMinutes } = useClinicDistance(userGeo, clinicGeo);
+  const distanceText = rawDistanceText ? `${rawDistanceText} away` : undefined;
 
-  useEffect(() => {
-    if (!userCoords || !clinic?.location?.lat || !clinic?.location?.lng) {
-      setDistanceText(undefined);
-      setDriveTimeText(undefined);
-      return;
+  // ─── Drive time (derived from hook's durationMinutes, Haversine estimate as fallback) ───
+  const driveTimeText = useMemo(() => {
+    if (durationMinutes != null) {
+      const m = durationMinutes;
+      if (m < 60) return `~${m} min drive`;
+      const h = Math.floor(m / 60);
+      const r = m % 60;
+      return r > 0 ? `~${h}h ${r}m drive` : `~${h}h drive`;
     }
-
-    let cancelled = false;
-
-    // Immediate Haversine fallback for both values
-    const km = getDistanceKm(userCoords.latitude, userCoords.longitude, clinic.location.lat, clinic.location.lng);
-    if (isFinite(km)) {
-      setDistanceText(km < 1 ? `${Math.round(km * 1000)} m away` : `${km} km away`);
-      const mins = Math.round((km / 50) * 60);
-      if (mins < 1) setDriveTimeText('~1 min drive');
-      else if (mins < 60) setDriveTimeText(`~${mins} min drive`);
-      else {
-        const h = Math.floor(mins / 60);
-        const m = mins % 60;
-        setDriveTimeText(m > 0 ? `~${h}h ${m}m drive` : `~${h}h drive`);
-      }
+    if (distanceKm != null && isFinite(distanceKm)) {
+      const mins = Math.round((distanceKm / 50) * 60);
+      if (mins < 1) return '~1 min drive';
+      if (mins < 60) return `~${mins} min drive`;
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      return m > 0 ? `~${h}h ${m}m drive` : `~${h}h drive`;
     }
-
-    // Upgrade BOTH with Google Directions when available
-    getDrivingDistance(
-      userCoords.latitude, userCoords.longitude,
-      clinic.location.lat, clinic.location.lng,
-    ).then((result) => {
-      if (cancelled || !result) return;
-      // Distance from Google route
-      if (result.distanceText) setDistanceText(`${result.distanceText} away`);
-      // Duration from Google route
-      const m = result.durationMinutes;
-      if (m < 60) setDriveTimeText(`~${m} min drive`);
-      else {
-        const h = Math.floor(m / 60);
-        const r = m % 60;
-        setDriveTimeText(r > 0 ? `~${h}h ${r}m drive` : `~${h}h drive`);
-      }
-    });
-
-    return () => { cancelled = true; };
-  }, [userCoords, clinic?.location?.lat, clinic?.location?.lng]);
+    return undefined;
+  }, [durationMinutes, distanceKm]);
 
   const locationLine = [displayCity, displayCountry].filter(Boolean).join(', ');
   const phone = clinic?.clinicPhone || clinic?.phone || '';
@@ -703,7 +685,7 @@ export default function ClinicProfileScreen() {
         {/* Back button while loading */}
         <View style={styles.backBar}>
           <TouchableOpacity
-            onPress={() => router.back()}
+            onPress={() => router.replace('/clinics' as any)}
             style={styles.backBtn}
           >
             <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
@@ -721,7 +703,7 @@ export default function ClinicProfileScreen() {
     return (
       <GradientBg>
         <View style={styles.backBar}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+          <TouchableOpacity onPress={() => router.replace('/clinics' as any)} style={styles.backBtn}>
             <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
           </TouchableOpacity>
         </View>
@@ -789,7 +771,7 @@ export default function ClinicProfileScreen() {
           <TouchableOpacity
             style={styles.navBtn}
             activeOpacity={0.7}
-            onPress={() => router.back()}
+            onPress={() => router.replace('/clinics' as any)}
           >
             <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
           </TouchableOpacity>
@@ -860,20 +842,22 @@ export default function ClinicProfileScreen() {
         </View>
       </View>
 
-      {/* Status dot positioned under the ⋮ menu */}
-      <View style={styles.dotWrap} pointerEvents="box-none">
-        <Pressable
-          onPress={canToggleDot ? () => setStatusMenuVisible(true) : undefined}
-          style={styles.dotPressable}
-        >
-          <Animated.View
-            style={[
-              styles.statusDot,
-              { backgroundColor: dotColor, transform: [{ scale: dotPulse }], opacity: dotOpacity },
-            ]}
-          />
-        </Pressable>
-      </View>
+      {/* Status dot positioned under the ⋮ menu — owner + subscribed only */}
+      {isOwner && auth.isSubscribed === true && (
+        <View style={styles.dotWrap} pointerEvents="box-none">
+          <Pressable
+            onPress={canToggleDot ? () => setStatusMenuVisible(true) : undefined}
+            style={styles.dotPressable}
+          >
+            <Animated.View
+              style={[
+                styles.statusDot,
+                { backgroundColor: dotColor, transform: [{ scale: dotPulse }], opacity: dotOpacity },
+              ]}
+            />
+          </Pressable>
+        </View>
+      )}
 
       {/* ══════ Owner Inactive Banner ══════ */}
       {ownerInactive && (
@@ -1660,6 +1644,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     minWidth: 40,
+    zIndex: 1,
   },
   navCenter: {
     position: 'absolute',

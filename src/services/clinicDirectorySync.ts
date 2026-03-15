@@ -60,7 +60,8 @@ export async function ensureClinicPublished(
       payload.heroImage = heroSource;
     }
     if (clinicData.clinicPhone) payload.phone = clinicData.clinicPhone;
-    if (clinicData.clinicType)  payload.specialty = clinicData.clinicType;
+    // Always write specialty so category filters work; default to 'general'
+    payload.specialty = clinicData.clinicType || 'general';
     if (clinicData.whatsapp)    payload.whatsapp = clinicData.whatsapp;
     if (clinicData.address)     payload.address = clinicData.address;
 
