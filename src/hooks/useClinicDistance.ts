@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { getDrivingDistance } from '@/src/services/googleMapsService';
 import { getDistanceBetween } from '@/src/utils/geoDistance';
+import { useEffect, useState } from 'react';
 
 type Coord = { lat: number; lng: number };
 

@@ -1,3 +1,4 @@
+import { getStaticMapUrl } from '@/src/utils/googleStaticMap';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -11,7 +12,6 @@ import {
     Text,
     View,
 } from 'react-native';
-import { getStaticMapUrl } from '@/src/utils/googleStaticMap';
 
 // Platform-safe lazy imports — prevents Metro from resolving native-only
 // codegenNativeCommands on web, which crashes the bundler.
