@@ -21,21 +21,21 @@ import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Easing,
-    FlatList,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  FlatList,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -833,7 +833,7 @@ export default function ClinicProfileScreen() {
               <TouchableOpacity
                 style={styles.navBtn}
                 activeOpacity={0.7}
-                onPress={() => setStatusMenuVisible(true)}
+                onPress={() => router.push(`/clinic/clinic-settings?clinicId=${clinicId}`)}
               >
                 <Ionicons name="ellipsis-vertical" size={22} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
               </TouchableOpacity>

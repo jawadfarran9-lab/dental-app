@@ -11,9 +11,11 @@ import { AuthProvider } from '@/src/context/AuthContext';
 import { ClinicProvider } from '@/src/context/ClinicContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
+import { useAppUsageTracker } from '@/src/hooks/useAppUsageTracker';
 
 function RootNavigator() {
   const { colors } = useTheme();
+  useAppUsageTracker();
   
   return (
     <Stack
@@ -49,6 +51,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/confirm-subscription" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/renew-subscribe" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/feedback" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/clinic-settings" options={{ headerShown: false }} />
       <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: true }} />
 
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
