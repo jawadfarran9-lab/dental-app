@@ -1,7 +1,9 @@
+import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicPreferences } from '@/src/hooks/useClinicPreferences';
 import { ClinicPreferences } from '@/src/services/clinicPreferencesService';
 import { Ionicons } from '@expo/vector-icons';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 type ToggleItem = {
@@ -20,19 +22,22 @@ const ITEMS: ToggleItem[] = [
 
 export default function SharingScreen() {
   const { colors, isDark } = useTheme();
+  const headerHeight = useHeaderHeight();
   const { settings, loading, updateSetting } = useClinicPreferences();
 
   if (loading) {
     return (
-      <View style={[styles.container, styles.center, { backgroundColor: colors.background }]}>
+      <View style={[styles.container, styles.center, { backgroundColor: 'transparent' }]}>
+        <PremiumGradientBackground isDark={isDark} showSparkles={true} />
         <ActivityIndicator size="large" color={isDark ? '#64748B' : '#94A3B8'} />
       </View>
     );
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+      <PremiumGradientBackground isDark={isDark} showSparkles={true} />
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: headerHeight }]}>
         <Text style={[styles.sectionHeader, { color: isDark ? '#8A96A6' : '#64748B' }]}>
           Control how your content can be shared
         </Text>

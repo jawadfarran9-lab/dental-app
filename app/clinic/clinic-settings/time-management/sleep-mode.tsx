@@ -1,9 +1,12 @@
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicPreferences } from '@/src/hooks/useClinicPreferences';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useState } from 'react';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
     Platform,
     Pressable,
     ScrollView,
@@ -27,17 +30,52 @@ function dateToTimeString(d: Date): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+function AnimatedChip({ day, label, active, colors, onPress }: { day: string; label: string; active: boolean; colors: any; onPress: () => void }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const onPressIn = () => { Animated.timing(scaleAnim, { toValue: 0.9, duration: 100, useNativeDriver: true }).start(); };
+  const onPressOut = () => { Animated.spring(scaleAnim, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 10 }).start(); };
+
+  return (
+    <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+      <Pressable
+        onPressIn={onPressIn}
+        onPressOut={onPressOut}
+        onPress={onPress}
+        style={[
+          styles.chip,
+          { backgroundColor: active ? colors.brandBlue : colors.chipInactive },
+        ]}
+      >
+        <Text style={[styles.chipText, { color: active ? colors.toggleThumb : '#5A6B7C' }]}>
+          {label}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function SleepModeScreen() {
   const { colors, isDark } = useTheme();
+  const headerHeight = useHeaderHeight();
   const { settings, loading, updateSettings } = useClinicPreferences();
 
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
 
+  const contentFade = useRef(new Animated.Value(0)).current;
+  const contentSlide = useRef(new Animated.Value(10)).current;
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(contentFade, { toValue: 1, duration: 300, useNativeDriver: true }),
+      Animated.timing(contentSlide, { toValue: 0, duration: 300, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={isDark ? '#64748B' : '#94A3B8'} />
+      <View style={[styles.centered, { backgroundColor: 'transparent' }]}>
+        <PremiumGradientBackground isDark={isDark} showSparkles={true} />
+        <ActivityIndicator size="large" color={'#5A6B7C'} />
       </View>
     );
   }
@@ -81,89 +119,82 @@ export default function SleepModeScreen() {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.content}>
+    <View style={[styles.container, { backgroundColor: 'transparent' }]}>
+      <PremiumGradientBackground isDark={isDark} showSparkles={true} />
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: headerHeight }]}>
+        <Animated.View style={{ opacity: contentFade, transform: [{ translateY: contentSlide }] }}>
 
         {/* ── Toggle ── */}
-        <View style={[styles.toggleRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+        <View style={[styles.toggleRow, { borderBottomColor: colors.borderTint }]}>
           <Text style={[styles.toggleLabel, { color: colors.textPrimary }]}>Sleep Mode</Text>
           <Switch
             value={enabled}
             onValueChange={handleToggle}
-            trackColor={{ false: isDark ? '#3A3F47' : '#D1D5DB', true: '#3D9EFF' }}
-            thumbColor="#FFFFFF"
+            trackColor={{ false: colors.toggleTrackOff, true: colors.toggleTrackOn }}
+            thumbColor={colors.toggleThumb}
           />
         </View>
 
         {/* ── Time Range ── */}
-        <Text style={[styles.sectionLabel, { color: isDark ? '#8A96A6' : '#64748B' }]}>
+        <Text style={[styles.sectionLabel, { color: '#5A6B7C' }]}>
           Quiet Hours
         </Text>
 
         <Pressable
-          style={[styles.timeRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}
+          style={[styles.timeRow, { borderBottomColor: colors.borderTint }]}
           onPress={() => setShowStartPicker(true)}
         >
           <Text style={[styles.timeLabel, { color: colors.textPrimary }]}>Start</Text>
-          <Text style={[styles.timeValue, { color: '#3D9EFF' }]}>{startTime}</Text>
+          <Text style={[styles.timeValue, { color: colors.brandBlue }]}>{startTime}</Text>
         </Pressable>
 
         {showStartPicker && (
           <DateTimePicker
             value={timeStringToDate(startTime)}
             mode="time"
-            is24Hour
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={handleStartChange}
           />
         )}
 
         <Pressable
-          style={[styles.timeRow, { borderBottomColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}
+          style={[styles.timeRow, { borderBottomColor: colors.borderTint }]}
           onPress={() => setShowEndPicker(true)}
         >
           <Text style={[styles.timeLabel, { color: colors.textPrimary }]}>End</Text>
-          <Text style={[styles.timeValue, { color: '#3D9EFF' }]}>{endTime}</Text>
+          <Text style={[styles.timeValue, { color: colors.brandBlue }]}>{endTime}</Text>
         </Pressable>
 
         {showEndPicker && (
           <DateTimePicker
             value={timeStringToDate(endTime)}
             mode="time"
-            is24Hour
             display={Platform.OS === 'ios' ? 'spinner' : 'default'}
             onChange={handleEndChange}
           />
         )}
 
         {/* ── Days ── */}
-        <Text style={[styles.sectionLabel, { color: isDark ? '#8A96A6' : '#64748B' }]}>
+        <Text style={[styles.sectionLabel, { color: '#5A6B7C' }]}>
           Active Days
         </Text>
         <View style={styles.chipsRow}>
           {ALL_DAYS.map((day, i) => {
             const active = days.includes(day);
             return (
-              <Pressable
+              <AnimatedChip
                 key={day}
+                day={day}
+                label={CHIP_LABELS[i]}
+                active={active}
+                colors={colors}
                 onPress={() => toggleDay(day)}
-                style={[
-                  styles.chip,
-                  {
-                    backgroundColor: active
-                      ? '#3D9EFF'
-                      : isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)',
-                  },
-                ]}
-              >
-                <Text style={[styles.chipText, { color: active ? '#FFFFFF' : isDark ? '#8A96A6' : '#64748B' }]}>
-                  {CHIP_LABELS[i]}
-                </Text>
-              </Pressable>
+              />
             );
           })}
         </View>
 
+        </Animated.View>
       </ScrollView>
     </View>
   );
@@ -172,25 +203,25 @@ export default function SleepModeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingVertical: 12 },
+  content: { paddingVertical: 8 },
 
   toggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  toggleLabel: { fontSize: 16, fontWeight: '500' },
+  toggleLabel: { fontSize: 16, fontWeight: '600' },
 
   sectionLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
     paddingHorizontal: 20,
-    paddingTop: 20,
+    paddingTop: 24,
     paddingBottom: 10,
   },
 
@@ -199,24 +230,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingVertical: 15,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  timeLabel: { fontSize: 16, fontWeight: '400' },
-  timeValue: { fontSize: 16, fontWeight: '600' },
+  timeLabel: { fontSize: 16, fontWeight: '500' },
+  timeValue: { fontSize: 16, fontWeight: '700' },
 
   chipsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 4,
+    paddingTop: 6,
   },
   chip: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chipText: { fontSize: 14, fontWeight: '600' },
+  chipText: { fontSize: 14, fontWeight: '700' },
 });

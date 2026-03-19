@@ -1,7 +1,7 @@
 import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { I18nManager, Platform } from 'react-native';
 
@@ -28,6 +28,7 @@ function RootNavigator() {
           color: colors.textPrimary,
         },
         headerBackTitle: '',
+        contentStyle: { backgroundColor: 'transparent' },
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -67,6 +68,18 @@ function RootNavigator() {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
+  const navTheme = useMemo(() => {
+    const base = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        background: 'transparent',
+        card: 'transparent',
+      },
+    };
+  }, [colorScheme]);
+
   useEffect(() => {
     // Force layout direction based on current language
     const currentLang = i18n.language;
@@ -84,9 +97,9 @@ export default function RootLayout() {
         <AuthProvider>
           <ClinicProvider>
             <StorySettingsProvider>
-              <NavThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+              <NavThemeProvider value={navTheme}>
                 <RootNavigator />
-                <StatusBar style="auto" />
+                <StatusBar style="dark" translucent backgroundColor="transparent" />
               </NavThemeProvider>
             </StorySettingsProvider>
           </ClinicProvider>

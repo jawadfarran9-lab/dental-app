@@ -1,31 +1,30 @@
 import { DevicePermissionsProvider } from '@/src/context/DevicePermissionsContext';
-import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { Platform, Pressable } from 'react-native';
 
 export default function DevicePermissionsLayout() {
-  const { colors } = useTheme();
   const router = useRouter();
 
   return (
     <DevicePermissionsProvider>
     <Stack
       screenOptions={{
+        headerTransparent: true,
         headerStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: 'transparent',
         },
-        headerTintColor: colors.textPrimary,
+        headerTintColor: '#1A2B3F',
         headerTitleStyle: {
-          color: colors.textPrimary,
+          color: '#1A2B3F',
           fontSize: 17,
           fontWeight: '600',
         },
         headerTitleAlign: 'center',
         headerBackTitle: '',
-        headerBackTitleVisible: false,
-        headerShadowVisible: true,
-        contentStyle: { backgroundColor: colors.background },
+        headerBackButtonDisplayMode: 'minimal',
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: 'transparent' },
         animation: Platform.OS === 'android' ? 'slide_from_right' : 'default',
       }}
     >
@@ -39,7 +38,7 @@ export default function DevicePermissionsLayout() {
               hitSlop={8}
               style={{ marginRight: Platform.OS === 'android' ? 16 : 0 }}
             >
-              <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
+              <Ionicons name="chevron-back" size={28} color={'#1A2B3F'} />
             </Pressable>
           ),
         }}

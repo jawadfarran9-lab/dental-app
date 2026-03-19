@@ -1,10 +1,12 @@
 import { db } from '@/firebaseConfig';
+import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
@@ -21,6 +23,7 @@ import {
 export default function ClinicStatusScreen() {
   const { clinicId } = useLocalSearchParams<{ clinicId: string }>();
   const { colors, isDark } = useTheme();
+  const headerHeight = useHeaderHeight();
   const auth = useAuth();
 
   const isOwner = !!(auth.clinicId && clinicId && auth.clinicId === clinicId);
@@ -83,7 +86,8 @@ export default function ClinicStatusScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+      <View style={[styles.centered, { backgroundColor: 'transparent' }]}>
+        <PremiumGradientBackground isDark={isDark} showSparkles={true} />
         <ActivityIndicator size="large" color={colors.textSecondary} />
       </View>
     );
@@ -91,7 +95,8 @@ export default function ClinicStatusScreen() {
 
   if (!canToggle) {
     return (
-      <View style={[styles.centered, { backgroundColor: colors.background }]}>
+      <View style={[styles.centered, { backgroundColor: 'transparent' }]}>
+        <PremiumGradientBackground isDark={isDark} showSparkles={true} />
         <Text style={{ color: colors.textSecondary, fontSize: 15 }}>
           Only clinic owners with an active subscription can change status.
         </Text>
@@ -106,7 +111,8 @@ export default function ClinicStatusScreen() {
   ];
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.background }]}>
+    <View style={[styles.container, { backgroundColor: 'transparent', paddingTop: headerHeight + 12 }]}>
+      <PremiumGradientBackground isDark={isDark} showSparkles={true} />
       <View style={[
         styles.card,
         { backgroundColor: isDark ? 'rgba(30,42,60,0.97)' : 'rgba(255,255,255,0.96)' },
@@ -138,7 +144,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingTop: 24,
   },
   centered: {
     flex: 1,

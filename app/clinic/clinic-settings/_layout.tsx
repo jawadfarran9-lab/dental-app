@@ -1,29 +1,27 @@
-import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { Platform, Pressable } from 'react-native';
 
 export default function ClinicSettingsLayout() {
-  const { colors } = useTheme();
   const router = useRouter();
 
   return (
     <Stack
       screenOptions={{
+        headerTransparent: true,
         headerStyle: {
-          backgroundColor: colors.background,
+          backgroundColor: 'transparent',
         },
-        headerTintColor: colors.textPrimary,
+        headerTintColor: '#1A2B3F',
         headerTitleStyle: {
-          color: colors.textPrimary,
+          color: '#1A2B3F',
           fontSize: 17,
           fontWeight: '600',
         },
         headerTitleAlign: 'center',
         headerBackTitle: '',
-        headerBackTitleVisible: false,
-        headerShadowVisible: true,
-        contentStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: 'transparent' },
         animation: Platform.OS === 'android' ? 'slide_from_right' : 'default',
       }}
     >
@@ -37,7 +35,7 @@ export default function ClinicSettingsLayout() {
               hitSlop={8}
               style={{ marginRight: Platform.OS === 'android' ? 16 : 0 }}
             >
-              <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
+              <Ionicons name="chevron-back" size={28} color={'#1A2B3F'} />
             </Pressable>
           ),
         }}
@@ -52,16 +50,16 @@ export default function ClinicSettingsLayout() {
               hitSlop={8}
               style={{ marginRight: Platform.OS === 'android' ? 16 : 0 }}
             >
-              <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
+              <Ionicons name="chevron-back" size={28} color={'#1A2B3F'} />
             </Pressable>
           ),
         }}
       />
       <Stack.Screen name="device-permissions" options={{ headerShown: false }} />
-      <Stack.Screen name="archive-download" options={{ title: 'Archiving and Downloading' }} />
-      <Stack.Screen name="like-share-counts" options={{ title: 'Like and Share Counts' }} />
-      <Stack.Screen name="hide-story-live" options={{ title: 'Hide Story and Live' }} />
-      <Stack.Screen name="sharing" options={{ title: 'Sharing' }} />
+      <Stack.Screen name="archive-download" options={{ title: 'Archiving and Downloading', headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="like-share-counts" options={{ title: 'Like and Share Counts', headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="hide-story-live" options={{ title: 'Hide Story and Live', headerBackButtonDisplayMode: 'minimal' }} />
+      <Stack.Screen name="sharing" options={{ title: 'Sharing', headerBackButtonDisplayMode: 'minimal' }} />
       <Stack.Screen name="time-management" options={{ headerShown: false }} />
     </Stack>
   );

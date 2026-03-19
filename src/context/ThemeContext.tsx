@@ -1,4 +1,5 @@
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { BRAND } from '@/src/theme/brand';
 import { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 
 export type ThemeMode = 'light' | 'dark';
@@ -32,6 +33,32 @@ export interface ThemeColors {
   accentGreen: string;
   accentBrown: string;
   premiumSheet: string;
+  // Settings module tokens
+  textMuted: string;
+  textSubtle: string;
+  textHeading: string;
+  textHint: string;
+  iconMuted: string;
+  brandBlue: string;
+  cardBg: string;
+  modalBg: string;
+  tooltipBg: string;
+  tooltipText: string;
+  modalText: string;
+  cancelText: string;
+  borderTint: string;
+  rowHighlight: string;
+  rowHighlightActive: string;
+  brandBlueTint: string;
+  chipInactive: string;
+  toggleTrackOn: string;
+  toggleTrackOff: string;
+  toggleThumb: string;
+  statusGreen: string;
+  statusAmber: string;
+  statusRed: string;
+  shadow: string;
+  overlay: string;
 }
 
 export interface ThemeContextType {
@@ -47,14 +74,14 @@ const LIGHT_COLORS: ThemeColors = {
   background: '#FFFFFF',
   textPrimary: '#111111',
   textSecondary: '#1F2937',
-  accentBlue: '#1E66FF',
+  accentBlue: BRAND.blue,
   card: '#FFFFFF',
   cardBorder: '#E5E7EB',
   inputBackground: '#F9FAFB',
   inputBorder: '#E5E7EB',
   inputPlaceholder: '#9CA3AF',
-  promo: '#1E66FF',
-  buttonBackground: '#1E66FF',
+  promo: '#3D9EFF',
+  buttonBackground: '#3D9EFF',
   buttonText: '#FFFFFF',
   buttonSecondaryBackground: '#E5E7EB',
   buttonSecondaryText: '#111827',
@@ -62,7 +89,7 @@ const LIGHT_COLORS: ThemeColors = {
   bannerOverlay: 'rgba(212, 175, 55, 0.08)',
   scrim: 'rgba(0, 0, 0, 0.45)',
   // Additional AI Pro colors
-  primary: '#1E66FF',
+  primary: BRAND.blue,
   success: '#10B981',
   text: '#111111',
   gray: '#6B7280',
@@ -72,6 +99,32 @@ const LIGHT_COLORS: ThemeColors = {
   accentGreen: '#10B981',
   accentBrown: '#92400E',
   premiumSheet: '#F6F9FF',
+  // Settings module tokens
+  textMuted: '#64748B',
+  textSubtle: '#94A3B8',
+  textHeading: '#1A2B3F',
+  textHint: '#94A3B8',
+  iconMuted: '#546E7A',
+  brandBlue: BRAND.blue,
+  cardBg: '#FFFFFF',
+  modalBg: '#FFFFFF',
+  tooltipBg: 'rgba(255,255,255,0.95)',
+  tooltipText: '#1E293B',
+  modalText: '#374151',
+  cancelText: '#6B7280',
+  borderTint: 'rgba(0,0,0,0.08)',
+  rowHighlight: 'rgba(0,0,0,0.04)',
+  rowHighlightActive: 'rgba(61,158,255,0.06)',
+  brandBlueTint: 'rgba(61,158,255,0.25)',
+  chipInactive: 'rgba(0,0,0,0.05)',
+  toggleTrackOn: '#3D9EFF',
+  toggleTrackOff: '#D1D5DB',
+  toggleThumb: '#FFFFFF',
+  statusGreen: '#22C55E',
+  statusAmber: '#F59E0B',
+  statusRed: '#EF4444',
+  shadow: '#000000',
+  overlay: 'rgba(0,0,0,0.4)',
 };
 
 const DARK_COLORS: ThemeColors = {
@@ -103,6 +156,32 @@ const DARK_COLORS: ThemeColors = {
   accentGreen: '#10B981',
   accentBrown: '#D97706',
   premiumSheet: '#0F172A',
+  // Settings module tokens
+  textMuted: '#8A96A6',
+  textSubtle: '#64748B',
+  textHeading: '#F0F2F5',
+  textHint: '#8A96A6',
+  iconMuted: '#B0BEC5',
+  brandBlue: BRAND.blue,
+  cardBg: 'rgba(30,42,60,0.6)',
+  modalBg: '#1E2A3C',
+  tooltipBg: 'rgba(30,42,60,0.95)',
+  tooltipText: '#E2E8F0',
+  modalText: '#D1D5DB',
+  cancelText: '#94A3B8',
+  borderTint: 'rgba(255,255,255,0.08)',
+  rowHighlight: 'rgba(255,255,255,0.06)',
+  rowHighlightActive: 'rgba(61,158,255,0.10)',
+  brandBlueTint: 'rgba(61,158,255,0.35)',
+  chipInactive: 'rgba(255,255,255,0.08)',
+  toggleTrackOn: '#3D9EFF',
+  toggleTrackOff: '#3A3F47',
+  toggleThumb: '#FFFFFF',
+  statusGreen: '#22C55E',
+  statusAmber: '#F59E0B',
+  statusRed: '#EF4444',
+  shadow: '#000000',
+  overlay: 'rgba(0,0,0,0.4)',
 };
 
 interface ThemeProviderProps {

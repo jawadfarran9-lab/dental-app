@@ -1,26 +1,25 @@
-import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import { Platform, Pressable } from 'react-native';
 
 export default function TimeManagementLayout() {
-  const { colors } = useTheme();
   const router = useRouter();
 
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.textPrimary,
+        headerTransparent: true,
+        headerStyle: { backgroundColor: 'transparent' },
+        headerTintColor: '#1A2B3F',
         headerTitleStyle: {
-          color: colors.textPrimary,
+          color: '#1A2B3F',
           fontSize: 17,
           fontWeight: '600',
         },
         headerTitleAlign: 'center',
         headerBackTitle: '',
-        headerShadowVisible: true,
-        contentStyle: { backgroundColor: colors.background },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: 'transparent' },
         animation: Platform.OS === 'android' ? 'slide_from_right' : 'default',
       }}
     >
@@ -34,14 +33,13 @@ export default function TimeManagementLayout() {
               hitSlop={8}
               style={{ marginRight: Platform.OS === 'android' ? 16 : 0 }}
             >
-              <Ionicons name="chevron-back" size={28} color={colors.textPrimary} />
+              <Ionicons name="chevron-back" size={28} color={'#1A2B3F'} />
             </Pressable>
           ),
         }}
       />
       <Stack.Screen name="daily-limit" options={{ title: 'Daily Limit' }} />
       <Stack.Screen name="sleep-mode" options={{ title: 'Sleep Mode' }} />
-      <Stack.Screen name="notification-schedule" options={{ title: 'Notification Schedule' }} />
     </Stack>
   );
 }
