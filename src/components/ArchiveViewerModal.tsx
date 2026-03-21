@@ -1,29 +1,29 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  Alert,
-  Animated,
-  Dimensions,
-  Modal,
-  Platform,
-  Share,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
-} from 'react-native';
-import { Image } from 'expo-image';
-import { ResizeMode, Video } from 'expo-av';
-import { Ionicons } from '@expo/vector-icons';
 import { ArchiveItem } from '@/src/services/archiveService';
-import {
-  togglePostLike,
-  toggleSavePost,
-  getPostsLikeData,
-  getSavedStatusBatch,
-} from '@/src/services/engagementService';
 import { ClinicPreferences } from '@/src/services/clinicPreferencesService';
+import {
+    getPostsLikeData,
+    getSavedStatusBatch,
+    togglePostLike,
+    toggleSavePost,
+} from '@/src/services/engagementService';
+import { Ionicons } from '@expo/vector-icons';
+import { ResizeMode, Video } from 'expo-av';
+import { Image } from 'expo-image';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+    Alert,
+    Animated,
+    Dimensions,
+    Modal,
+    Platform,
+    Share,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
+} from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const IMAGE_DURATION = 5000;

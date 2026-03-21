@@ -1,22 +1,22 @@
+import ArchiveViewerModal from '@/src/components/ArchiveViewerModal';
+import { useTheme } from '@/src/context/ThemeContext';
+import { useAuth } from '@/src/hooks/useAuth';
+import { useClinicSettings } from '@/src/hooks/useClinicSettings';
+import { ArchiveItem, fetchArchive } from '@/src/services/archiveService';
+import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Dimensions,
-  FlatList,
-  Platform,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Dimensions,
+    FlatList,
+    Platform,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
-import { Image } from 'expo-image';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/src/hooks/useAuth';
-import { useTheme } from '@/src/context/ThemeContext';
-import { ArchiveItem, fetchArchive } from '@/src/services/archiveService';
-import ArchiveViewerModal from '@/src/components/ArchiveViewerModal';
-import { useClinicSettings } from '@/src/hooks/useClinicSettings';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const NUM_COLUMNS = 3;

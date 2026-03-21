@@ -1,16 +1,16 @@
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDoc,
-  getDocs,
-  increment,
-  serverTimestamp,
-  setDoc,
-  updateDoc,
-} from 'firebase/firestore';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '@/firebaseConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+    collection,
+    deleteDoc,
+    doc,
+    getDoc,
+    getDocs,
+    increment,
+    serverTimestamp,
+    setDoc,
+    updateDoc,
+} from 'firebase/firestore';
 
 // ========== Device ID (reuse existing pattern) ==========
 const DEVICE_ID_KEY = '@device_id';

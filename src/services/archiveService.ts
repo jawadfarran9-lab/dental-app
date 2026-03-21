@@ -1,10 +1,10 @@
-import {
-  collection,
-  getDocs,
-  orderBy,
-  query,
-} from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
+import {
+    collection,
+    getDocs,
+    orderBy,
+    query,
+} from 'firebase/firestore';
 
 export interface ArchiveItem {
   id: string;

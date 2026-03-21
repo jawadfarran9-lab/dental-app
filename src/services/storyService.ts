@@ -8,19 +8,19 @@
  * auto-archiving (Phase 3), and camera roll save (Phase 4).
  */
 import { db } from '@/firebaseConfig';
-import {
-  addDoc,
-  collection,
-  getDocs,
-  orderBy,
-  query,
-  serverTimestamp,
-  Timestamp,
-  where,
-} from 'firebase/firestore';
-import { Paths, File as ExpoFile } from 'expo-file-system';
 import * as FileSystem from 'expo-file-system';
+import { File as ExpoFile, Paths } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
+import {
+    addDoc,
+    collection,
+    getDocs,
+    orderBy,
+    query,
+    serverTimestamp,
+    Timestamp,
+    where,
+} from 'firebase/firestore';
 import { getClinicPreferences } from './clinicPreferencesService';
 
 // ── Types ────────────────────────────────────────────────────────

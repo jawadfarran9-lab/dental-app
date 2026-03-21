@@ -7,6 +7,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useClinicDistance } from '@/src/hooks/useClinicDistance';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
+import { PostType } from '@/src/services/postCreationService';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { ClinicMedia } from '@/src/types/clinicMedia';
 import { DAYS_ORDER, formatDayLabel } from '@/src/types/clinicSchedule';
@@ -21,23 +22,22 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PostType } from '@/src/services/postCreationService';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  FlatList,
-  Linking,
-  Modal,
-  Platform,
-  Pressable,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    FlatList,
+    Linking,
+    Modal,
+    Platform,
+    Pressable,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;

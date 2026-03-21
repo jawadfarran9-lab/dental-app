@@ -8,7 +8,6 @@
  * Rendered at root level, sits above everything.
  */
 import { Ionicons } from '@expo/vector-icons';
-import React from 'react';
 import { BackHandler, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface Props {

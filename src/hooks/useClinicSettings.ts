@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
 import {
-  ClinicPreferences,
-  DEFAULT_PREFERENCES,
-  subscribeToClinicPreferences,
+    ClinicPreferences,
+    DEFAULT_PREFERENCES,
+    subscribeToClinicPreferences,
 } from '@/services/clinicPreferencesService';
+import { useEffect, useState } from 'react';
 
 /**
  * Real-time hook for clinic preferences.

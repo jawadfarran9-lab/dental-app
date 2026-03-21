@@ -3,13 +3,13 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicSettings } from '@/src/hooks/useClinicSettings';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
-import { ClinicMedia } from '@/src/types/clinicMedia';
 import {
-  getPostsLikeData,
-  getSavedStatusBatch,
-  togglePostLike,
-  toggleSavePost
+    getPostsLikeData,
+    getSavedStatusBatch,
+    togglePostLike,
+    toggleSavePost
 } from '@/src/services/engagementService';
+import { ClinicMedia } from '@/src/types/clinicMedia';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
@@ -18,21 +18,21 @@ import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  FlatList,
-  Modal,
-  Platform,
-  RefreshControl,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    FlatList,
+    Modal,
+    Platform,
+    RefreshControl,
+    ScrollView,
+    Share,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Svg, { ClipPath, Defs, G, Path, Stop, LinearGradient as SvgGradient, Image as SvgImage } from 'react-native-svg';

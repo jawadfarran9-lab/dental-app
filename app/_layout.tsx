@@ -7,11 +7,11 @@ import { I18nManager, Platform } from 'react-native';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import i18n from '@/i18n';
+import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { AuthProvider } from '@/src/context/AuthContext';
 import { ClinicProvider } from '@/src/context/ClinicContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
-import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { useAppUsageTracker } from '@/src/hooks/useAppUsageTracker';
 
 function RootNavigator() {
