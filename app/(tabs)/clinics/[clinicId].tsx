@@ -1,6 +1,7 @@
 import { db, storage } from '@/firebaseConfig';
 import ClinicProfileMapCard from '@/src/components/ClinicProfileMapCard';
 import ClinicTypeBadge from '@/src/components/ClinicTypeBadge';
+import CreatePostModal from '@/src/components/CreatePostModal';
 import StarAvatar from '@/src/components/StarAvatar';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
@@ -20,6 +21,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { PostType } from '@/src/services/postCreationService';
 import {
   ActivityIndicator,
   Alert,
@@ -150,6 +152,10 @@ export default function ClinicProfileScreen() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [localProfileImage, setLocalProfileImage] = useState<string | null>(null);
 
+  // ─── Create Post/Reel Modal ───
+  const [createPostVisible, setCreatePostVisible] = useState(false);
+  const [createPostType, setCreatePostType] = useState<PostType>('post');
+
   const handleUploadProfileImage = useCallback(async () => {
     if (!clinicId) return;
     closeCreateSheet();
@@ -215,6 +221,22 @@ export default function ClinicProfileScreen() {
   const handleCreateOption = useCallback((label: string) => {
     if (label === 'Upload Profile Image') {
       handleUploadProfileImage();
+      return;
+    }
+    if (label === 'Create Post') {
+      closeCreateSheet();
+      setTimeout(() => {
+        setCreatePostType('post');
+        setCreatePostVisible(true);
+      }, 350);
+      return;
+    }
+    if (label === 'Create Reel') {
+      closeCreateSheet();
+      setTimeout(() => {
+        setCreatePostType('reel');
+        setCreatePostVisible(true);
+      }, 350);
       return;
     }
     closeCreateSheet();
@@ -1319,6 +1341,18 @@ export default function ClinicProfileScreen() {
             </View>
           </Pressable>
         </Modal>
+      )}
+
+      {/* ══════ Create Post/Reel Modal ══════ */}
+      {clinicId && (
+        <CreatePostModal
+          visible={createPostVisible}
+          onClose={() => setCreatePostVisible(false)}
+          clinicId={clinicId}
+          clinicName={clinic?.clinicName}
+          initialType={createPostType}
+          isDark={isDark}
+        />
       )}
     </GradientBg>
   );

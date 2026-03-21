@@ -1,12 +1,15 @@
 import { generatePostDeepLink } from '@/app/utils/deepLinking';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useClinicSettings } from '@/src/hooks/useClinicSettings';
+import { fetchClinicMedia } from '@/src/services/clinicMediaService';
+import { ClinicMedia } from '@/src/types/clinicMedia';
 import {
   getPostsLikeData,
   getSavedStatusBatch,
   togglePostLike,
   toggleSavePost
-} from '@/src/services/postService';
+} from '@/src/services/engagementService';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image as ExpoImage } from 'expo-image';
@@ -77,85 +80,38 @@ interface ClinicShop {
   products: Product[];
 }
 
-// ========== Mock Data (English Only) ==========
-const MOCK_STORIES: Story[] = [
-  { id: 'add', name: 'Story', icon: '👤', isAddStory: true, imageUri: 'https://randomuser.me/api/portraits/men/32.jpg' },
-  { id: '1', name: 'Smile Dental', icon: '🦷' },
-  { id: '2', name: 'Happy Teeth', icon: '😁' },
-  { id: '3', name: 'Care Dental', icon: '💙' },
-  { id: '4', name: 'Wellness Den', icon: '✨' },
-  { id: '5', name: 'Bright Smile', icon: '🌟' },
-  { id: '6', name: 'Dental Plus', icon: '🏥' },
-];
+// ========== Helpers ==========
 
-const MOCK_POSTS: Post[] = [
-  { 
-    id: '1', 
-    type: 'video', 
-    title: 'Dental Cleaning Tips', 
-    caption: 'Learn the best techniques for dental hygiene',
-    author: 'Smile Dental', 
+function formatTimeAgo(createdAt: number): string {
+  const diff = Date.now() - createdAt;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w ago`;
+}
+
+function clinicMediaToPost(media: ClinicMedia): Post {
+  return {
+    id: media.id,
+    type: media.type === 'reel' ? 'video' : 'image',
+    title: media.caption?.slice(0, 50) || 'Post',
+    caption: media.caption ?? '',
+    author: media.clinicName ?? 'Clinic',
     authorIcon: '🏥',
-    likes: 890, 
-    comments: 56,
-    timeAgo: '2 hours ago'
-  },
-  { 
-    id: '2', 
-    type: 'image', 
-    title: 'New Equipment', 
-    caption: 'Latest dental technology arriving this week',
-    author: 'Happy Teeth', 
-    authorIcon: '😁',
-    likes: 567, 
-    comments: 34,
-    timeAgo: '3 hours ago'
-  },
-  { 
-    id: '3', 
-    type: 'video', 
-    title: 'Patient Testimonial', 
-    caption: 'See what our patients say about us',
-    author: 'Bright Smile', 
-    authorIcon: '✨',
-    likes: 1234, 
-    comments: 89,
-    timeAgo: '5 hours ago'
-  },
-  { 
-    id: '4', 
-    type: 'image', 
-    title: 'Whitening Results', 
-    caption: 'Amazing teeth whitening transformation',
-    author: 'Care Dental', 
-    authorIcon: '💙',
-    likes: 2100, 
-    comments: 156,
-    timeAgo: '1 day ago'
-  },
-  { 
-    id: '5', 
-    type: 'video', 
-    title: 'Orthodontics Guide', 
-    caption: 'Everything you need to know about braces',
-    author: 'Wellness Den', 
-    authorIcon: '🌟',
-    likes: 756, 
-    comments: 42,
-    timeAgo: '2 days ago'
-  },
-  { 
-    id: '6', 
-    type: 'image', 
-    title: 'Kids Dental Care', 
-    caption: 'How to make dental visits fun for children',
-    author: 'Dental Plus', 
-    authorIcon: '🏥',
-    likes: 432, 
-    comments: 28,
-    timeAgo: '3 days ago'
-  },
-];
+    authorImage: media.thumbnailUrl,
+    mediaUri: media.mediaUrl,
+    likes: 0,
+    comments: 0,
+    timeAgo: formatTimeAgo(media.createdAt),
+  };
+}
+
+const ADD_STORY: Story = { id: 'add', name: 'Story', icon: '👤', isAddStory: true, imageUri: 'https://randomuser.me/api/portraits/men/32.jpg' };
 
 const MOCK_SHOPS: ClinicShop[] = [
   {
@@ -745,6 +701,9 @@ export default function HomeScreen() {
 
   // ========== Pro Feature Access Check ==========
   const isProUser = isSubscribed === true && clinicId !== null;
+
+  // ========== Clinic Preferences (visibility settings — real-time) ==========
+  const { prefs } = useClinicSettings(clinicId);
   
   const showProOnlyAlert = useCallback((featureName?: string) => {
     Alert.alert(
@@ -789,7 +748,7 @@ export default function HomeScreen() {
 
   // ========== Pull-to-Refresh State ==========
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [posts, setPosts] = useState<Post[]>(MOCK_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
 
   // QR Code color themes (like Instagram)
   const qrColors = [
@@ -816,38 +775,51 @@ export default function HomeScreen() {
   const saveAnimations = useRef<Record<string, Animated.Value>>({});
 
   // Memoized data
-  const stories = useMemo(() => MOCK_STORIES, []);
+  const stories = useMemo(() => [ADD_STORY], []);
   // posts is now stateful for pull-to-refresh
   const shops = useMemo(() => MOCK_SHOPS, []);
 
+  // ========== Load Posts from Firestore ==========
+  useEffect(() => {
+    if (!clinicId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const media = await fetchClinicMedia(clinicId);
+        if (!cancelled) setPosts(media.map(clinicMediaToPost));
+      } catch (error) {
+        console.error('Error loading feed:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [clinicId]);
+
   // ========== Pull-to-Refresh Handler ==========
   const handleRefresh = useCallback(async () => {
+    if (!clinicId) return;
     setIsRefreshing(true);
     try {
-      // Simulate API call delay - replace with actual fetch when API is ready
-      await new Promise(resolve => setTimeout(resolve, 1200));
-      
-      // Reload posts - currently using mock data
-      // TODO: Replace with actual API call: const newPosts = await fetchPosts();
-      setPosts([...MOCK_POSTS]);
-      
+      const media = await fetchClinicMedia(clinicId);
+      const newPosts = media.map(clinicMediaToPost);
+      setPosts(newPosts);
+
       // Reload interaction data (likes, saves)
-      const postIds = MOCK_POSTS.map(p => p.id);
+      const postIds = newPosts.map(p => p.id);
       const fallbackCounts: Record<string, number> = {};
-      MOCK_POSTS.forEach(p => { fallbackCounts[p.id] = p.likes; });
-      
-      const likeData = await getPostsLikeData(postIds, fallbackCounts);
+      newPosts.forEach(p => { fallbackCounts[p.id] = p.likes; });
+
+      const likeData = await getPostsLikeData(clinicId, postIds, fallbackCounts);
       const likedSet = new Set<string>();
       const counts: Record<string, number> = {};
-      
+
       Object.entries(likeData).forEach(([postId, data]) => {
         if (data.isLiked) likedSet.add(postId);
         counts[postId] = data.likeCount;
       });
-      
+
       setLikedPosts(likedSet);
       setLikeCounts(counts);
-      
+
       const savedData = await getSavedStatusBatch(postIds);
       const savedSet = new Set<string>();
       Object.entries(savedData).forEach(([postId, isSaved]) => {
@@ -859,7 +831,7 @@ export default function HomeScreen() {
     } finally {
       setIsRefreshing(false);
     }
-  }, []);
+  }, [clinicId]);
 
   // ========== Load Initial Like & Save Data from Firebase/Storage ==========
   useEffect(() => {
@@ -870,7 +842,7 @@ export default function HomeScreen() {
         posts.forEach(p => { fallbackCounts[p.id] = p.likes; });
         
         // Load like data from Firebase
-        const likeData = await getPostsLikeData(postIds, fallbackCounts);
+        const likeData = await getPostsLikeData(clinicId!, postIds, fallbackCounts);
         const likedSet = new Set<string>();
         const counts: Record<string, number> = {};
         
@@ -892,7 +864,7 @@ export default function HomeScreen() {
         
       } catch (error) {
         console.error('Error loading post interaction data:', error);
-        // Use mock data as fallback
+        // Fall back to post-level like counts
         const counts: Record<string, number> = {};
         posts.forEach(p => { counts[p.id] = p.likes; });
         setLikeCounts(counts);
@@ -911,10 +883,11 @@ export default function HomeScreen() {
       }
       router.push('/(tabs)/create' as any);
     } else {
-      setSelectedStory(story);
-      setStoryViewerVisible(true);
+      // Navigate to full-screen story viewer
+      const storyIndex = stories.findIndex(s => s.id === story.id);
+      router.push({ pathname: '/story-viewer', params: { startIndex: String(Math.max(storyIndex - 1, 0)) } } as any);
     }
-  }, [router, isProUser, showProOnlyAlert]);
+  }, [router, isProUser, showProOnlyAlert, stories]);
 
   // ========== LIKE Handler - Firebase Firestore ==========
   const toggleLike = useCallback(async (postId: string, initialLikes: number) => {
@@ -954,7 +927,7 @@ export default function HomeScreen() {
     
     try {
       // Sync with Firebase
-      const result = await togglePostLike(postId, initialLikes);
+      const result = await togglePostLike(clinicId!, postId, initialLikes);
       // Update with actual server values
       setLikedPosts(prev => {
         const newSet = new Set(prev);
@@ -993,6 +966,12 @@ export default function HomeScreen() {
     if (!selectedPostForShare) {
       return;
     }
+
+    if (!prefs.shareToOtherApps) {
+      setShareModalVisible(false);
+      Alert.alert('Sharing Disabled', 'The clinic has disabled external sharing.');
+      return;
+    }
     
     const postId = selectedPostForShare.id;
     const title = selectedPostForShare.title;
@@ -1014,10 +993,15 @@ export default function HomeScreen() {
       console.error('❌ Share error:', error);
       Alert.alert('Share Error', error?.message || String(error));
     }
-  }, [selectedPostForShare]);
+  }, [selectedPostForShare, prefs]);
 
   // ========== Add to Story Handler (PRO FEATURE) ==========
   const handleAddToStory = useCallback(() => {
+    if (!prefs.allowStorySharing) {
+      setShareModalVisible(false);
+      Alert.alert('Sharing Disabled', 'The clinic has disabled story sharing.');
+      return;
+    }
     // PRO FEATURE: Add to Story
     if (!isProUser) {
       setShareModalVisible(false);
@@ -1028,7 +1012,7 @@ export default function HomeScreen() {
     setStoryCaption('');
     setSelectedStoryAudience('everyone');
     setTimeout(() => setStoryCreatorVisible(true), 300);
-  }, [isProUser, showProOnlyAlert]);
+  }, [isProUser, showProOnlyAlert, prefs]);
 
   // ========== Publish Story Handler ==========
   const handlePublishStory = useCallback(() => {
@@ -1059,13 +1043,19 @@ export default function HomeScreen() {
   // ========== Copy Link Handler ==========
   const handleCopyLink = useCallback(async () => {
     if (!selectedPostForShare) return;
+
+    if (!prefs.shareableLink) {
+      setShareModalVisible(false);
+      Alert.alert('Sharing Disabled', 'The clinic has disabled shareable links.');
+      return;
+    }
     
     const postUrl = `https://besmile.ai/post/${selectedPostForShare.id}`;
     await Clipboard.setStringAsync(postUrl);
     
     setShareModalVisible(false);
     Alert.alert('Post link copied!', postUrl);
-  }, [selectedPostForShare]);
+  }, [selectedPostForShare, prefs]);
 
   // ========== SAVE Handler - AsyncStorage (PRO FEATURE) ==========
   const toggleSave = useCallback(async (postId: string) => {
@@ -1327,6 +1317,9 @@ export default function HomeScreen() {
     onShare: () => void;
     onMenu: () => void;
     isProUser: boolean;
+    hideLikeCounts?: boolean;
+    hideShareCounts?: boolean;
+    hideViewCounts?: boolean;
   }
 
   // ========== Post Component - Instagram-like (Optimized) ==========
@@ -1346,6 +1339,7 @@ export default function HomeScreen() {
     onShare,
     onMenu,
     isProUser: postIsProUser,
+    hideLikeCounts: postHideLikeCounts,
   }: PostItemProps) => {
     return (
       <View style={[styles.postCard, { 
@@ -1361,7 +1355,7 @@ export default function HomeScreen() {
         {/* Post Media - Full width, stretched to top with overlaid header */}
         <View style={[styles.postMedia, { backgroundColor: postIsDark ? '#1E293B' : '#E8F4FD' }]}>
           <ExpoImage 
-            source={{ uri: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=800' }}
+            source={{ uri: post.mediaUri || post.authorImage || 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=800' }}
             style={styles.mediaImage}
             contentFit="cover"
             transition={0}
@@ -1483,11 +1477,13 @@ export default function HomeScreen() {
         </View>
 
         {/* Like count - positioned below actions */}
-        <View style={styles.likeCount}>
-          <Text style={[styles.likeCountText, { color: textColor }]}>
-            {likeCount.toLocaleString()} likes
-          </Text>
-        </View>
+        {!postHideLikeCounts && (
+          <View style={styles.likeCount}>
+            <Text style={[styles.likeCountText, { color: textColor }]}>
+              {likeCount.toLocaleString()} likes
+            </Text>
+          </View>
+        )}
       </View>
     );
   }, (prevProps, nextProps) => {
@@ -1500,7 +1496,10 @@ export default function HomeScreen() {
       prevProps.isLoadingLike === nextProps.isLoadingLike &&
       prevProps.isLoadingSave === nextProps.isLoadingSave &&
       prevProps.isDark === nextProps.isDark &&
-      prevProps.isProUser === nextProps.isProUser
+      prevProps.isProUser === nextProps.isProUser &&
+      prevProps.hideLikeCounts === nextProps.hideLikeCounts &&
+      prevProps.hideShareCounts === nextProps.hideShareCounts &&
+      prevProps.hideViewCounts === nextProps.hideViewCounts
     );
   });
 
@@ -1654,6 +1653,9 @@ export default function HomeScreen() {
           onShare={() => handleShare(post)}
           onMenu={() => openPostMenu(post)}
           isProUser={isProUser}
+          hideLikeCounts={prefs.hideLikeCounts}
+          hideShareCounts={prefs.hideShareCounts}
+          hideViewCounts={prefs.hideViewCounts}
         />
       );
     }
@@ -1666,7 +1668,7 @@ export default function HomeScreen() {
         accentBlue={colors.accentBlue}
       />
     );
-  }, [likedPosts, savedPosts, likeCounts, loadingLike, loadingSave, isDark, colors, toggleLike, toggleSave, handleShare, openPostMenu, isProUser]);
+  }, [likedPosts, savedPosts, likeCounts, loadingLike, loadingSave, isDark, colors, toggleLike, toggleSave, handleShare, openPostMenu, isProUser, prefs]);
 
   // Key extractor for feed items
   const feedKeyExtractor = useCallback((item: FeedItem) => {

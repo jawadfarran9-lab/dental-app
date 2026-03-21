@@ -11,13 +11,15 @@ import { AuthProvider } from '@/src/context/AuthContext';
 import { ClinicProvider } from '@/src/context/ClinicContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
+import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { useAppUsageTracker } from '@/src/hooks/useAppUsageTracker';
 
 function RootNavigator() {
   const { colors } = useTheme();
-  useAppUsageTracker();
+  const { isBlocked, blockReason } = useAppUsageTracker();
   
   return (
+    <>
     <Stack
       screenOptions={{
         headerStyle: {
@@ -46,6 +48,8 @@ function RootNavigator() {
       <Stack.Screen name="clinic/[patientId]" options={{ title: 'Patient Details', headerShown: true }} />
       <Stack.Screen name="clinic/media" options={{ title: 'Patient Media', headerShown: false }} />
       <Stack.Screen name="clinic/upgrade" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/archive" options={{ headerShown: false }} />
+      <Stack.Screen name="story-viewer" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="patient/index" options={{ title: 'Patient Login', headerShown: false }} />
       <Stack.Screen name="patient/files" options={{ title: 'My Files', headerShown: true }} />
       <Stack.Screen name="patient/profile" options={{ title: 'Clinic Profile', headerShown: true }} />
@@ -62,6 +66,8 @@ function RootNavigator() {
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="public/clinics" options={{ headerShown: false }} />
     </Stack>
+    {isBlocked && <UsageBlockOverlay reason={blockReason!} />}
+  </>
   );
 }
 

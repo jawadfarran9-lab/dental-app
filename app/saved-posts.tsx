@@ -1,6 +1,9 @@
 // SavedPostsScreen.tsx - Polished saved posts page with beautiful design
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { getSavedPostIds, toggleSavePost } from '@/src/services/postService';
+import { fetchClinicMediaById } from '@/src/services/clinicMediaService';
+import { getSavedPostIds, toggleSavePost } from '@/src/services/engagementService';
+import { ClinicMedia } from '@/src/types/clinicMedia';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
@@ -23,87 +26,32 @@ import Svg, { ClipPath, Defs, G, Path, Stop, LinearGradient as SvgGradient, Imag
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-// Mock posts data (same as home.tsx - in production, this would come from a shared store or API)
-const ALL_POSTS = [
-  { 
-    id: '1', 
-    type: 'video' as const, 
-    title: 'Dental Cleaning Tips', 
-    caption: 'Learn the best techniques for dental hygiene',
-    author: 'Smile Dental', 
+function getTimeAgo(timestamp: number): string {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return 'Just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return `${Math.floor(days / 7)}w ago`;
+}
+
+function mapMediaToPost(media: ClinicMedia): Post {
+  return {
+    id: media.id,
+    type: media.type === 'reel' ? 'video' : 'image',
+    title: media.clinicName || '',
+    caption: media.caption || '',
+    author: media.clinicName || 'Clinic',
     authorIcon: '🏥',
-    authorImage: 'https://randomuser.me/api/portraits/men/32.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=800',
-    likes: 890, 
-    comments: 56,
-    timeAgo: '2 hours ago'
-  },
-  { 
-    id: '2', 
-    type: 'image' as const, 
-    title: 'New Equipment', 
-    caption: 'Latest dental technology arriving this week',
-    author: 'Happy Teeth', 
-    authorIcon: '😁',
-    authorImage: 'https://randomuser.me/api/portraits/women/44.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=800',
-    likes: 567, 
-    comments: 34,
-    timeAgo: '3 hours ago'
-  },
-  { 
-    id: '3', 
-    type: 'video' as const, 
-    title: 'Patient Testimonial', 
-    caption: 'See what our patients say about us',
-    author: 'Bright Smile', 
-    authorIcon: '✨',
-    authorImage: 'https://randomuser.me/api/portraits/men/52.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
-    likes: 1234, 
-    comments: 89,
-    timeAgo: '5 hours ago'
-  },
-  { 
-    id: '4', 
-    type: 'image' as const, 
-    title: 'Whitening Results', 
-    caption: 'Amazing teeth whitening transformation',
-    author: 'Care Dental', 
-    authorIcon: '💙',
-    authorImage: 'https://randomuser.me/api/portraits/women/67.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1588776814546-1ffcf47267a5?w=800',
-    likes: 2100, 
-    comments: 156,
-    timeAgo: '1 day ago'
-  },
-  { 
-    id: '5', 
-    type: 'video' as const, 
-    title: 'Orthodontics Guide', 
-    caption: 'Everything you need to know about braces',
-    author: 'Wellness Den', 
-    authorIcon: '🌟',
-    authorImage: 'https://randomuser.me/api/portraits/men/75.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1606811841689-23dfddce3e95?w=800',
-    likes: 756, 
-    comments: 42,
-    timeAgo: '2 days ago'
-  },
-  { 
-    id: '6', 
-    type: 'image' as const, 
-    title: 'Kids Dental Care', 
-    caption: 'How to make dental visits fun for children',
-    author: 'Dental Plus', 
-    authorIcon: '🏥',
-    authorImage: 'https://randomuser.me/api/portraits/women/89.jpg',
-    mediaUri: 'https://images.unsplash.com/photo-1629909613654-28e377c37b09?w=800',
-    likes: 432, 
-    comments: 28,
-    timeAgo: '3 days ago'
-  },
-];
+    mediaUri: media.mediaUrl || media.thumbnailUrl,
+    likes: (media as any).likeCount || 0,
+    comments: 0,
+    timeAgo: getTimeAgo(media.createdAt),
+  };
+}
 
 interface Post {
   id: string;
@@ -433,20 +381,27 @@ const AnimatedPostCard: React.FC<{
 
 export default function SavedPostsScreen() {
   const { colors, isDark } = useTheme();
+  const { clinicId } = useAuth();
   const router = useRouter();
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load saved posts on mount
   useEffect(() => {
     loadSavedPosts();
-  }, []);
+  }, [clinicId]);
 
   const loadSavedPosts = async () => {
+    if (!clinicId) { setSavedPosts([]); setLoading(false); return; }
     setLoading(true);
     try {
       const savedIds = await getSavedPostIds();
-      const posts = ALL_POSTS.filter(post => savedIds.includes(post.id));
+      if (savedIds.length === 0) { setSavedPosts([]); return; }
+      const results = await Promise.all(
+        savedIds.map((id) => fetchClinicMediaById(clinicId, id)),
+      );
+      const posts = results
+        .filter((m): m is ClinicMedia => m !== null)
+        .map(mapMediaToPost);
       setSavedPosts(posts);
     } catch (error) {
       console.error('Error loading saved posts:', error);

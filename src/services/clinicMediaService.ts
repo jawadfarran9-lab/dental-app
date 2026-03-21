@@ -19,6 +19,12 @@ import {
 const mediaCol = (clinicId: string) =>
   collection(db, `clinics/${clinicId}/media`);
 
+function normalizeTimestamp(val: unknown): number {
+  if (typeof val === 'number') return val;
+  if (val && typeof (val as any).toMillis === 'function') return (val as any).toMillis();
+  return 0;
+}
+
 /**
  * Fetch all media for a clinic, sorted newest-first.
  */
@@ -26,7 +32,10 @@ export async function fetchClinicMedia(clinicId: string): Promise<ClinicMedia[]>
   try {
     const q = query(mediaCol(clinicId), orderBy('createdAt', 'desc'));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as ClinicMedia));
+    return snap.docs.map((d) => {
+      const raw = d.data();
+      return { ...raw, id: d.id, createdAt: normalizeTimestamp(raw.createdAt) } as ClinicMedia;
+    });
   } catch (error) {
     console.error('[CLINIC_MEDIA] Error fetching media:', error);
     return [];
@@ -44,7 +53,8 @@ export async function fetchClinicMediaById(
     const ref = doc(db, `clinics/${clinicId}/media`, mediaId);
     const snap = await getDoc(ref);
     if (!snap.exists()) return null;
-    return { id: snap.id, ...snap.data() } as ClinicMedia;
+    const raw = snap.data();
+    return { ...raw, id: snap.id, createdAt: normalizeTimestamp(raw.createdAt) } as ClinicMedia;
   } catch (error) {
     console.error('[CLINIC_MEDIA] Error fetching media by id:', error);
     return null;
