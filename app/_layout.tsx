@@ -49,6 +49,18 @@ function RootNavigator() {
       <Stack.Screen name="clinic/media" options={{ title: 'Patient Media', headerShown: false }} />
       <Stack.Screen name="clinic/upgrade" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/archive" options={{ headerShown: false }} />
+      <Stack.Screen
+        name="clinic/archive-settings"
+        options={{
+          title: 'Archive Settings',
+          headerShown: true,
+          headerBackButtonDisplayMode: 'minimal',
+          headerTitleAlign: 'center',
+          headerShadowVisible: false,
+          headerTransparent: true,
+          headerStyle: { backgroundColor: 'transparent' },
+        }}
+      />
       <Stack.Screen name="story-viewer" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="patient/index" options={{ title: 'Patient Login', headerShown: false }} />
       <Stack.Screen name="patient/files" options={{ title: 'My Files', headerShown: true }} />

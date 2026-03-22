@@ -29,6 +29,8 @@ interface PremiumGradientBackgroundProps {
   showSparkles?: boolean;
   /** Custom style for the container */
   style?: any;
+  /** Optional global screen animation driver for reactive opacity */
+  screenAnim?: Animated.Value;
 }
 
 // ========== Sparkle Particle Component ==========
@@ -253,9 +255,17 @@ export const PremiumGradientBackground: React.FC<PremiumGradientBackgroundProps>
   isDark,
   showSparkles = true,
   style,
+  screenAnim,
 }) => {
+  const bgOpacity = useMemo(
+    () => screenAnim
+      ? screenAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] })
+      : undefined,
+    [screenAnim],
+  );
+
   return (
-    <View style={[StyleSheet.absoluteFillObject, style]} pointerEvents="none">
+    <Animated.View style={[StyleSheet.absoluteFillObject, style, bgOpacity != null && { opacity: bgOpacity }]} pointerEvents="none">
       {/* ========== LAYER 1: Base Gradient Background ========== */}
       {/* Multi-stop linear gradient: top-left to bottom-right */}
       {/* Light: #E0F2FE (0%) -> #E4F3FC (20%) -> #EDF8FF (40%) -> #F5FBFF (60%) -> #E4F5FC (80%) -> #E0F2FE (100%) */}
@@ -343,7 +353,7 @@ export const PremiumGradientBackground: React.FC<PremiumGradientBackgroundProps>
 
       {/* ========== LAYER 3: Sparkle Particles (Light Mode Only) ========== */}
       {!isDark && showSparkles && <SparkleParticles />}
-    </View>
+    </Animated.View>
   );
 };
 
