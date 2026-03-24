@@ -1,3 +1,4 @@
+import ViewerStickerCanvas from '@/src/components/stickers/ViewerStickerCanvas';
 import { useAuth } from '@/src/hooks/useAuth';
 import { ClinicStory, getActiveStories } from '@/src/services/storyService';
 import { Ionicons } from '@expo/vector-icons';
@@ -217,6 +218,9 @@ export default function StoryViewerScreen() {
           )}
         </View>
       </TouchableWithoutFeedback>
+
+      {/* Sticker overlays (read-only) */}
+      <ViewerStickerCanvas stickers={story.stickers} />
 
       {/* Progress Bars */}
       <View style={styles.progressRow}>

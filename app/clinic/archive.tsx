@@ -1,4 +1,5 @@
 import ArchiveCalendarView from '@/src/components/ArchiveCalendarView';
+import ArchiveMapView from '@/src/components/ArchiveMapView';
 import ArchiveViewerModal from '@/src/components/ArchiveViewerModal';
 import HighlightEditorModal from '@/src/components/HighlightEditorModal';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
@@ -7,6 +8,7 @@ import { useAuth } from '@/src/hooks/useAuth';
 import { useClinicSettings } from '@/src/hooks/useClinicSettings';
 import { ArchiveItem, fetchArchive } from '@/src/services/archiveService';
 import { createHighlight, deleteHighlight, fetchHighlights, Highlight, updateHighlight } from '@/src/services/highlightsService';
+import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
@@ -17,6 +19,7 @@ import {
   Alert,
   Animated,
   Dimensions,
+  Easing,
   FlatList,
   Platform,
   ScrollView,
@@ -141,6 +144,9 @@ export default function ArchiveScreen() {
   const [editorVisible, setEditorVisible] = useState(false);
   const [editingHighlight, setEditingHighlight] = useState<Highlight | null>(null);
 
+  // ========== Clinic Location (for map) ==========
+  const [clinicLocation, setClinicLocation] = useState<{ lat: number; lng: number } | null>(null);
+
   // ========== Header Menu (…) ==========
   const [headerMenuVisible, setHeaderMenuVisible] = useState(false);
   const menuOpacity = useRef(new Animated.Value(0)).current;
@@ -150,6 +156,7 @@ export default function ArchiveScreen() {
   const emptyFloatAnim = useRef(new Animated.Value(0)).current;
   const contentFadeAnim = useRef(new Animated.Value(0)).current;
   const contentSlideAnim = useRef(new Animated.Value(20)).current;
+  const contentScaleAnim = useRef(new Animated.Value(0.98)).current;
   const modeIconScales = useRef<Record<string, Animated.Value>>({
     grid: new Animated.Value(1),
     highlights: new Animated.Value(1),
@@ -194,6 +201,18 @@ export default function ArchiveScreen() {
         if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
+  }, [clinicId]);
+
+  // ========== Load Clinic Location (for map) ==========
+  useEffect(() => {
+    if (!clinicId) return;
+    let cancelled = false;
+    fetchClinicPublicOwner(clinicId).then((clinic) => {
+      if (!cancelled && clinic?.geo) {
+        setClinicLocation(clinic.geo);
+      }
+    }).catch(() => {});
     return () => { cancelled = true; };
   }, [clinicId]);
 
@@ -262,11 +281,13 @@ export default function ArchiveScreen() {
   useEffect(() => {
     contentFadeAnim.setValue(0);
     contentSlideAnim.setValue(20);
+    contentScaleAnim.setValue(0.98);
     Animated.parallel([
       Animated.spring(contentFadeAnim, { toValue: 1, damping: 20, stiffness: 180, mass: 0.8, useNativeDriver: true }),
       Animated.spring(contentSlideAnim, { toValue: 0, damping: 20, stiffness: 180, mass: 0.8, useNativeDriver: true }),
+      Animated.timing(contentScaleAnim, { toValue: 1, duration: 400, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
-  }, [archiveMode, archiveType, contentFadeAnim, contentSlideAnim]);
+  }, [archiveMode, archiveType, contentFadeAnim, contentSlideAnim, contentScaleAnim]);
 
   // ========== Mode Icon Press Feedback ==========
   const handleModePress = useCallback((mode: ArchiveMode) => {
@@ -532,6 +553,18 @@ export default function ArchiveScreen() {
     setEditingHighlight(hl);
     setEditorVisible(true);
   }, []);
+
+  // ========== Map Marker Press ==========
+  const handleMapMarkerPress = useCallback(
+    (markerItems: ArchiveItem[], index: number) => {
+      setViewerItems(markerItems);
+      setViewerStartIndex(index);
+      setViewerVisible(true);
+    },
+    [],
+  );
+
+  const mapTheme = useMemo(() => (isDark ? 'dark' as const : 'light' as const), [isDark]);
 
   const handleEditorSave = useCallback(
     async (data: { name: string; coverUrl: string; storyIds: string[] }) => {
@@ -811,7 +844,7 @@ export default function ArchiveScreen() {
         </Animated.View>
       ) : archiveMode === 'calendar' ? (
         // ========== CALENDAR MODE ==========
-        <Animated.View style={[styles.calendarWrapper, { opacity: contentFadeAnim, transform: [{ translateY: contentSlideAnim }] }]}>
+        <Animated.View style={[styles.calendarWrapper, { opacity: contentFadeAnim, transform: [{ translateY: contentSlideAnim }, { scale: contentScaleAnim }] }]}>
           <ArchiveCalendarView
             items={filtered}
             isDark={isDark}
@@ -822,11 +855,14 @@ export default function ArchiveScreen() {
           />
         </Animated.View>
       ) : (
-        // ========== MAP PLACEHOLDER ==========
-        <Animated.View style={[styles.emptyCenter, { transform: [{ translateY: emptyFloatTranslateY }], opacity: emptyFloatOpacity }]}>
-          <Ionicons name="location-outline" size={48} color={subtextColor} style={{ opacity: 0.5 }} />
-          <Text style={[styles.emptyText, { color: subtextColor }]}>Map view coming soon</Text>
-          <Text style={[styles.emptySubtext, { color: subtextColor }]}>Requires location data</Text>
+        // ========== MAP MODE ==========
+        <Animated.View style={[styles.mapWrapper, { opacity: contentFadeAnim, transform: [{ translateY: contentSlideAnim }, { scale: contentScaleAnim }] }]}>
+          <ArchiveMapView
+            items={filtered}
+            clinicLocation={clinicLocation}
+            onMarkerPress={handleMapMarkerPress}
+            theme={mapTheme}
+          />
         </Animated.View>
       )}
 
@@ -1081,6 +1117,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
   emptyCenter: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingBottom: 60 },
   calendarWrapper: { flex: 1, paddingTop: 12 },
+  mapWrapper: { flex: 1 },
   emptyText: { fontSize: 15, fontWeight: '500' },
   listContent: { paddingTop: 12, paddingBottom: 32 },
   // Selection Bar

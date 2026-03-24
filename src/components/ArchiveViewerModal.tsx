@@ -1,3 +1,4 @@
+import ViewerStickerCanvas from '@/src/components/stickers/ViewerStickerCanvas';
 import { ArchiveItem } from '@/src/services/archiveService';
 import { ClinicPreferences } from '@/src/services/clinicPreferencesService';
 import {
@@ -256,6 +257,9 @@ export default function ArchiveViewerModal({ visible, items, startIndex, clinicI
             )}
           </View>
         </TouchableWithoutFeedback>
+
+        {/* Sticker overlays (read-only) */}
+        <ViewerStickerCanvas stickers={item.stickers} />
 
         {/* Progress Bars */}
         <View style={styles.progressRow}>

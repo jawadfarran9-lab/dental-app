@@ -1,22 +1,33 @@
 import { db } from '@/firebaseConfig';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useLocationSelection } from '@/src/context/LocationSelectionContext';
+import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
+    Dimensions,
+    Easing,
     FlatList,
     Platform,
-    SafeAreaView,
+    Pressable,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SHEET_HEIGHT = Math.round(SCREEN_HEIGHT * 0.6);
 
 // ========== Types ==========
 interface LocationItem {
@@ -275,6 +286,7 @@ export default function LocationListScreen() {
   const router = useRouter();
   const { clinicId } = useAuth();
   const { selectLocation } = useLocationSelection();
+  const { isDark } = useTheme();
   
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -436,6 +448,76 @@ export default function LocationListScreen() {
     }
   }, [searchQuery, userLocation]);
 
+  // ===== Sheet animation =====
+  const sheetTranslateY = useRef(new Animated.Value(SHEET_HEIGHT)).current;
+  const sheetScale = useRef(new Animated.Value(0.96)).current;
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+
+  // Subtle floating loop — living UI feel
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -4, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 2000, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [floatAnim]);
+
+  useEffect(() => {
+    // Micro delay prevents harsh jump on mount
+    const t = setTimeout(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      Animated.parallel([
+        Animated.spring(sheetTranslateY, {
+          toValue: 0,
+          damping: 18,
+          stiffness: 180,
+          mass: 0.8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(sheetScale, {
+          toValue: 1,
+          damping: 18,
+          stiffness: 180,
+          mass: 0.8,
+          useNativeDriver: true,
+        }),
+        Animated.spring(backdropOpacity, {
+          toValue: 1,
+          damping: 20,
+          stiffness: 180,
+          mass: 0.8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 30);
+    return () => clearTimeout(t);
+  }, [sheetTranslateY, sheetScale, backdropOpacity]);
+
+  const closeSheet = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(sheetTranslateY, {
+        toValue: SHEET_HEIGHT,
+        damping: 18,
+        stiffness: 180,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+      Animated.spring(backdropOpacity, {
+        toValue: 0,
+        damping: 20,
+        stiffness: 180,
+        mass: 0.8,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      router.back();
+    });
+  }, [sheetTranslateY, backdropOpacity, router]);
+
   // Handle location selection
   const handleSelectLocation = useCallback((location: LocationItem) => {
     // Always use cityName if available, otherwise use name
@@ -451,14 +533,15 @@ export default function LocationListScreen() {
       lng: location.lng,
     });
     
-    // Navigate back to the edit screen
-    router.back();
-  }, [router, selectLocation]);
+    Haptics.selectionAsync();
+    // Animate sheet down then navigate back
+    closeSheet();
+  }, [selectLocation, closeSheet]);
 
   // Handle close
   const handleClose = useCallback(() => {
-    router.back();
-  }, [router]);
+    closeSheet();
+  }, [closeSheet]);
 
   // Render list item
   const renderItem = useCallback(({ item }: { item: LocationItem }) => (
@@ -486,108 +569,253 @@ export default function LocationListScreen() {
   }, [clinicLocation, filteredLocations]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-          <Ionicons name="close" size={28} color="#262626" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Locations</Text>
-        <View style={styles.headerRight} />
-      </View>
+    <View style={styles.overlayContainer}>
+      {/* Premium background gradient */}
+      <PremiumGradientBackground isDark={isDark} showSparkles={false} style={StyleSheet.absoluteFill} />
 
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
-        <View style={styles.searchBar}>
-          <Ionicons name="search" size={18} color="#8E8E93" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search cities..."
-            placeholderTextColor="#8E8E93"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSearch}
-            returnKeyType="search"
-            autoCorrect={false}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={18} color="#8E8E93" />
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      {/* Subtle depth separation */}
+      <View style={styles.backgroundOverlay} pointerEvents="none" />
 
-      {/* Loading State */}
-      {loading ? (
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4F5BD5" />
-          <Text style={styles.loadingText}>Finding nearby cities...</Text>
-        </View>
-      ) : (
-        /* Location List */
-        <FlatList
-          data={listData}
-          renderItem={({ item }) => {
-            if ('type' in item && item.type === 'header') {
-              return <SectionHeader title={item.title} />;
-            }
-            return <LocationListItem item={item as LocationItem} onSelect={handleSelectLocation} />;
-          }}
-          keyExtractor={(item, index) => {
-            if ('type' in item && item.type === 'header') {
-              return `header_${item.title}`;
-            }
-            return (item as LocationItem).id;
-          }}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons 
-                name={error ? 'alert-circle-outline' : 'location-outline'} 
-                size={48} 
-                color={error ? '#FF3B30' : '#C4C4C4'} 
-              />
-              <Text style={[styles.emptyText, error && styles.errorText]}>
-                {error ? 'Something went wrong' : 'No locations found'}
-              </Text>
-              <Text style={styles.emptySubtext}>
-                {error || 'Try a different search term'}
-              </Text>
-              {error && (
-                <TouchableOpacity 
-                  style={styles.retryButton}
-                  onPress={() => {
-                    setError(null);
-                    if (userLocation) {
-                      setLoading(true);
-                      fetchNearbyCities(userLocation.lat, userLocation.lng)
-                        .then(({ places, error: apiError }) => {
-                          if (apiError) setError(apiError);
-                          setNearbyLocations(places);
-                          setFilteredLocations(places);
-                        })
-                        .finally(() => setLoading(false));
-                    }
-                  }}
-                >
-                  <Text style={styles.retryButtonText}>Try Again</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+      {/* Animated backdrop dim */}
+      <Animated.View
+        style={[styles.backdrop, { opacity: backdropOpacity }]}
+      >
+        <Pressable style={StyleSheet.absoluteFill} onPress={handleClose} />
+      </Animated.View>
+
+      {/* Glass fade gradient above sheet */}
+      <LinearGradient
+        colors={
+          isDark
+            ? ['transparent', 'rgba(30,41,59,0.55)']
+            : ['transparent', 'rgba(255,255,255,0.55)']
+        }
+        style={styles.topGradient}
+        pointerEvents="none"
+      />
+
+      {/* Animated sheet */}
+      <Animated.View
+        style={[
+          styles.sheet,
+          {
+            borderColor: 'rgba(59,130,246,0.08)',
+            borderWidth: 1,
+            borderBottomWidth: 0,
+            transform: [
+              { translateY: Animated.add(sheetTranslateY, floatAnim) },
+              { scale: sheetScale },
+            ],
+          },
+        ]}
+      >
+        {/* Sheet background gradient: white→blue blend */}
+        <LinearGradient
+          colors={
+            isDark
+              ? ['rgba(30,41,59,0.9)', 'rgba(15,23,42,0.95)']
+              : ['rgba(255,255,255,0.85)', '#E4F5FC']
           }
-        />
-      )}
-    </SafeAreaView>
+          locations={[0, 1]}
+          style={styles.sheetGradient}
+        >
+          <BlurView
+            intensity={70}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFill}
+          />
+
+          {/* Top readability overlay */}
+          <LinearGradient
+            colors={
+              isDark
+                ? ['rgba(30,41,59,0.4)', 'transparent']
+                : ['rgba(255,255,255,0.4)', 'transparent']
+            }
+            style={styles.innerTopFade}
+            pointerEvents="none"
+          />
+
+          {/* Top glass highlight */}
+          <View style={[styles.topHighlight, isDark && styles.topHighlightDark]} />
+
+          {/* Handle */}
+          <View style={[styles.handle, isDark && styles.handleDark]} />
+
+        {/* Header */}
+        <View style={[styles.header, isDark && styles.headerDark]}>
+          <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+            <Ionicons name="close" size={28} color={isDark ? '#E2E8F0' : '#262626'} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, isDark && styles.headerTitleDark]}>Locations</Text>
+          <View style={styles.headerRight} />
+        </View>
+
+        {/* Search Bar */}
+        <View style={styles.searchContainer}>
+          <View style={[styles.searchBar, isDark && styles.searchBarDark]}>
+            <Ionicons name="search" size={18} color="#8E8E93" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Search cities..."
+              placeholderTextColor="#8E8E93"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={handleSearch}
+              returnKeyType="search"
+              autoCorrect={false}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={18} color="#8E8E93" />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+
+        {/* Loading State */}
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4F5BD5" />
+            <Text style={styles.loadingText}>Finding nearby cities...</Text>
+          </View>
+        ) : (
+          /* Location List */
+          <FlatList
+            data={listData}
+            renderItem={({ item }) => {
+              if ('type' in item && item.type === 'header') {
+                return <SectionHeader title={item.title} />;
+              }
+              return <LocationListItem item={item as LocationItem} onSelect={handleSelectLocation} />;
+            }}
+            keyExtractor={(item, index) => {
+              if ('type' in item && item.type === 'header') {
+                return `header_${item.title}`;
+              }
+              return (item as LocationItem).id;
+            }}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            bounces
+            decelerationRate="fast"
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons 
+                  name={error ? 'alert-circle-outline' : 'location-outline'} 
+                  size={48} 
+                  color={error ? '#FF3B30' : '#C4C4C4'} 
+                />
+                <Text style={[styles.emptyText, error && styles.errorText]}>
+                  {error ? 'Something went wrong' : 'No locations found'}
+                </Text>
+                <Text style={styles.emptySubtext}>
+                  {error || 'Try a different search term'}
+                </Text>
+                {error && (
+                  <TouchableOpacity 
+                    style={styles.retryButton}
+                    onPress={() => {
+                      setError(null);
+                      if (userLocation) {
+                        setLoading(true);
+                        fetchNearbyCities(userLocation.lat, userLocation.lng)
+                          .then(({ places, error: apiError }) => {
+                            if (apiError) setError(apiError);
+                            setNearbyLocations(places);
+                            setFilteredLocations(places);
+                          })
+                          .finally(() => setLoading(false));
+                      }
+                    }}
+                  >
+                    <Text style={styles.retryButtonText}>Try Again</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            }
+          />
+        )}
+        </LinearGradient>
+      </Animated.View>
+    </View>
   );
 }
 
 // ========== Styles ==========
 const styles = StyleSheet.create({
-  container: {
+  overlayContainer: {
     flex: 1,
-    backgroundColor: '#FFFFFF',
+    justifyContent: 'flex-end',
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  backgroundOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  topGradient: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: SHEET_HEIGHT - 1,
+    height: 60,
+  },
+  sheet: {
+    height: SHEET_HEIGHT,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 0,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  sheetGradient: {
+    flex: 1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  innerTopFade: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 80,
+    zIndex: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  topHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 20,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    zIndex: 11,
+  },
+  topHighlightDark: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  handle: {
+    width: 36,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    alignSelf: 'center',
+    marginTop: 8,
+    marginBottom: 6,
+    zIndex: 12,
+  },
+  handleDark: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
   },
   header: {
     flexDirection: 'row',
@@ -597,6 +825,12 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: '#E5E5E5',
+  },
+  headerDark: {
+    borderBottomColor: 'rgba(255,255,255,0.1)',
+  },
+  headerTitleDark: {
+    color: '#E2E8F0',
   },
   closeButton: {
     width: 40,
@@ -619,10 +853,13 @@ const styles = StyleSheet.create({
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F2F2F7',
-    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.6)',
+    borderRadius: 16,
     paddingHorizontal: 12,
-    height: 40,
+    height: 42,
+  },
+  searchBarDark: {
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   searchInput: {
     flex: 1,
@@ -642,7 +879,7 @@ const styles = StyleSheet.create({
     color: '#8E8E93',
   },
   listContent: {
-    paddingBottom: Platform.OS === 'ios' ? 20 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 32,
   },
   sectionHeader: {
     paddingHorizontal: 16,
@@ -659,16 +896,17 @@ const styles = StyleSheet.create({
   locationItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5E5',
+    marginHorizontal: 12,
+    marginVertical: 4,
+    padding: 12,
+    backgroundColor: 'rgba(255,255,255,0.4)',
+    borderRadius: 16,
   },
   locationIcon: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: 'rgba(255,255,255,0.5)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

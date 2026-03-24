@@ -25,6 +25,15 @@ import { getClinicPreferences } from './clinicPreferencesService';
 
 // ── Types ────────────────────────────────────────────────────────
 
+/** Optional location attached to a story. */
+export interface StoryLocation {
+  latitude: number;
+  longitude: number;
+  placeName?: string;
+  placeId?: string;
+  address?: string;
+}
+
 export interface ClinicStory {
   id: string;
   mediaUrl: string;
@@ -41,9 +50,20 @@ export interface ClinicStory {
   hiddenFrom?: string[];
   /** Whether viewers can reply. Defaults to true if absent. */
   allowReplies?: boolean;
+  /** Per-story location (optional). */
+  location?: StoryLocation;
+  /** Sticker overlays saved from the editor canvas. */
+  stickers?: Array<{
+    type: string;
+    x: number;
+    y: number;
+    scale: number;
+    rotation: number;
+    data: Record<string, any>;
+  }>;
 }
 
-interface CreateStoryInput {
+export interface CreateStoryInput {
   mediaUrl: string;
   thumbnailUrl?: string;
   caption?: string;
@@ -52,6 +72,17 @@ interface CreateStoryInput {
   closeFriends?: string[];
   hiddenFrom?: string[];
   allowReplies?: boolean;
+  /** Optional location from the story creation flow. */
+  location?: StoryLocation;
+  /** Optional sticker overlays placed on the story canvas. */
+  stickers?: Array<{
+    type: string;
+    x: number;
+    y: number;
+    scale: number;
+    rotation: number;
+    data: Record<string, any>;
+  }>;
 }
 
 // ── Collection helpers ───────────────────────────────────────────
@@ -124,6 +155,20 @@ export async function createStory(
   if (input.hiddenFrom && input.hiddenFrom.length > 0) {
     storyData.hiddenFrom = input.hiddenFrom;
   }
+  if (input.location &&
+      typeof input.location.latitude === 'number' && isFinite(input.location.latitude) &&
+      typeof input.location.longitude === 'number' && isFinite(input.location.longitude)) {
+    storyData.location = {
+      latitude: input.location.latitude,
+      longitude: input.location.longitude,
+      ...(input.location.placeName ? { placeName: input.location.placeName } : {}),
+      ...(input.location.placeId ? { placeId: input.location.placeId } : {}),
+      ...(input.location.address ? { address: input.location.address } : {}),
+    };
+  }
+  if (input.stickers && input.stickers.length > 0) {
+    storyData.stickers = input.stickers;
+  }
 
   const docRef = await addDoc(storiesCol(clinicId), storyData);
 
@@ -140,6 +185,8 @@ export async function createStory(
     closeFriends: input.closeFriends,
     hiddenFrom: input.hiddenFrom,
     allowReplies: input.allowReplies ?? true,
+    location: storyData.location,
+    stickers: input.stickers && input.stickers.length > 0 ? input.stickers : undefined,
   };
 
   // ── Post-creation side effects (fire-and-forget) ───────────
@@ -197,7 +244,7 @@ async function archiveStory(
   clinicId: string,
   story: ClinicStory,
 ): Promise<void> {
-  await addDoc(archiveCol(clinicId), {
+  const archiveData: Record<string, any> = {
     mediaUrl: story.mediaUrl,
     thumbnailUrl: story.thumbnailUrl ?? null,
     caption: story.caption ?? '',
@@ -207,7 +254,14 @@ async function archiveStory(
     clinicId: story.clinicId,
     clinicName: story.clinicName ?? '',
     type: story.type,
-  });
+  };
+  if (story.location) {
+    archiveData.location = story.location;
+  }
+  if (story.stickers && story.stickers.length > 0) {
+    archiveData.stickers = story.stickers;
+  }
+  await addDoc(archiveCol(clinicId), archiveData);
 }
 
 /**

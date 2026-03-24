@@ -1,50 +1,36 @@
-import StarAvatar from '@/src/components/StarAvatar';
+import { storage } from '@/firebaseConfig';
 import { STICKER_COMPONENTS } from '@/src/components/stickers';
-import { BEAUTY_STICKER_DESIGNS } from '@/src/components/stickers/BeautyStickers';
-import { BEAUTY_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/BeautyStickersExtended';
-import { CLINIC_NAME_STICKER_DESIGNS } from '@/src/components/stickers/ClinicNameStickers';
-import { CLINIC_NAME_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/ClinicNameStickersExtended';
-import { COMBO_STICKER_DESIGNS } from '@/src/components/stickers/ComboStickers';
-import { COMBO_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/ComboStickersExtended';
-import { DENTAL_STICKER_DESIGNS } from '@/src/components/stickers/DentalStickers';
-import { DENTAL_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/DentalStickersExtended';
-import { LASER_STICKER_DESIGNS } from '@/src/components/stickers/LaserStickers';
-import { LASER_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/LaserStickersExtended';
-import { PHONE_STICKER_DESIGNS } from '@/src/components/stickers/PhoneStickers';
-import { PHONE_STICKER_DESIGNS_EXTENDED } from '@/src/components/stickers/PhoneStickersExtended';
-import { useClinic } from '@/src/context/ClinicContext';
+import StickerCanvas, { nextLocationStyle } from '@/src/components/stickers/StickerCanvas';
+import { StickerItem, stickersToSnapshots } from '@/src/components/stickers/types';
+import { useLocationSelection } from '@/src/context/LocationSelectionContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { markQuestionResponseRead } from '@/src/services/questionResponseService';
-import { ClinicData, fetchClinicData } from '@/src/utils/clinicDataUtils';
+import { useAuth } from '@/src/hooks/useAuth';
+import { createStory, StoryLocation } from '@/src/services/storyService';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image as ExpoImage } from 'expo-image';
-import * as ImageManipulator from 'expo-image-manipulator';
-import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
-  Animated,
-  Dimensions,
-  Keyboard,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  PanResponder,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View
+    Alert, Animated,
+    Dimensions,
+    Keyboard,
+    KeyboardAvoidingView,
+    Modal,
+    PanResponder,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StatusBar,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -98,6 +84,7 @@ const STICKER_CATEGORIES = [
   { id: 'music', name: 'Music', icon: 'musical-notes' as const, color: '#FF2D55' },
   { id: 'photo', name: 'Photo', icon: 'images-outline' as const, color: '#34C759' },
   { id: 'gif', name: 'GIF', icon: 'search' as const, color: '#00D4AA' },
+  { id: 'addyours', name: 'Add Yours', icon: 'camera-outline' as const, color: '#FF9500' },
   { id: 'frames', name: 'Frames', icon: 'image-outline' as const, color: '#007AFF' },
   { id: 'questions', name: 'Questions', icon: 'help-circle-outline' as const, color: '#AF52DE' },
   { id: 'cutouts', name: 'Cutouts', icon: 'cut-outline' as const, color: '#5AC8FA' },
@@ -119,9 +106,6 @@ const STICKER_CATEGORIES = [
 // ========== Text Alignment Options ==========
 type TextAlignment = 'left' | 'center' | 'right';
 
-// ========== Location Sticker Styles (Instagram-like variants) ==========
-type LocationStickerVariant = 'branded';
-
 // ========== Clock Style Options ==========
 type ClockStyle = 'digital' | 'floating' | 'analog';
 
@@ -130,854 +114,6 @@ const CLOCK_STYLES: { id: ClockStyle; name: string }[] = [
   { id: 'floating', name: 'Floating' },
   { id: 'analog', name: 'Analog' },
 ];
-
-// ========== Clock Sticker Design Styles ==========
-// 8 different clock sticker visual styles - fully dynamic rendering
-// Each renders the time INSIDE the design (not as overlay)
-type ClockStickerStyleType = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9;
-
-// ========== Photo Sticker Type ==========
-type PhotoSticker = {
-  id: string;
-  uri: string;
-  width: number;
-  height: number;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-};
-
-// ========== Phone Sticker on Canvas Type ==========
-type PhoneStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'phone_1' .. 'phone_10'
-  phoneNumber: string;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-  isCallable: boolean; // false = locked (static), true = unlocked (tap-to-call for viewers)
-};
-
-// ========== Clinic Name Sticker on Canvas Type ==========
-type ClinicNameStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'clinicname_1' .. 'clinicname_10'
-  clinicName: string;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-  isNavigable: boolean; // false = locked (static), true = unlocked (tap-to-navigate for viewers)
-};
-
-// ========== Combo Sticker on Canvas Type ==========
-type ComboStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'combo_1' .. 'combo_10'
-  clinicName: string;
-  clinicPhoneNumber: string;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-  isInteractive: boolean; // false = locked (static), true = unlocked (tap-to-call + navigate for viewers)
-};
-
-// ========== Dental Sticker on Canvas Type ==========
-type DentalStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'dental_1' .. 'dental_40'
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-};
-
-// ========== Laser Sticker on Canvas Type ==========
-type LaserStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'laser_1' .. 'laser_40'
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-};
-
-// ========== Beauty Sticker on Canvas Type ==========
-type BeautyStickerOnCanvas = {
-  id: string;
-  designId: string; // e.g. 'beauty_1' .. 'beauty_40'
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-};
-
-// ========== Frame Sticker on Canvas Type ==========
-type FrameStickerOnCanvas = {
-  id: string;
-  imageUri: string;
-  caption: string;
-  username: string;
-  time: string;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-  shape: 'square' | 'circle';
-};
-
-// ========== Question Sticker on Canvas Type ==========
-type QuestionStickerOnCanvas = {
-  id: string;
-  questionText: string;
-  backgroundColor: string;
-  profileImageUrl: string;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
-};
-
-// ========== Question Color Brightness Helper ==========
-function isQuestionColorDark(hex: string): boolean {
-  const c = hex.replace('#', '');
-  const r = parseInt(c.substring(0, 2), 16);
-  const g = parseInt(c.substring(2, 4), 16);
-  const b = parseInt(c.substring(4, 6), 16);
-  return r * 0.299 + g * 0.587 + b * 0.114 < 140;
-}
-
-// ========== Image Editing Types & Constants ==========
-// Story canvas dimensions (9:16 aspect ratio like Instagram)
-const STORY_ASPECT_RATIO = 9 / 16;
-const STORY_WIDTH = SCREEN_WIDTH;
-const STORY_HEIGHT = SCREEN_WIDTH / STORY_ASPECT_RATIO;
-
-// Crop aspect ratio presets
-type CropAspectRatio = 'story' | 'square' | '4:5' | '16:9' | 'free';
-const CROP_PRESETS: { id: CropAspectRatio; name: string; ratio: number | null; icon: string }[] = [
-  { id: 'story', name: 'Story', ratio: 9 / 16, icon: 'phone-portrait-outline' },
-  { id: 'square', name: 'Square', ratio: 1, icon: 'square-outline' },
-  { id: '4:5', name: '4:5', ratio: 4 / 5, icon: 'tablet-portrait-outline' },
-  { id: '16:9', name: '16:9', ratio: 16 / 9, icon: 'tv-outline' },
-  { id: 'free', name: 'Free', ratio: null, icon: 'resize-outline' },
-];
-
-// Instagram-style filter presets
-type FilterPreset = {
-  id: string;
-  name: string;
-  brightness?: number;
-  contrast?: number;
-  saturation?: number;
-  hue?: number;
-  opacity: number;
-  overlay?: string; // Gradient overlay color
-};
-
-const FILTER_PRESETS: FilterPreset[] = [
-  { id: 'original', name: 'Original', opacity: 1 },
-  { id: 'clarendon', name: 'Clarendon', brightness: 1.1, contrast: 1.2, saturation: 1.35, opacity: 1 },
-  { id: 'gingham', name: 'Gingham', brightness: 1.05, contrast: 0.95, saturation: 0.9, opacity: 1, overlay: 'rgba(230, 230, 250, 0.1)' },
-  { id: 'moon', name: 'Moon', brightness: 1.1, contrast: 1.1, saturation: 0, opacity: 1 },
-  { id: 'lark', name: 'Lark', brightness: 1.08, contrast: 0.95, saturation: 1.2, opacity: 1 },
-  { id: 'reyes', name: 'Reyes', brightness: 1.1, contrast: 0.85, saturation: 0.75, opacity: 1, overlay: 'rgba(239, 205, 173, 0.2)' },
-  { id: 'juno', name: 'Juno', brightness: 1.05, contrast: 1.15, saturation: 1.4, opacity: 1, overlay: 'rgba(255, 223, 0, 0.05)' },
-  { id: 'slumber', name: 'Slumber', brightness: 1.05, contrast: 0.9, saturation: 0.85, opacity: 1, overlay: 'rgba(125, 105, 24, 0.1)' },
-  { id: 'crema', name: 'Crema', brightness: 1.05, contrast: 0.95, saturation: 0.9, opacity: 1, overlay: 'rgba(255, 235, 205, 0.15)' },
-  { id: 'ludwig', name: 'Ludwig', brightness: 1.05, contrast: 1.05, saturation: 0.95, opacity: 1, overlay: 'rgba(125, 78, 36, 0.1)' },
-  { id: 'aden', name: 'Aden', brightness: 1.2, contrast: 0.9, saturation: 0.85, opacity: 1, overlay: 'rgba(66, 10, 14, 0.1)' },
-  { id: 'perpetua', name: 'Perpetua', brightness: 1.05, contrast: 1.1, saturation: 1.1, opacity: 1, overlay: 'rgba(0, 91, 154, 0.05)' },
-];
-
-// Editing tool modes
-type EditingToolMode = 'transform' | 'crop' | 'filters' | 'adjust';
-
-// ========== Analog Clock Component (Rolex/Luxury Style) ==========
-const AnalogClock = ({ time, size, variant }: { time: Date; size: number; variant: 'luxury' | 'vintage' }) => {
-  const hours = time.getHours() % 12;
-  const minutes = time.getMinutes();
-  
-  // Calculate rotation angles
-  const hourRotation = (hours * 30) + (minutes * 0.5); // 30° per hour + minute adjustment
-  const minuteRotation = minutes * 6; // 6° per minute
-  
-  const isLuxury = variant === 'luxury';
-  const faceColor = isLuxury ? '#0A1628' : '#FFF8E7';
-  const accentColor = isLuxury ? '#D4AF37' : '#8B4513';
-  const handColor = isLuxury ? '#D4AF37' : '#1A1A1A';
-  const tickColor = isLuxury ? '#D4AF37' : '#8B4513';
-  
-  const center = size / 2;
-  const clockRadius = size * 0.42;
-  
-  return (
-    <View style={[analogStyles.container, { width: size, height: size }]}>
-      {/* Outer bezel */}
-      <View style={[
-        analogStyles.bezel,
-        {
-          width: size * 0.95,
-          height: size * 0.95,
-          borderRadius: size * 0.475,
-          borderColor: accentColor,
-          borderWidth: isLuxury ? 4 : 3,
-          backgroundColor: isLuxury ? '#0D1B2A' : '#F5E6D3',
-        }
-      ]}>
-        {/* Clock face */}
-        <View style={[
-          analogStyles.face,
-          {
-            width: size * 0.85,
-            height: size * 0.85,
-            borderRadius: size * 0.425,
-            backgroundColor: faceColor,
-          }
-        ]}>
-          {/* Hour markers */}
-          {[...Array(12)].map((_, i) => {
-            const angle = (i * 30 - 90) * (Math.PI / 180);
-            const markerLength = i % 3 === 0 ? size * 0.08 : size * 0.04;
-            const markerWidth = i % 3 === 0 ? 3 : 2;
-            const outerRadius = clockRadius;
-            const innerRadius = clockRadius - markerLength;
-            
-            return (
-              <View
-                key={i}
-                style={[
-                  analogStyles.hourMarker,
-                  {
-                    width: markerWidth,
-                    height: markerLength,
-                    backgroundColor: tickColor,
-                    left: center - markerWidth / 2,
-                    top: center - clockRadius,
-                    transform: [
-                      { translateY: clockRadius - markerLength / 2 },
-                      { rotate: `${i * 30}deg` },
-                      { translateY: -(clockRadius - markerLength / 2) },
-                    ],
-                  }
-                ]}
-              />
-            );
-          })}
-          
-          {/* Hour hand */}
-          <View
-            style={[
-              analogStyles.hand,
-              {
-                width: size * 0.04,
-                height: size * 0.22,
-                backgroundColor: handColor,
-                borderRadius: size * 0.02,
-                left: center - size * 0.02,
-                top: center - size * 0.18,
-                transform: [
-                  { translateY: size * 0.09 },
-                  { rotate: `${hourRotation}deg` },
-                  { translateY: -size * 0.09 },
-                ],
-              }
-            ]}
-          />
-          
-          {/* Minute hand */}
-          <View
-            style={[
-              analogStyles.hand,
-              {
-                width: size * 0.025,
-                height: size * 0.32,
-                backgroundColor: handColor,
-                borderRadius: size * 0.012,
-                left: center - size * 0.0125,
-                top: center - size * 0.28,
-                transform: [
-                  { translateY: size * 0.14 },
-                  { rotate: `${minuteRotation}deg` },
-                  { translateY: -size * 0.14 },
-                ],
-              }
-            ]}
-          />
-          
-          {/* Center dot */}
-          <View
-            style={[
-              analogStyles.centerDot,
-              {
-                width: size * 0.06,
-                height: size * 0.06,
-                borderRadius: size * 0.03,
-                backgroundColor: accentColor,
-                left: center - size * 0.03,
-                top: center - size * 0.03,
-              }
-            ]}
-          />
-          
-          {/* Brand text */}
-          {isLuxury && (
-            <Text style={[analogStyles.brandText, { fontSize: size * 0.06, color: accentColor, top: center + size * 0.12 }]}>
-              PREMIUM
-            </Text>
-          )}
-        </View>
-      </View>
-    </View>
-  );
-};
-
-const analogStyles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bezel: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  face: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    position: 'relative',
-  },
-  hourMarker: {
-    position: 'absolute',
-  },
-  hand: {
-    position: 'absolute',
-  },
-  centerDot: {
-    position: 'absolute',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 2,
-    elevation: 3,
-  },
-  brandText: {
-    position: 'absolute',
-    fontWeight: '600',
-    letterSpacing: 2,
-  },
-});
-
-// ========== Flip Clock Component ==========
-// Realistic flip clock with clearly visible top/bottom halves
-const FlipClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const hourStr = hours.toString().padStart(2, '0');
-  const minStr = minutes.toString().padStart(2, '0');
-  
-  const digitWidth = size * 0.22;
-  const digitHeight = size * 0.4;
-  const flipGap = size * 0.025; // Visible gap between top and bottom halves
-  const digitGap = size * 0.015; // Small gap between digit cards
-  
-  const FlipDigit = ({ digit }: { digit: string }) => (
-    <View style={[flipStyles.digitContainer, { width: digitWidth, marginHorizontal: digitGap / 2 }]}>
-      {/* Top half */}
-      <View style={[
-        flipStyles.topHalf, 
-        { 
-          height: digitHeight / 2, 
-          borderTopLeftRadius: size * 0.03, 
-          borderTopRightRadius: size * 0.03,
-        }
-      ]}>
-        <View style={flipStyles.topHalfInner}>
-          <Text style={[flipStyles.digitText, flipStyles.topText, { fontSize: digitHeight * 0.6, lineHeight: digitHeight * 1.1 }]}>{digit}</Text>
-        </View>
-      </View>
-      
-      {/* Minimal divider - thin subtle line */}
-      <View style={[flipStyles.hingeGap, { height: 1 }]} />
-      
-      {/* Bottom half */}
-      <View style={[
-        flipStyles.bottomHalf, 
-        { 
-          height: digitHeight / 2, 
-          borderBottomLeftRadius: size * 0.03, 
-          borderBottomRightRadius: size * 0.03,
-        }
-      ]}>
-        <View style={flipStyles.bottomHalfInner}>
-          <Text style={[flipStyles.digitText, flipStyles.bottomText, { fontSize: digitHeight * 0.6, lineHeight: digitHeight * 1.1, marginTop: -digitHeight * 0.55 }]}>{digit}</Text>
-        </View>
-      </View>
-    </View>
-  );
-  
-  // Platform-specific offset for visual centering (compensates for font metrics)
-  // Reduced offset to shift frame/line down, keeping digits visually centered
-  const verticalOffset = Platform.OS === 'ios' ? -size * 0.02 : -size * 0.025;
-  
-  return (
-    <View style={[flipStyles.container, { paddingHorizontal: size * 0.06, paddingVertical: size * 0.06, borderRadius: size * 0.05 }]}>
-      {/* Wrapper with transform for precise vertical centering */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', transform: [{ translateY: verticalOffset }] }}>
-        {/* Hours */}
-        <View style={flipStyles.digitGroup}>
-        <FlipDigit digit={hourStr[0]} />
-        <FlipDigit digit={hourStr[1]} />
-      </View>
-      
-      {/* Colon */}
-      <View style={[flipStyles.colonContainer, { width: size * 0.08, marginHorizontal: size * 0.01 }]}>
-        <View style={[flipStyles.colonDot, { width: size * 0.035, height: size * 0.035, borderRadius: size * 0.0175 }]} />
-        <View style={{ height: size * 0.06 }} />
-        <View style={[flipStyles.colonDot, { width: size * 0.035, height: size * 0.035, borderRadius: size * 0.0175 }]} />
-      </View>
-      
-      {/* Minutes */}
-      <View style={flipStyles.digitGroup}>
-        <FlipDigit digit={minStr[0]} />
-        <FlipDigit digit={minStr[1]} />
-      </View>
-      </View>
-    </View>
-  );
-};
-
-const flipStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#111111',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 12,
-  },
-  digitGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  digitContainer: {
-    alignItems: 'center',
-  },
-  topHalf: {
-    backgroundColor: '#2D2D2D',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  topHalfInner: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  hingeGap: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
-    width: '100%',
-  },
-  bottomHalf: {
-    backgroundColor: '#2D2D2D',
-    overflow: 'hidden',
-    width: '100%',
-  },
-  bottomHalfInner: {
-    flex: 1,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  digitText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    includeFontPadding: false,
-  },
-  topText: {
-    // Text shows bottom half in top card
-  },
-  bottomText: {
-    // Text shows top half in bottom card
-  },
-  colonContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  colonDot: {
-    backgroundColor: '#FF6B6B',
-    shadowColor: '#FF6B6B',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-});
-
-// ========== Cloud/Dreamy Clock ==========
-// Clean beige style - no glow, no text, just time
-const CloudClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  
-  return (
-    <View style={[cloudStyles.container, { width: size, height: size * 0.5, borderRadius: size * 0.12 }]}>
-      {/* Clean beige background */}
-      <View style={[cloudStyles.background, { 
-        width: size * 0.95, height: size * 0.45, borderRadius: size * 0.1
-      }]}>
-        {/* Time display only - no extra text */}
-        <Text style={[cloudStyles.timeText, { fontSize: size * 0.22 }]}>{timeStr}</Text>
-      </View>
-    </View>
-  );
-};
-
-const cloudStyles = StyleSheet.create({
-  container: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  background: {
-    backgroundColor: '#FFF8E7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#E8DCC8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  timeText: {
-    color: '#5D4E37',
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 3,
-  },
-});
-
-// ========== Neon Clock ==========
-const NeonClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  
-  return (
-    <View style={[neonStyles.container, { width: size * 1.1, height: size * 0.5, borderRadius: size * 0.08 }]}>
-      <Text style={[neonStyles.timeText, { fontSize: size * 0.28 }]}>{timeStr}</Text>
-      {/* Glow layers */}
-      <Text style={[neonStyles.glowText, neonStyles.glow1, { fontSize: size * 0.28 }]}>{timeStr}</Text>
-      <Text style={[neonStyles.glowText, neonStyles.glow2, { fontSize: size * 0.28 }]}>{timeStr}</Text>
-    </View>
-  );
-};
-
-const neonStyles = StyleSheet.create({
-  container: {
-    backgroundColor: '#0D0D0D',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#FF00FF',
-    shadowColor: '#FF00FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  timeText: {
-    color: '#FF00FF',
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 4,
-    textShadowColor: '#FF00FF',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
-    zIndex: 3,
-  },
-  glowText: {
-    position: 'absolute',
-    color: '#FF00FF',
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 4,
-  },
-  glow1: {
-    textShadowColor: '#FF00FF',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 20,
-    opacity: 0.6,
-  },
-  glow2: {
-    textShadowColor: '#FF66FF',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30,
-    opacity: 0.4,
-  },
-});
-
-// ========== Minimalist Clock ==========
-// Clean cream style - time only, no AM/PM
-const MinimalistClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  
-  return (
-    <View style={[minimalStyles.container, { width: size, height: size * 0.4, borderRadius: size * 0.06 }]}>
-      <Text style={[minimalStyles.timeText, { fontSize: size * 0.24 }]}>{timeStr}</Text>
-    </View>
-  );
-};
-
-const minimalStyles = StyleSheet.create({
-  container: {
-    backgroundColor: '#FFFDF8',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#E5E5E5',
-  },
-  timeText: {
-    color: '#333333',
-    fontWeight: '300',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 2,
-  },
-});
-
-// ========== Retro LED Clock ==========
-const RetroClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  // Use individual digit rendering to ensure all numbers (especially 9) display correctly
-  const hourStr = hours.toString().padStart(2, '0');
-  const minStr = minutes.toString().padStart(2, '0');
-  
-  // Platform-specific offset for visual centering (compensates for font metrics)
-  const verticalOffset = Platform.OS === 'ios' ? -size * 0.065 : -size * 0.075;
-  
-  return (
-    <View style={[retroStyles.container, { width: size * 1.15, height: size * 0.5 }]}>
-      <View style={[retroStyles.screen, { paddingHorizontal: size * 0.06, paddingVertical: size * 0.06 }]}>
-        {/* Transform for precise vertical centering */}
-        <View style={[retroStyles.timeContainer, { transform: [{ translateY: verticalOffset }] }]}>
-          <Text style={[retroStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{hourStr[0]}</Text>
-          <Text style={[retroStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{hourStr[1]}</Text>
-          <Text style={[retroStyles.colonText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>:</Text>
-          <Text style={[retroStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{minStr[0]}</Text>
-          <Text style={[retroStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{minStr[1]}</Text>
-        </View>
-      </View>
-    </View>
-  );
-};
-
-const retroStyles = StyleSheet.create({
-  container: {
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 0,
-    borderRadius: 0,
-  },
-  screen: {
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  digitText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    minWidth: 18,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-  },
-  colonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    marginHorizontal: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-  },
-});
-
-// ========== Clean Digital Clock (White, Transparent) ==========
-const CleanDigitalClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const hourStr = hours.toString().padStart(2, '0');
-  const minStr = minutes.toString().padStart(2, '0');
-  
-  // Platform-specific offset for visual centering (compensates for font metrics)
-  const verticalOffset = Platform.OS === 'ios' ? -size * 0.065 : -size * 0.075;
-  
-  return (
-    <View style={[cleanDigitalStyles.container, { width: size * 1.15, height: size * 0.5 }]}>
-      <View style={[cleanDigitalStyles.timeContainer, { transform: [{ translateY: verticalOffset }] }]}>
-        <Text style={[cleanDigitalStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{hourStr[0]}</Text>
-        <Text style={[cleanDigitalStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{hourStr[1]}</Text>
-        <Text style={[cleanDigitalStyles.colonText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>:</Text>
-        <Text style={[cleanDigitalStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{minStr[0]}</Text>
-        <Text style={[cleanDigitalStyles.digitText, { fontSize: size * 0.26, lineHeight: size * 0.3 }]}>{minStr[1]}</Text>
-      </View>
-    </View>
-  );
-};
-
-const cleanDigitalStyles = StyleSheet.create({
-  container: {
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  timeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  digitText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    fontVariant: ['tabular-nums'],
-    minWidth: 18,
-    textAlign: 'center',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-  colonText: {
-    color: '#FFFFFF',
-    fontWeight: '700',
-    marginHorizontal: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
-    textShadowColor: 'rgba(0,0,0,0.3)',
-    textShadowOffset: { width: 1, height: 1 },
-    textShadowRadius: 2,
-  },
-});
-
-// ========== Artistic/Hand-drawn Clock ==========
-const ArtisticClock = ({ time, size }: { time: Date; size: number }) => {
-  const hours = time.getHours();
-  const minutes = time.getMinutes();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  const isMorning = hours >= 6 && hours < 18;
-  
-  return (
-    <View style={[artisticStyles.container, { width: size * 1.1, height: size * 0.6, borderRadius: size * 0.3 }]}>
-      <Text style={[artisticStyles.timeText, { fontSize: size * 0.2 }]}>{timeStr}</Text>
-      <Text style={[artisticStyles.label, { fontSize: size * 0.07 }]}>
-        {isMorning ? '~ good morning ~' : '~ good evening ~'}
-      </Text>
-    </View>
-  );
-};
-
-const artisticStyles = StyleSheet.create({
-  container: {
-    backgroundColor: '#FFF8E7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#D4C4A8',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  timeText: {
-    color: '#5D4E37',
-    fontWeight: '600',
-    fontVariant: ['tabular-nums'],
-    letterSpacing: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-  },
-  label: {
-    color: '#8B7355',
-    fontWeight: '400',
-    marginTop: 4,
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
-    fontStyle: 'italic',
-  },
-});
-
-// ========== Main Clock Sticker Design Component ==========
-// Renders the appropriate clock style based on the style type
-const ClockStickerDesign = ({ 
-  style, 
-  time,
-  size = 120,
-}: { 
-  style: ClockStickerStyleType; 
-  time: Date;
-  size?: number;
-}) => {
-  switch (style) {
-    case 1: // Luxury analog (Rolex-style)
-      return <AnalogClock time={time} size={size} variant="luxury" />;
-    
-    case 2: // Flip clock
-      return <FlipClock time={time} size={size} />;
-    
-    case 3: // Cloudy/dreamy
-      return <CloudClock time={time} size={size} />;
-    
-    case 4: // Vintage alarm clock (analog)
-      return <AnalogClock time={time} size={size} variant="vintage" />;
-    
-    case 5: // Neon sign
-      return <NeonClock time={time} size={size} />;
-    
-    case 6: // Minimalist modern
-      return <MinimalistClock time={time} size={size} />;
-    
-    case 7: // Retro LED digital
-      return <RetroClock time={time} size={size} />;
-    
-    case 8: // Artistic/hand-drawn
-      return <ArtisticClock time={time} size={size} />;
-    
-    case 9: // Clean digital (white, transparent)
-      return <CleanDigitalClock time={time} size={size} />;
-    
-    default:
-      return <AnalogClock time={time} size={size} variant="luxury" />;
-  }
-};
 
 // ========== Text Editor Toolbar Mode ==========
 type TextToolbarMode = 'fonts' | 'colors' | 'effects' | 'animations';
@@ -1265,17 +401,14 @@ const DraggableTextOverlay = ({
   onEdit, 
   onTransformUpdate,
   getTextStyle,
-  onDragStateChange,
 }: { 
   overlay: TextOverlay;
   onEdit: (id: string) => void;
   onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
   getTextStyle: (fontStyle: typeof FONT_STYLES[0], color: string, size: number) => any;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
 }) => {
   const pan = useRef(new Animated.ValueXY({ x: overlay.x, y: overlay.y })).current;
   const scale = useRef(new Animated.Value(overlay.scale)).current;
-  const hasMoved = useRef(false);
   const rotation = useRef(new Animated.Value(overlay.rotation)).current;
   
   const lastOffset = useRef({ x: overlay.x, y: overlay.y });
@@ -1285,8 +418,6 @@ const DraggableTextOverlay = ({
   const initialAngle = useRef(0);
   const initialCenter = useRef({ x: 0, y: 0 });
   const isPinching = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
 
   const getDistance = (touches: any[]) => {
     if (touches.length < 2) return 0;
@@ -1313,10 +444,7 @@ const DraggableTextOverlay = ({
   const panResponder = useMemo(() => PanResponder.create({
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
     onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
       const touches = evt.nativeEvent.touches;
       if (touches.length >= 2) {
         isPinching.current = true;
@@ -1329,19 +457,8 @@ const DraggableTextOverlay = ({
     },
     onPanResponderMove: (evt, gestureState) => {
       const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
       
       if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
         if (!isPinching.current) {
           isPinching.current = true;
           initialDistance.current = getDistance(touches);
@@ -1349,6 +466,7 @@ const DraggableTextOverlay = ({
           initialCenter.current = getCenter(touches);
         }
         
+        // Scale
         const currentDistance = getDistance(touches);
         if (initialDistance.current > 0) {
           const scaleFactor = currentDistance / initialDistance.current;
@@ -1356,38 +474,29 @@ const DraggableTextOverlay = ({
           scale.setValue(newScale);
         }
         
+        // Rotation
         const currentAngle = getAngle(touches);
         const angleDiff = currentAngle - initialAngle.current;
         rotation.setValue(lastRotation.current + angleDiff);
         
+        // Move while pinching - track center point movement
         const currentCenter = getCenter(touches);
+        const centerDx = currentCenter.x - initialCenter.current.x;
+        const centerDy = currentCenter.y - initialCenter.current.y;
         pan.setValue({
-          x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-          y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
+          x: lastOffset.current.x + centerDx,
+          y: lastOffset.current.y + centerDy,
         });
         
       } else if (!isPinching.current) {
+        // Single finger drag
         pan.setValue({
           x: lastOffset.current.x + gestureState.dx,
           y: lastOffset.current.y + gestureState.dy,
         });
       }
-
-      // Throttle pageY reporting for boundary detection
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
     },
     onPanResponderRelease: () => {
-      if (hasMoved.current) {
-        onDragStateChange?.(false);
-      }
-      hasMoved.current = false;
       // @ts-ignore
       lastOffset.current = { x: pan.x._value, y: pan.y._value };
       // @ts-ignore
@@ -1405,7 +514,7 @@ const DraggableTextOverlay = ({
       isPinching.current = false;
       initialDistance.current = 0;
     },
-  }), [overlay.id, pan, scale, rotation, onTransformUpdate, onDragStateChange]);
+  }), [overlay.id, pan, scale, rotation, onTransformUpdate]);
 
   const rotateInterpolate = rotation.interpolate({
     inputRange: [-360, 360],
@@ -1461,3670 +570,17 @@ const DraggableTextOverlay = ({
   );
 };
 
-// ========== Draggable Clock Sticker Component ==========
-const DraggableClockSticker = ({
-  sticker,
-  onTransformUpdate,
-  onTap,
-  onDragStateChange,
-}: {
-  sticker: {
-    id: string;
-    designIndex: number;
-    x: number;
-    y: number;
-    scale: number;
-    rotation: number;
-    time: Date;
-  };
-  onTransformUpdate: (updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onTap: () => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const gestureStartTime = useRef(0);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  // Pre-compute combined scale
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      const touches = evt.nativeEvent.touches;
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      gestureStartTime.current = Date.now();
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-      
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-
-        // Scale
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.5, Math.min(2.5, lastScale.current * scaleFactor));
-          scaleAnim.setValue(newScale);
-        }
-
-        // Rotation
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        // Move while pinching
-        const currentCenter = getCenter(touches);
-        const centerDx = currentCenter.x - initialCenter.current.x;
-        const centerDy = currentCenter.y - initialCenter.current.y;
-        pan.setValue({
-          x: lastOffset.current.x + centerDx,
-          y: lastOffset.current.y + centerDy,
-        });
-      } else if (!isPinching.current) {
-        // Single finger drag
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      // Throttle pageY reporting for boundary detection
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scaleAnim._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate({
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      // Detect tap: short duration and no significant movement
-      const gestureDuration = Date.now() - gestureStartTime.current;
-      if (!hasMoved.current && gestureDuration < 200) {
-        onTap();
-      }
-
-      if (hasMoved.current) {
-        onDragStateChange?.(false);
-      }
-      isPinching.current = false;
-      initialDistance.current = 0;
-      hasMoved.current = false;
-    },
-  }), [pan, scaleAnim, rotation, onTransformUpdate, onTap, onDragStateChange]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  // Pop-in animation on mount
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  // Get the clock style (1-8)
-  const clockStyle = ((sticker.designIndex % 9) + 1) as ClockStickerStyleType;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.clockStickerDraggable,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <ClockStickerDesign style={clockStyle} time={sticker.time} size={130} />
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Clinic Location Sticker Component ==========
-const DraggableClinicSticker = ({
-  sticker,
-  onTransformUpdate,
-  onDragStateChange,
-}: {
-  sticker: {
-    id: string;
-    clinicName: string;
-    city: string;
-    x: number;
-    y: number;
-    scale: number;
-    rotation: number;
-  };
-  onTransformUpdate: (updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scale = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  // Pre-compute combined scale
-  const combinedScale = useMemo(() => Animated.multiply(scale, popAnim), [scale, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.5, Math.min(2.5, lastScale.current * scaleFactor));
-          scale.setValue(newScale);
-        }
-
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        const currentCenter = getCenter(touches);
-        pan.setValue({
-          x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-          y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      // Throttle pageY reporting for boundary detection
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      if (hasMoved.current) {
-        onDragStateChange?.(false);
-      }
-      hasMoved.current = false;
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scale._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate({
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      isPinching.current = false;
-      initialDistance.current = 0;
-    },
-  }), [pan, scale, rotation, onTransformUpdate, onDragStateChange]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  // Pop-in animation on mount
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.clinicStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <LinearGradient
-        colors={['#833AB4', '#E91E63', '#F77737']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={styles.clinicStickerGradient}
-      >
-        {/* Clinic Name - Large, bold */}
-        <Text style={styles.clinicStickerName}>
-          {sticker.clinicName}
-        </Text>
-        {/* City - Smaller, lighter */}
-        <Text style={styles.clinicStickerCity}>
-          {sticker.city}
-        </Text>
-      </LinearGradient>
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Photo Sticker Component ==========
-const DraggablePhotoSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-}: {
-  sticker: PhotoSticker;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scale = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tapCount = useRef(0);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  // Pre-compute combined scale
-  const combinedScale = useMemo(() => Animated.multiply(scale, popAnim), [scale, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-        // Handle double tap for removal
-        tapCount.current += 1;
-        if (tapCount.current === 1) {
-          doubleTapRef.current = setTimeout(() => {
-            tapCount.current = 0;
-          }, 300);
-        } else if (tapCount.current === 2) {
-          if (doubleTapRef.current) clearTimeout(doubleTapRef.current);
-          tapCount.current = 0;
-          onRemove(sticker.id);
-        }
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-
-        // Scale
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.2, Math.min(4, lastScale.current * scaleFactor));
-          scale.setValue(newScale);
-        }
-
-        // Rotation
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        // Move while pinching
-        const currentCenter = getCenter(touches);
-        const centerDx = currentCenter.x - initialCenter.current.x;
-        const centerDy = currentCenter.y - initialCenter.current.y;
-        pan.setValue({
-          x: lastOffset.current.x + centerDx,
-          y: lastOffset.current.y + centerDy,
-        });
-      } else if (!isPinching.current) {
-        // Single finger drag
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      // Throttle pageY reporting for boundary detection
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      if (hasMoved.current) {
-        onDragStateChange?.(false);
-      }
-      hasMoved.current = false;
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scale._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate(sticker.id, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      isPinching.current = false;
-      initialDistance.current = 0;
-    },
-  }), [pan, scale, rotation, onTransformUpdate, onRemove, sticker.id, onDragStateChange]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  // Pop-in animation on mount
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  // Calculate aspect ratio for the sticker
-  const aspectRatio = sticker.width / sticker.height;
-  const stickerWidth = 150;
-  const stickerHeight = stickerWidth / aspectRatio;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <ExpoImage
-        source={{ uri: sticker.uri }}
-        style={{
-          width: stickerWidth,
-          height: stickerHeight,
-          borderRadius: 8,
-        }}
-        contentFit="cover"
-      />
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Phone Sticker Component ==========
-const DraggablePhoneSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-  onLongPress,
-  isSettingsOpen,
-  onToggleCallable,
-  isViewerMode = false,
-}: {
-  sticker: PhoneStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-  onLongPress?: (id: string) => void;
-  isSettingsOpen?: boolean;
-  onToggleCallable?: (id: string) => void;
-  isViewerMode?: boolean;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastDragCallTime = useRef(0);
-  const [showCallHint, setShowCallHint] = useState(false);
-
-  // Pre-compute combined scale to avoid creating new Animated node on each render
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  // ── Viewer mode: tap handler ──
-  const handleViewerTap = useCallback(() => {
-    if (!isViewerMode || !sticker.isCallable) return;
-    setShowCallHint(true);
-    setTimeout(() => {
-      setShowCallHint(false);
-      const tel = `tel:${sticker.phoneNumber.replace(/[^0-9+]/g, '')}`;
-      Linking.openURL(tel).catch(() => {
-        Alert.alert('Unable to open dialer', 'Could not open the phone app.');
-      });
-    }, 800);
-  }, [isViewerMode, sticker.isCallable, sticker.phoneNumber]);
-
-  const panResponder = useMemo(() => {
-    if (isViewerMode) {
-      return PanResponder.create({
-        onStartShouldSetPanResponder: () => sticker.isCallable,
-        onPanResponderRelease: () => handleViewerTap(),
-      });
-    }
-
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      // Capture phase: claim gesture immediately to reduce delay
-      onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-      onPanResponderGrant: (evt) => {
-        hasMoved.current = false;
-        lastDragCallTime.current = 0;
-        const touches = evt.nativeEvent.touches;
-        if (touches.length >= 2) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        } else {
-          isPinching.current = false;
-          longPressTimer.current = setTimeout(() => {
-            if (!hasMoved.current) {
-              onLongPress?.(sticker.id);
-            }
-          }, 500);
-        }
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const touches = evt.nativeEvent.touches;
-
-        if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-          if (!hasMoved.current) {
-            hasMoved.current = true;
-            onDragStateChange?.(true);
-            if (longPressTimer.current) {
-              clearTimeout(longPressTimer.current);
-              longPressTimer.current = null;
-            }
-          }
-        }
-
-        if (touches.length >= 2) {
-          hasMoved.current = true;
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
-          if (!isPinching.current) {
-            isPinching.current = true;
-            initialDistance.current = getDistance(touches);
-            initialAngle.current = getAngle(touches);
-            initialCenter.current = getCenter(touches);
-          }
-          const currentDistance = getDistance(touches);
-          if (initialDistance.current > 0) {
-            const scaleFactor = currentDistance / initialDistance.current;
-            const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-            scaleAnim.setValue(newScale);
-          }
-          const currentAngle = getAngle(touches);
-          const angleDiff = currentAngle - initialAngle.current;
-          rotation.setValue(lastRotation.current + angleDiff);
-
-          const currentCenter = getCenter(touches);
-          pan.setValue({
-            x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-            y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-          });
-        } else if (!isPinching.current) {
-          pan.setValue({
-            x: lastOffset.current.x + gestureState.dx,
-            y: lastOffset.current.y + gestureState.dy,
-          });
-        }
-
-        // Throttle trash zone detection to every 50ms (avoid setState spam)
-        lastPageY.current = evt.nativeEvent.pageY;
-        if (hasMoved.current) {
-          const now = Date.now();
-          if (now - lastDragCallTime.current > 50) {
-            lastDragCallTime.current = now;
-            onDragStateChange?.(true, evt.nativeEvent.pageY);
-          }
-        }
-      },
-      onPanResponderRelease: () => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-
-        // @ts-ignore
-        lastOffset.current = { x: pan.x._value, y: pan.y._value };
-        // @ts-ignore
-        lastScale.current = scaleAnim._value || lastScale.current;
-        // @ts-ignore
-        lastRotation.current = rotation._value || lastRotation.current;
-
-        onTransformUpdate(sticker.id, {
-          x: lastOffset.current.x,
-          y: lastOffset.current.y,
-          scale: lastScale.current,
-          rotation: lastRotation.current,
-        });
-
-        const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-        if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-          onRemove(sticker.id);
-        }
-
-        isPinching.current = false;
-        initialDistance.current = 0;
-        hasMoved.current = false;
-        onDragStateChange?.(false);
-      },
-    });
-  }, [pan, scaleAnim, rotation, onTransformUpdate, onRemove, onDragStateChange, sticker.id, onLongPress, isViewerMode, handleViewerTap, sticker.isCallable]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  const design = PHONE_STICKER_DESIGNS.find(d => d.id === sticker.designId) ?? PHONE_STICKER_DESIGNS_EXTENDED.find(d => d.id === sticker.designId);
-  if (!design) return null;
-  const StickerComponent = design.Component;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent phoneNumber={sticker.phoneNumber} size={140} />
-
-      {/* Viewer mode: "Tap to Call" hint */}
-      {isViewerMode && sticker.isCallable && showCallHint && (
-        <View style={{
-          position: 'absolute',
-          top: -36,
-          alignSelf: 'center',
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 16,
-        }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>📞 Tap to Call</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Clinic Name Sticker Component ==========
-const DraggableClinicNameSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-  onLongPress,
-  isSettingsOpen,
-  onToggleNavigable,
-  isViewerMode = false,
-  clinicId,
-}: {
-  sticker: ClinicNameStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-  onLongPress?: (id: string) => void;
-  isSettingsOpen?: boolean;
-  onToggleNavigable?: (id: string) => void;
-  isViewerMode?: boolean;
-  clinicId?: string;
-}) => {
-  const router = useRouter();
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastDragCallTime = useRef(0);
-  const [showNavigateHint, setShowNavigateHint] = useState(false);
-
-  // Pre-compute combined scale to avoid creating new Animated node on each render
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  // ── Viewer mode: tap handler ──
-  const handleViewerTap = useCallback(() => {
-    if (!isViewerMode || !sticker.isNavigable) return;
-    setShowNavigateHint(true);
-    setTimeout(() => {
-      setShowNavigateHint(false);
-      if (clinicId) {
-        router.push({ pathname: '/clinic/clinic-profile-viewer', params: { clinicId } } as any);
-      }
-    }, 800);
-  }, [isViewerMode, sticker.isNavigable, clinicId, router]);
-
-  const panResponder = useMemo(() => {
-    if (isViewerMode) {
-      return PanResponder.create({
-        onStartShouldSetPanResponder: () => sticker.isNavigable,
-        onPanResponderRelease: () => handleViewerTap(),
-      });
-    }
-
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      // Capture phase: claim gesture immediately to reduce delay
-      onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-      onPanResponderGrant: (evt) => {
-        hasMoved.current = false;
-        lastDragCallTime.current = 0;
-        const touches = evt.nativeEvent.touches;
-        if (touches.length >= 2) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        } else {
-          isPinching.current = false;
-          longPressTimer.current = setTimeout(() => {
-            if (!hasMoved.current) {
-              onLongPress?.(sticker.id);
-            }
-          }, 500);
-        }
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const touches = evt.nativeEvent.touches;
-
-        if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-          if (!hasMoved.current) {
-            hasMoved.current = true;
-            onDragStateChange?.(true);
-            if (longPressTimer.current) {
-              clearTimeout(longPressTimer.current);
-              longPressTimer.current = null;
-            }
-          }
-        }
-
-        if (touches.length >= 2) {
-          hasMoved.current = true;
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
-          if (!isPinching.current) {
-            isPinching.current = true;
-            initialDistance.current = getDistance(touches);
-            initialAngle.current = getAngle(touches);
-            initialCenter.current = getCenter(touches);
-          }
-          const currentDistance = getDistance(touches);
-          if (initialDistance.current > 0) {
-            const scaleFactor = currentDistance / initialDistance.current;
-            const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-            scaleAnim.setValue(newScale);
-          }
-          const currentAngle = getAngle(touches);
-          const angleDiff = currentAngle - initialAngle.current;
-          rotation.setValue(lastRotation.current + angleDiff);
-
-          const currentCenter = getCenter(touches);
-          pan.setValue({
-            x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-            y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-          });
-        } else if (!isPinching.current) {
-          pan.setValue({
-            x: lastOffset.current.x + gestureState.dx,
-            y: lastOffset.current.y + gestureState.dy,
-          });
-        }
-
-        // Throttle trash zone detection to every 50ms (avoid setState spam)
-        lastPageY.current = evt.nativeEvent.pageY;
-        if (hasMoved.current) {
-          const now = Date.now();
-          if (now - lastDragCallTime.current > 50) {
-            lastDragCallTime.current = now;
-            onDragStateChange?.(true, evt.nativeEvent.pageY);
-          }
-        }
-      },
-      onPanResponderRelease: () => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-
-        // @ts-ignore
-        lastOffset.current = { x: pan.x._value, y: pan.y._value };
-        // @ts-ignore
-        lastScale.current = scaleAnim._value || lastScale.current;
-        // @ts-ignore
-        lastRotation.current = rotation._value || lastRotation.current;
-
-        onTransformUpdate(sticker.id, {
-          x: lastOffset.current.x,
-          y: lastOffset.current.y,
-          scale: lastScale.current,
-          rotation: lastRotation.current,
-        });
-
-        const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-        if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-          onRemove(sticker.id);
-        }
-
-        isPinching.current = false;
-        initialDistance.current = 0;
-        hasMoved.current = false;
-        onDragStateChange?.(false);
-      },
-    });
-  }, [pan, scaleAnim, rotation, onTransformUpdate, onRemove, onDragStateChange, sticker.id, onLongPress, isViewerMode, handleViewerTap, sticker.isNavigable]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  const design = CLINIC_NAME_STICKER_DESIGNS.find(d => d.id === sticker.designId) ?? CLINIC_NAME_STICKER_DESIGNS_EXTENDED.find(d => d.id === sticker.designId);
-  if (!design) return null;
-  const StickerComponent = design.Component;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent clinicName={sticker.clinicName} size={140} />
-
-      {/* Viewer mode: "Tap to View" hint */}
-      {isViewerMode && sticker.isNavigable && showNavigateHint && (
-        <View style={{
-          position: 'absolute',
-          top: -36,
-          alignSelf: 'center',
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 16,
-        }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>🏥 View Clinic</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Combo Sticker Component ==========
-const DraggableComboSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-  onLongPress,
-  isSettingsOpen,
-  onToggleInteractive,
-  isViewerMode = false,
-  clinicId,
-}: {
-  sticker: ComboStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-  onLongPress?: (id: string) => void;
-  isSettingsOpen?: boolean;
-  onToggleInteractive?: (id: string) => void;
-  isViewerMode?: boolean;
-  clinicId?: string;
-}) => {
-  const router = useRouter();
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastDragCallTime = useRef(0);
-  const [showHint, setShowHint] = useState(false);
-
-  // Pre-compute combined scale to avoid creating new Animated node on each render
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  // ── Viewer mode: tap handler ──
-  const handleViewerTap = useCallback(() => {
-    if (!isViewerMode || !sticker.isInteractive) return;
-    setShowHint(true);
-    setTimeout(() => {
-      setShowHint(false);
-      if (clinicId) {
-        router.push({ pathname: '/clinic/clinic-profile-viewer', params: { clinicId } } as any);
-      }
-    }, 800);
-  }, [isViewerMode, sticker.isInteractive, clinicId, router]);
-
-  const panResponder = useMemo(() => {
-    if (isViewerMode) {
-      return PanResponder.create({
-        onStartShouldSetPanResponder: () => sticker.isInteractive,
-        onPanResponderRelease: () => handleViewerTap(),
-      });
-    }
-
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      // Capture phase: claim gesture immediately to reduce delay
-      onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-      onPanResponderGrant: (evt) => {
-        hasMoved.current = false;
-        lastDragCallTime.current = 0;
-        const touches = evt.nativeEvent.touches;
-        if (touches.length >= 2) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        } else {
-          isPinching.current = false;
-          longPressTimer.current = setTimeout(() => {
-            if (!hasMoved.current) {
-              onLongPress?.(sticker.id);
-            }
-          }, 500);
-        }
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        const touches = evt.nativeEvent.touches;
-
-        if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-          if (!hasMoved.current) {
-            hasMoved.current = true;
-            onDragStateChange?.(true);
-            if (longPressTimer.current) {
-              clearTimeout(longPressTimer.current);
-              longPressTimer.current = null;
-            }
-          }
-        }
-
-        if (touches.length >= 2) {
-          hasMoved.current = true;
-          if (longPressTimer.current) {
-            clearTimeout(longPressTimer.current);
-            longPressTimer.current = null;
-          }
-          if (!isPinching.current) {
-            isPinching.current = true;
-            initialDistance.current = getDistance(touches);
-            initialAngle.current = getAngle(touches);
-            initialCenter.current = getCenter(touches);
-          }
-          const currentDistance = getDistance(touches);
-          if (initialDistance.current > 0) {
-            const scaleFactor = currentDistance / initialDistance.current;
-            const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-            scaleAnim.setValue(newScale);
-          }
-          const currentAngle = getAngle(touches);
-          const angleDiff = currentAngle - initialAngle.current;
-          rotation.setValue(lastRotation.current + angleDiff);
-
-          const currentCenter = getCenter(touches);
-          pan.setValue({
-            x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-            y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-          });
-        } else if (!isPinching.current) {
-          pan.setValue({
-            x: lastOffset.current.x + gestureState.dx,
-            y: lastOffset.current.y + gestureState.dy,
-          });
-        }
-
-        // Throttle trash zone detection to every 50ms (avoid setState spam)
-        lastPageY.current = evt.nativeEvent.pageY;
-        if (hasMoved.current) {
-          const now = Date.now();
-          if (now - lastDragCallTime.current > 50) {
-            lastDragCallTime.current = now;
-            onDragStateChange?.(true, evt.nativeEvent.pageY);
-          }
-        }
-      },
-      onPanResponderRelease: () => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-
-        // @ts-ignore
-        lastOffset.current = { x: pan.x._value, y: pan.y._value };
-        // @ts-ignore
-        lastScale.current = scaleAnim._value || lastScale.current;
-        // @ts-ignore
-        lastRotation.current = rotation._value || lastRotation.current;
-
-        onTransformUpdate(sticker.id, {
-          x: lastOffset.current.x,
-          y: lastOffset.current.y,
-          scale: lastScale.current,
-          rotation: lastRotation.current,
-        });
-
-        const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-        if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-          onRemove(sticker.id);
-        }
-
-        isPinching.current = false;
-        initialDistance.current = 0;
-        hasMoved.current = false;
-        onDragStateChange?.(false);
-      },
-    });
-  }, [pan, scaleAnim, rotation, onTransformUpdate, onRemove, onDragStateChange, sticker.id, onLongPress, isViewerMode, handleViewerTap, sticker.isInteractive]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, { toValue: 1, tension: 100, friction: 8, useNativeDriver: true }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  const design = COMBO_STICKER_DESIGNS.find(d => d.id === sticker.designId) ?? COMBO_STICKER_DESIGNS_EXTENDED.find(d => d.id === sticker.designId);
-  if (!design) return null;
-  const StickerComponent = design.Component;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent clinicName={sticker.clinicName} clinicPhoneNumber={sticker.clinicPhoneNumber} size={160} />
-
-      {/* Viewer mode: hint */}
-      {isViewerMode && sticker.isInteractive && showHint && (
-        <View style={{
-          position: 'absolute',
-          top: -36,
-          alignSelf: 'center',
-          backgroundColor: 'rgba(0,0,0,0.8)',
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 16,
-        }}>
-          <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '600' }}>🏥 View Clinic</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Dental Sticker Component (decorative — no interactive features) ==========
-const DraggableDentalSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-}: {
-  sticker: DentalStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        hasMoved.current = true;
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-          scaleAnim.setValue(newScale);
-        }
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        const currentCenter = getCenter(touches);
-        pan.setValue({
-          x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-          y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scaleAnim._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate(sticker.id, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-        onRemove(sticker.id);
-      }
-
-      isPinching.current = false;
-      initialDistance.current = 0;
-      hasMoved.current = false;
-      onDragStateChange?.(false);
-    },
-  }), [pan, scaleAnim, rotation, onTransformUpdate, onRemove, sticker.id, onDragStateChange]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  // Resolve the sticker design component from the registries
-  const StickerComponent = useMemo(() => {
-    const allDesigns = [...DENTAL_STICKER_DESIGNS, ...(DENTAL_STICKER_DESIGNS_EXTENDED as unknown as typeof DENTAL_STICKER_DESIGNS)];
-    const design = allDesigns.find(d => d.id === sticker.designId);
-    return design?.Component ?? null;
-  }, [sticker.designId]);
-
-  if (!StickerComponent) return null;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent size={120} />
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Laser Sticker Component ==========
-const DraggableLaserSticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-}: {
-  sticker: LaserStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        hasMoved.current = true;
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-          scaleAnim.setValue(newScale);
-        }
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        const currentCenter = getCenter(touches);
-        pan.setValue({
-          x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-          y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scaleAnim._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate(sticker.id, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-        onRemove(sticker.id);
-      }
-
-      isPinching.current = false;
-      initialDistance.current = 0;
-      hasMoved.current = false;
-      onDragStateChange?.(false);
-    },
-  }), [pan, scaleAnim, rotation, onTransformUpdate, onRemove, onDragStateChange, sticker.id]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  // Resolve the sticker design component from the registries
-  const StickerComponent = useMemo(() => {
-    const allDesigns = [...LASER_STICKER_DESIGNS, ...(LASER_STICKER_DESIGNS_EXTENDED as unknown as typeof LASER_STICKER_DESIGNS)];
-    const design = allDesigns.find(d => d.id === sticker.designId);
-    return design?.Component ?? null;
-  }, [sticker.designId]);
-
-  if (!StickerComponent) return null;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent size={120} />
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Beauty Sticker Component (decorative — no interactive features) ==========
-const DraggableBeautySticker = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-}: {
-  sticker: BeautyStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChange?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        hasMoved.current = true;
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.3, Math.min(3, lastScale.current * scaleFactor));
-          scaleAnim.setValue(newScale);
-        }
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-
-        const currentCenter = getCenter(touches);
-        pan.setValue({
-          x: lastOffset.current.x + (currentCenter.x - initialCenter.current.x),
-          y: lastOffset.current.y + (currentCenter.y - initialCenter.current.y),
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChange?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scaleAnim._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdate(sticker.id, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-        onRemove(sticker.id);
-      }
-
-      isPinching.current = false;
-      initialDistance.current = 0;
-      hasMoved.current = false;
-      onDragStateChange?.(false);
-    },
-  }), [pan, scaleAnim, rotation, onTransformUpdate, onRemove, onDragStateChange, sticker.id]);
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  // Resolve the sticker design component from the registries
-  const StickerComponent = useMemo(() => {
-    const allDesigns = [...BEAUTY_STICKER_DESIGNS, ...(BEAUTY_STICKER_DESIGNS_EXTENDED as unknown as typeof BEAUTY_STICKER_DESIGNS)];
-    const design = allDesigns.find(d => d.id === sticker.designId);
-    return design?.Component ?? null;
-  }, [sticker.designId]);
-
-  if (!StickerComponent) return null;
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <StickerComponent size={120} />
-    </Animated.View>
-  );
-};
-
-// ========== Draggable Frame Sticker Component ==========
-const DraggableFrameStickerInner = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onToggleShape,
-  onDragStateChange,
-}: {
-  sticker: FrameStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onToggleShape: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scale = useRef(new Animated.Value(sticker.scale)).current;
-  const rotation = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  // Stable callback refs — prevent panResponder recreation on prop changes
-  const onTransformUpdateRef = useRef(onTransformUpdate);
-  const onRemoveRef = useRef(onRemove);
-  const onToggleShapeRef = useRef(onToggleShape);
-  const onDragStateChangeRef = useRef(onDragStateChange);
-  const stickerIdRef = useRef(sticker.id);
-  onTransformUpdateRef.current = onTransformUpdate;
-  onRemoveRef.current = onRemove;
-  onToggleShapeRef.current = onToggleShape;
-  onDragStateChangeRef.current = onDragStateChange;
-  stickerIdRef.current = sticker.id;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const doubleTapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const tapCount = useRef(0);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  const FRAME_MIN_SCALE = 0.5;
-  const FRAME_MAX_SCALE = 3;
-  const SNAP_THRESHOLD = 4; // degrees
-  const SNAP_ANGLES = [0, 90, 180, 270, -90, -180, -270];
-
-  const snapRotation = (angle: number) => {
-    for (const snap of SNAP_ANGLES) {
-      if (Math.abs(angle - snap) <= SNAP_THRESHOLD) return snap;
-    }
-    return angle;
-  };
-
-  const combinedScale = useMemo(() => Animated.multiply(scale, popAnim), [scale, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChangeRef.current?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChangeRef.current?.(true);
-        }
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(FRAME_MIN_SCALE, Math.min(FRAME_MAX_SCALE, lastScale.current * scaleFactor));
-          scale.setValue(newScale);
-        }
-
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        const rawRotation = lastRotation.current + angleDiff;
-        rotation.setValue(snapRotation(rawRotation));
-
-        const currentCenter = getCenter(touches);
-        const centerDx = currentCenter.x - initialCenter.current.x;
-        const centerDy = currentCenter.y - initialCenter.current.y;
-        pan.setValue({
-          x: lastOffset.current.x + centerDx,
-          y: lastOffset.current.y + centerDy,
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChangeRef.current?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      if (hasMoved.current) {
-        onDragStateChangeRef.current?.(false);
-      } else if (!isPinching.current) {
-        // Single tap (no drag, no pinch) — toggle shape
-        onToggleShapeRef.current(stickerIdRef.current);
-      }
-
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scale._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-
-      onTransformUpdateRef.current(stickerIdRef.current, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      // Trash zone detection — delete if released over trash area
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-        onRemoveRef.current(stickerIdRef.current);
-      }
-
-      hasMoved.current = false;
-      isPinching.current = false;
-      initialDistance.current = 0;
-    },
-  }), [pan, scale, rotation]); // Stable deps only — callbacks use refs
-
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  const FRAME_SIZE = 180;
-  const isCircle = sticker.shape === 'circle';
-
-  // Square layout: 8 (top) + 150 (image) + 22 (info) = 180
-  const SQ_TOP = 8;
-  const SQ_IMG = 150;
-  const SQ_SIDE = (FRAME_SIZE - SQ_IMG) / 2; // 15
-
-  // Circle layout: 8 (top) + 140 (image) + 32 (info) = 180
-  const CR_TOP = 8;
-  const CR_IMG = 140;
-
-  // Precomputed memoized styles — no inline object recreation per render
-  const outerFrameStyle = useMemo(() => ({
-    width: FRAME_SIZE,
-    height: FRAME_SIZE,
-    backgroundColor: '#000000' as const,
-    borderRadius: isCircle ? FRAME_SIZE / 2 : 10,
-    overflow: 'hidden' as const,
-  }), [isCircle]);
-
-  const circleImageContainerStyle = useMemo(() => ({
-    width: CR_IMG,
-    height: CR_IMG,
-    borderRadius: CR_IMG / 2,
-    overflow: 'hidden' as const,
-    marginTop: CR_TOP,
-    alignSelf: 'center' as const,
-  }), []);
-
-  const circleImageStyle = useMemo(() => ({
-    width: CR_IMG,
-    height: CR_IMG,
-  }), []);
-
-  const squareImageContainerStyle = useMemo(() => ({
-    marginTop: SQ_TOP,
-    marginHorizontal: SQ_SIDE,
-    borderRadius: 6,
-    overflow: 'hidden' as const,
-    width: SQ_IMG,
-    height: SQ_IMG,
-  }), []);
-
-  const squareImageStyle = useMemo(() => ({
-    width: SQ_IMG,
-    height: SQ_IMG,
-  }), []);
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <View style={outerFrameStyle}>
-        {isCircle ? (
-          /* ---- Circle layout ---- */
-          <>
-            <View style={circleImageContainerStyle}>
-              <ExpoImage
-                source={{ uri: sticker.imageUri }}
-                style={circleImageStyle}
-                contentFit="cover"
-              />
-            </View>
-            <View style={frameCircleInfoRow}>
-              <Text style={frameCircleUsernameText} numberOfLines={1}>
-                {sticker.username}
-              </Text>
-              <Text style={frameCircleDotText}>•</Text>
-              <Text style={frameCircleTimeText}>
-                {sticker.time}
-              </Text>
-            </View>
-          </>
-        ) : (
-          /* ---- Square layout ---- */
-          <>
-            <View style={squareImageContainerStyle}>
-              <ExpoImage
-                source={{ uri: sticker.imageUri }}
-                style={squareImageStyle}
-                contentFit="cover"
-              />
-            </View>
-            <View style={frameSquareInfoContainer}>
-              <View style={frameSquareInfoRow}>
-                <Text style={frameSquareUsernameText} numberOfLines={1}>
-                  {sticker.username}
-                </Text>
-                <Text style={frameSquareTimeText}>
-                  {sticker.time}
-                </Text>
-              </View>
-              {sticker.caption ? (
-                <Text style={frameSquareCaptionText} numberOfLines={1} ellipsizeMode="tail">
-                  {sticker.caption.length > 150 ? sticker.caption.slice(0, 150) + '…' : sticker.caption}
-                </Text>
-              ) : null}
-            </View>
-          </>
-        )}
-      </View>
-    </Animated.View>
-  );
-};
-
-// Static styles hoisted outside component — zero GC pressure
-const frameCircleInfoRow = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'center' as const, marginTop: 4, paddingHorizontal: 12 };
-const frameCircleUsernameText = { fontSize: 8, fontWeight: '700' as const, color: '#FFFFFF' };
-const frameCircleDotText = { fontSize: 7, color: 'rgba(255,255,255,0.4)', marginHorizontal: 3 };
-const frameCircleTimeText = { fontSize: 8, color: 'rgba(255,255,255,0.5)' };
-const frameSquareInfoContainer = { paddingHorizontal: 10, paddingTop: 4, paddingBottom: 6, flex: 1 };
-const frameSquareInfoRow = { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const };
-const frameSquareUsernameText = { fontSize: 9, fontWeight: '700' as const, color: '#FFFFFF', flexShrink: 1 };
-const frameSquareTimeText = { fontSize: 8, color: 'rgba(255,255,255,0.5)', marginLeft: 6 };
-const frameSquareCaptionText = { fontSize: 7, color: 'rgba(255,255,255,0.7)', marginTop: 2 };
-
-// React.memo with custom comparator — only re-render when sticker data actually changes
-const DraggableFrameSticker = React.memo(DraggableFrameStickerInner, (prevProps, nextProps) => {
-  const prev = prevProps.sticker;
-  const next = nextProps.sticker;
-  return (
-    prev.id === next.id &&
-    prev.shape === next.shape &&
-    prev.imageUri === next.imageUri &&
-    prev.username === next.username &&
-    prev.time === next.time &&
-    prev.caption === next.caption &&
-    prev.x === next.x &&
-    prev.y === next.y &&
-    prev.scale === next.scale &&
-    prev.rotation === next.rotation
-  );
-});
-
-// ========== Draggable Question Sticker Component ==========
-const QUESTION_STICKER_SIZE = 180;
-const Q_PROFILE_SIZE = 36;
-
-const DraggableQuestionStickerInner = ({
-  sticker,
-  onTransformUpdate,
-  onRemove,
-  onDragStateChange,
-}: {
-  sticker: QuestionStickerOnCanvas;
-  onTransformUpdate: (id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => void;
-  onRemove: (id: string) => void;
-  onDragStateChange?: (isDragging: boolean, pageY?: number) => void;
-}) => {
-  const pan = useRef(new Animated.ValueXY({ x: sticker.x, y: sticker.y })).current;
-  const scaleAnim = useRef(new Animated.Value(sticker.scale)).current;
-  const rotationAnim = useRef(new Animated.Value(sticker.rotation)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const popAnim = useRef(new Animated.Value(0.8)).current;
-
-  const onTransformUpdateRef = useRef(onTransformUpdate);
-  const onRemoveRef = useRef(onRemove);
-  const onDragStateChangeRef = useRef(onDragStateChange);
-  const stickerIdRef = useRef(sticker.id);
-  onTransformUpdateRef.current = onTransformUpdate;
-  onRemoveRef.current = onRemove;
-  onDragStateChangeRef.current = onDragStateChange;
-  stickerIdRef.current = sticker.id;
-
-  const lastOffset = useRef({ x: sticker.x, y: sticker.y });
-  const lastScale = useRef(sticker.scale);
-  const lastRotation = useRef(sticker.rotation);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  const hasMoved = useRef(false);
-  const lastPageY = useRef(0);
-  const lastDragCallTime = useRef(0);
-
-  const Q_MIN_SCALE = 0.5;
-  const Q_MAX_SCALE = 3;
-  const SNAP_THRESHOLD = 4;
-  const SNAP_ANGLES = [0, 90, 180, 270, -90, -180, -270];
-
-  const snapRotation = (angle: number) => {
-    for (const snap of SNAP_ANGLES) {
-      if (Math.abs(angle - snap) <= SNAP_THRESHOLD) return snap;
-    }
-    return angle;
-  };
-
-  const combinedScale = useMemo(() => Animated.multiply(scaleAnim, popAnim), [scaleAnim, popAnim]);
-
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponderCapture: (_, gs) => Math.abs(gs.dx) > 1 || Math.abs(gs.dy) > 1,
-    onPanResponderGrant: (evt) => {
-      hasMoved.current = false;
-      lastDragCallTime.current = 0;
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-
-      if (Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChangeRef.current?.(true);
-        }
-      }
-
-      if (touches.length >= 2) {
-        if (!hasMoved.current) {
-          hasMoved.current = true;
-          onDragStateChangeRef.current?.(true);
-        }
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(Q_MIN_SCALE, Math.min(Q_MAX_SCALE, lastScale.current * scaleFactor));
-          scaleAnim.setValue(newScale);
-        }
-
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        const rawRotation = lastRotation.current + angleDiff;
-        rotationAnim.setValue(snapRotation(rawRotation));
-
-        const currentCenter = getCenter(touches);
-        const centerDx = currentCenter.x - initialCenter.current.x;
-        const centerDy = currentCenter.y - initialCenter.current.y;
-        pan.setValue({
-          x: lastOffset.current.x + centerDx,
-          y: lastOffset.current.y + centerDy,
-        });
-      } else if (!isPinching.current) {
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-
-      lastPageY.current = evt.nativeEvent.pageY;
-      if (hasMoved.current) {
-        const now = Date.now();
-        if (now - lastDragCallTime.current > 50) {
-          lastDragCallTime.current = now;
-          onDragStateChangeRef.current?.(true, evt.nativeEvent.pageY);
-        }
-      }
-    },
-    onPanResponderRelease: () => {
-      if (hasMoved.current) {
-        onDragStateChangeRef.current?.(false);
-      }
-
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scaleAnim._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotationAnim._value || lastRotation.current;
-
-      onTransformUpdateRef.current(stickerIdRef.current, {
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      if (hasMoved.current && lastPageY.current > TRASH_ZONE_TOP) {
-        onRemoveRef.current(stickerIdRef.current);
-      }
-
-      hasMoved.current = false;
-      isPinching.current = false;
-      initialDistance.current = 0;
-    },
-  }), [pan, scaleAnim, rotationAnim]);
-
-  const rotateInterpolate = rotationAnim.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-      Animated.spring(popAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [fadeAnim, popAnim]);
-
-  const dark = isQuestionColorDark(sticker.backgroundColor);
-  const qTextColor = dark ? '#FFFFFF' : '#000000';
-  const subtleOpacity = dark ? 0.35 : 0.2;
-
-  const cardStyle = useMemo(() => ({
-    width: QUESTION_STICKER_SIZE,
-    backgroundColor: sticker.backgroundColor,
-    borderRadius: 16,
-    paddingTop: Q_PROFILE_SIZE / 2 + 10,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    alignItems: 'center' as const,
-  }), [sticker.backgroundColor]);
-
-  return (
-    <Animated.View
-      {...panResponder.panHandlers}
-      style={[
-        styles.photoStickerContainer,
-        {
-          opacity: fadeAnim,
-          transform: [
-            { translateX: pan.x },
-            { translateY: pan.y },
-            { scale: combinedScale },
-            { rotate: rotateInterpolate },
-          ],
-        },
-      ]}
-    >
-      <View style={cardStyle}>
-        {/* Profile image */}
-        <View style={qProfileWrapper}>
-          <StarAvatar
-            size={Q_PROFILE_SIZE}
-            uri={sticker.profileImageUrl}
-          />
-        </View>
-
-        {/* Question text */}
-        <Text style={[qQuestionText, { color: qTextColor }]} numberOfLines={3}>
-          {sticker.questionText || 'Ask me a question'}
-        </Text>
-
-        {/* Response box */}
-        <View
-          style={[
-            qResponseBox,
-            {
-              backgroundColor: dark
-                ? `rgba(255,255,255,${subtleOpacity})`
-                : `rgba(0,0,0,${subtleOpacity})`,
-            },
-          ]}
-        >
-          <Text style={[qResponseText, { color: qTextColor }]}>
-            Viewers respond here
-          </Text>
-        </View>
-      </View>
-    </Animated.View>
-  );
-};
-
-// Hoisted static styles for DraggableQuestionSticker
-const qProfileWrapper = { position: 'absolute' as const, top: -(Q_PROFILE_SIZE / 2), alignSelf: 'center' as const };
-const qQuestionText = { fontSize: 12, fontWeight: '600' as const, textAlign: 'center' as const, marginBottom: 8 };
-const qResponseBox = { width: '100%' as const, borderRadius: 8, paddingVertical: 8, alignItems: 'center' as const };
-const qResponseText = { fontSize: 9, fontWeight: '500' as const };
-
-const DraggableQuestionSticker = React.memo(DraggableQuestionStickerInner, (prevProps, nextProps) => {
-  const prev = prevProps.sticker;
-  const next = nextProps.sticker;
-  return (
-    prev.id === next.id &&
-    prev.questionText === next.questionText &&
-    prev.backgroundColor === next.backgroundColor &&
-    prev.profileImageUrl === next.profileImageUrl &&
-    prev.x === next.x &&
-    prev.y === next.y &&
-    prev.scale === next.scale &&
-    prev.rotation === next.rotation
-  );
-});
-
-// ========== Instagram-Style Image Editing Modal ==========
-const ImageEditingModal = ({
-  visible,
-  imageUri,
-  imageWidth,
-  imageHeight,
-  onCancel,
-  onDone,
-}: {
-  visible: boolean;
-  imageUri: string | null;
-  imageWidth: number;
-  imageHeight: number;
-  onCancel: () => void;
-  onDone: (editedUri: string, width: number, height: number) => void;
-}) => {
-  // Current editing tool mode
-  const [toolMode, setToolMode] = useState<EditingToolMode>('transform');
-  
-  // Transform state (pan, zoom, rotation)
-  const [imageTransform, setImageTransform] = useState({
-    x: 0,
-    y: 0,
-    scale: 1,
-    rotation: 0,
-  });
-  
-  // Crop state
-  const [cropAspectRatio, setCropAspectRatio] = useState<CropAspectRatio>('story');
-  
-  // Filter state
-  const [selectedFilter, setSelectedFilter] = useState<string>('original');
-  
-  // Adjustment slider values
-  const [adjustments, setAdjustments] = useState({
-    brightness: 1,
-    contrast: 1,
-    saturation: 1,
-  });
-  
-  // Processing state
-  const [isProcessing, setIsProcessing] = useState(false);
-  
-  // Animation values
-  const pan = useRef(new Animated.ValueXY()).current;
-  const scale = useRef(new Animated.Value(1)).current;
-  const rotation = useRef(new Animated.Value(0)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  
-  // Gesture tracking refs
-  const lastOffset = useRef({ x: 0, y: 0 });
-  const lastScale = useRef(1);
-  const lastRotation = useRef(0);
-  const initialDistance = useRef(0);
-  const initialAngle = useRef(0);
-  const initialCenter = useRef({ x: 0, y: 0 });
-  const isPinching = useRef(false);
-  
-  // Reset state when modal opens with new image
-  useEffect(() => {
-    if (visible && imageUri) {
-      // Reset all transform values
-      pan.setValue({ x: 0, y: 0 });
-      scale.setValue(1);
-      rotation.setValue(0);
-      lastOffset.current = { x: 0, y: 0 };
-      lastScale.current = 1;
-      lastRotation.current = 0;
-      setImageTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
-      setCropAspectRatio('story');
-      setSelectedFilter('original');
-      setAdjustments({ brightness: 1, contrast: 1, saturation: 1 });
-      setToolMode('transform');
-      
-      // Fade in animation
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      fadeAnim.setValue(0);
-    }
-  }, [visible, imageUri, pan, scale, rotation, fadeAnim]);
-  
-  // Calculate canvas and image dimensions
-  const canvasPadding = 20;
-  const canvasWidth = SCREEN_WIDTH - canvasPadding * 2;
-  const canvasHeight = SCREEN_HEIGHT * 0.6;
-  
-  // Calculate crop frame dimensions based on selected aspect ratio
-  const getCropFrameDimensions = useCallback(() => {
-    const preset = CROP_PRESETS.find(p => p.id === cropAspectRatio);
-    const ratio = preset?.ratio || (imageWidth / imageHeight);
-    
-    let frameWidth: number;
-    let frameHeight: number;
-    
-    if (ratio >= canvasWidth / canvasHeight) {
-      // Width-constrained
-      frameWidth = canvasWidth;
-      frameHeight = canvasWidth / ratio;
-    } else {
-      // Height-constrained
-      frameHeight = canvasHeight;
-      frameWidth = canvasHeight * ratio;
-    }
-    
-    return { frameWidth, frameHeight };
-  }, [cropAspectRatio, canvasWidth, canvasHeight, imageWidth, imageHeight]);
-  
-  const { frameWidth, frameHeight } = getCropFrameDimensions();
-  
-  // Calculate initial image scale to fit within frame
-  const getInitialImageScale = useCallback(() => {
-    const imgAspectRatio = imageWidth / imageHeight;
-    const frameAspectRatio = frameWidth / frameHeight;
-    
-    if (imgAspectRatio > frameAspectRatio) {
-      // Image is wider - fit to width, allow vertical overflow for movement
-      return (frameWidth / imageWidth) * 1.2;
-    } else {
-      // Image is taller - fit to height, allow horizontal overflow
-      return (frameHeight / imageHeight) * 1.2;
-    }
-  }, [imageWidth, imageHeight, frameWidth, frameHeight]);
-  
-  // Calculate displayed image dimensions
-  const baseScale = getInitialImageScale();
-  const displayedWidth = imageWidth * baseScale;
-  const displayedHeight = imageHeight * baseScale;
-  
-  // Gesture helpers
-  const getDistance = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[0].pageX - touches[1].pageX;
-    const dy = touches[0].pageY - touches[1].pageY;
-    return Math.sqrt(dx * dx + dy * dy);
-  };
-  
-  const getAngle = (touches: any[]) => {
-    if (touches.length < 2) return 0;
-    const dx = touches[1].pageX - touches[0].pageX;
-    const dy = touches[1].pageY - touches[0].pageY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-  };
-  
-  const getCenter = (touches: any[]) => {
-    if (touches.length < 2) return { x: touches[0]?.pageX || 0, y: touches[0]?.pageY || 0 };
-    return {
-      x: (touches[0].pageX + touches[1].pageX) / 2,
-      y: (touches[0].pageY + touches[1].pageY) / 2,
-    };
-  };
-  
-  // PanResponder for image manipulation
-  const panResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => toolMode === 'transform',
-    onMoveShouldSetPanResponder: () => toolMode === 'transform',
-    onPanResponderGrant: (evt) => {
-      const touches = evt.nativeEvent.touches;
-      if (touches.length >= 2) {
-        isPinching.current = true;
-        initialDistance.current = getDistance(touches);
-        initialAngle.current = getAngle(touches);
-        initialCenter.current = getCenter(touches);
-      } else {
-        isPinching.current = false;
-      }
-    },
-    onPanResponderMove: (evt, gestureState) => {
-      const touches = evt.nativeEvent.touches;
-      
-      if (touches.length >= 2) {
-        if (!isPinching.current) {
-          isPinching.current = true;
-          initialDistance.current = getDistance(touches);
-          initialAngle.current = getAngle(touches);
-          initialCenter.current = getCenter(touches);
-        }
-        
-        // Scale (pinch to zoom)
-        const currentDistance = getDistance(touches);
-        if (initialDistance.current > 0) {
-          const scaleFactor = currentDistance / initialDistance.current;
-          const newScale = Math.max(0.5, Math.min(5, lastScale.current * scaleFactor));
-          scale.setValue(newScale);
-        }
-        
-        // Rotation (two finger rotate)
-        const currentAngle = getAngle(touches);
-        const angleDiff = currentAngle - initialAngle.current;
-        rotation.setValue(lastRotation.current + angleDiff);
-        
-        // Pan while pinching
-        const currentCenter = getCenter(touches);
-        const centerDx = currentCenter.x - initialCenter.current.x;
-        const centerDy = currentCenter.y - initialCenter.current.y;
-        pan.setValue({
-          x: lastOffset.current.x + centerDx,
-          y: lastOffset.current.y + centerDy,
-        });
-      } else if (!isPinching.current) {
-        // Single finger drag
-        pan.setValue({
-          x: lastOffset.current.x + gestureState.dx,
-          y: lastOffset.current.y + gestureState.dy,
-        });
-      }
-    },
-    onPanResponderRelease: () => {
-      // @ts-ignore
-      lastOffset.current = { x: pan.x._value, y: pan.y._value };
-      // @ts-ignore
-      lastScale.current = scale._value || lastScale.current;
-      // @ts-ignore
-      lastRotation.current = rotation._value || lastRotation.current;
-      
-      setImageTransform({
-        x: lastOffset.current.x,
-        y: lastOffset.current.y,
-        scale: lastScale.current,
-        rotation: lastRotation.current,
-      });
-      
-      isPinching.current = false;
-      initialDistance.current = 0;
-    },
-  }), [pan, scale, rotation, toolMode]);
-  
-  // Rotation interpolation
-  const rotateInterpolate = rotation.interpolate({
-    inputRange: [-360, 360],
-    outputRange: ['-360deg', '360deg'],
-  });
-  
-  // Quick rotation buttons (90 degrees)
-  const rotateBy90 = (direction: 'left' | 'right') => {
-    const delta = direction === 'left' ? -90 : 90;
-    const newRotation = lastRotation.current + delta;
-    rotation.setValue(newRotation);
-    lastRotation.current = newRotation;
-    setImageTransform(prev => ({ ...prev, rotation: newRotation }));
-  };
-  
-  // Reset transform
-  const resetTransform = () => {
-    pan.setValue({ x: 0, y: 0 });
-    scale.setValue(1);
-    rotation.setValue(0);
-    lastOffset.current = { x: 0, y: 0 };
-    lastScale.current = 1;
-    lastRotation.current = 0;
-    setImageTransform({ x: 0, y: 0, scale: 1, rotation: 0 });
-  };
-  
-  // Get filter style for preview
-  const getFilterStyle = (filterId: string): object => {
-    const filter = FILTER_PRESETS.find(f => f.id === filterId) || FILTER_PRESETS[0];
-    // Note: React Native doesn't support CSS filters natively
-    // We apply opacity and overlay effects as approximation
-    return {
-      opacity: filter.opacity,
-    };
-  };
-  
-  // Get filter overlay color
-  const getFilterOverlay = (filterId: string): string | null => {
-    const filter = FILTER_PRESETS.find(f => f.id === filterId);
-    return filter?.overlay || null;
-  };
-  
-  // Apply edits and export image
-  const applyEditsAndExport = async () => {
-    if (!imageUri) return;
-    
-    setIsProcessing(true);
-    
-    try {
-      // Get crop dimensions based on selected aspect ratio
-      const { frameWidth: cropWidth, frameHeight: cropHeight } = getCropFrameDimensions();
-      
-      // Build manipulation actions
-      const actions: ImageManipulator.Action[] = [];
-      
-      // Apply rotation if needed
-      if (Math.abs(imageTransform.rotation) > 0.1) {
-        // Normalize rotation to 0-360 range
-        const normalizedRotation = ((imageTransform.rotation % 360) + 360) % 360;
-        // expo-image-manipulator only supports 90, 180, 270 degree rotations
-        const nearestRotation = Math.round(normalizedRotation / 90) * 90;
-        if (nearestRotation > 0 && nearestRotation < 360) {
-          actions.push({ rotate: nearestRotation });
-        }
-      }
-      
-      // Calculate crop region based on transform
-      // For now, we'll resize to fit the story dimensions
-      const storyWidth = 1080; // Instagram story width
-      const storyHeight = 1920; // Instagram story height (9:16)
-      
-      // Resize to story dimensions
-      actions.push({ resize: { width: storyWidth } });
-      
-      // Apply manipulations
-      const result = await ImageManipulator.manipulateAsync(
-        imageUri,
-        actions,
-        {
-          compress: 0.9,
-          format: ImageManipulator.SaveFormat.JPEG,
-        }
-      );
-      
-      setIsProcessing(false);
-      onDone(result.uri, result.width, result.height);
-    } catch (error) {
-      console.error('Error applying image edits:', error);
-      setIsProcessing(false);
-      // Fallback: return original image
-      onDone(imageUri, imageWidth, imageHeight);
-    }
-  };
-  
-  // Always render the Modal but conditionally show content
-  // This fixes timing issues between visible state and imageUri
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={onCancel}
-      statusBarTranslucent={true}
-    >
-      {!imageUri ? (
-        // Loading state while image is being prepared
-        <View style={[imageEditStyles.container, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Text style={{ color: '#FFFFFF', fontSize: 16 }}>Loading...</Text>
-        </View>
-      ) : (
-      <Animated.View style={[imageEditStyles.container, { opacity: fadeAnim }]}>
-        <StatusBar barStyle="light-content" backgroundColor="#000" />
-        
-        {/* Header */}
-        <SafeAreaView style={imageEditStyles.header}>
-          <TouchableOpacity onPress={onCancel} style={imageEditStyles.headerButton}>
-            <Ionicons name="close" size={28} color="#FFFFFF" />
-          </TouchableOpacity>
-          
-          <Text style={imageEditStyles.headerTitle}>Edit Photo</Text>
-          
-          <TouchableOpacity 
-            onPress={applyEditsAndExport} 
-            style={imageEditStyles.headerDoneButton}
-            disabled={isProcessing}
-          >
-            {isProcessing ? (
-              <Text style={imageEditStyles.headerDoneText}>...</Text>
-            ) : (
-              <Text style={imageEditStyles.headerDoneText}>Done</Text>
-            )}
-          </TouchableOpacity>
-        </SafeAreaView>
-        
-        {/* Canvas Area */}
-        <View style={imageEditStyles.canvasContainer}>
-          {/* Crop Frame Overlay */}
-          <View style={[imageEditStyles.cropFrame, { width: frameWidth, height: frameHeight }]}>
-            {/* Image with gestures */}
-            <Animated.View
-              {...panResponder.panHandlers}
-              style={[
-                imageEditStyles.imageWrapper,
-                {
-                  width: displayedWidth * imageTransform.scale,
-                  height: displayedHeight * imageTransform.scale,
-                  transform: [
-                    { translateX: pan.x },
-                    { translateY: pan.y },
-                    { scale: scale },
-                    { rotate: rotateInterpolate },
-                  ],
-                },
-              ]}
-            >
-              <ExpoImage
-                source={{ uri: imageUri }}
-                style={[
-                  imageEditStyles.image,
-                  { width: displayedWidth, height: displayedHeight },
-                  getFilterStyle(selectedFilter),
-                ]}
-                contentFit="contain"
-              />
-              
-              {/* Filter overlay */}
-              {getFilterOverlay(selectedFilter) && (
-                <View
-                  style={[
-                    imageEditStyles.filterOverlay,
-                    { backgroundColor: getFilterOverlay(selectedFilter) || 'transparent' },
-                  ]}
-                />
-              )}
-            </Animated.View>
-            
-            {/* Crop frame border */}
-            <View style={imageEditStyles.cropBorder} pointerEvents="none">
-              {/* Corner indicators */}
-              <View style={[imageEditStyles.cropCorner, imageEditStyles.topLeft]} />
-              <View style={[imageEditStyles.cropCorner, imageEditStyles.topRight]} />
-              <View style={[imageEditStyles.cropCorner, imageEditStyles.bottomLeft]} />
-              <View style={[imageEditStyles.cropCorner, imageEditStyles.bottomRight]} />
-              
-              {/* Grid lines (rule of thirds) */}
-              {toolMode === 'transform' && (
-                <>
-                  <View style={[imageEditStyles.gridLineH, { top: '33.33%' }]} />
-                  <View style={[imageEditStyles.gridLineH, { top: '66.66%' }]} />
-                  <View style={[imageEditStyles.gridLineV, { left: '33.33%' }]} />
-                  <View style={[imageEditStyles.gridLineV, { left: '66.66%' }]} />
-                </>
-              )}
-            </View>
-          </View>
-          
-          {/* Transform hint */}
-          {toolMode === 'transform' && (
-            <Text style={imageEditStyles.hintText}>
-              Drag to move • Pinch to zoom • Two fingers to rotate
-            </Text>
-          )}
-        </View>
-        
-        {/* Tool Tabs */}
-        <View style={imageEditStyles.toolTabs}>
-          <TouchableOpacity
-            style={[imageEditStyles.toolTab, toolMode === 'transform' && imageEditStyles.toolTabActive]}
-            onPress={() => setToolMode('transform')}
-          >
-            <Ionicons 
-              name="move-outline" 
-              size={22} 
-              color={toolMode === 'transform' ? '#FFFFFF' : '#8E8E93'} 
-            />
-            <Text style={[imageEditStyles.toolTabText, toolMode === 'transform' && imageEditStyles.toolTabTextActive]}>
-              Transform
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[imageEditStyles.toolTab, toolMode === 'crop' && imageEditStyles.toolTabActive]}
-            onPress={() => setToolMode('crop')}
-          >
-            <Ionicons 
-              name="crop-outline" 
-              size={22} 
-              color={toolMode === 'crop' ? '#FFFFFF' : '#8E8E93'} 
-            />
-            <Text style={[imageEditStyles.toolTabText, toolMode === 'crop' && imageEditStyles.toolTabTextActive]}>
-              Crop
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[imageEditStyles.toolTab, toolMode === 'filters' && imageEditStyles.toolTabActive]}
-            onPress={() => setToolMode('filters')}
-          >
-            <Ionicons 
-              name="color-wand-outline" 
-              size={22} 
-              color={toolMode === 'filters' ? '#FFFFFF' : '#8E8E93'} 
-            />
-            <Text style={[imageEditStyles.toolTabText, toolMode === 'filters' && imageEditStyles.toolTabTextActive]}>
-              Filters
-            </Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[imageEditStyles.toolTab, toolMode === 'adjust' && imageEditStyles.toolTabActive]}
-            onPress={() => setToolMode('adjust')}
-          >
-            <Ionicons 
-              name="options-outline" 
-              size={22} 
-              color={toolMode === 'adjust' ? '#FFFFFF' : '#8E8E93'} 
-            />
-            <Text style={[imageEditStyles.toolTabText, toolMode === 'adjust' && imageEditStyles.toolTabTextActive]}>
-              Adjust
-            </Text>
-          </TouchableOpacity>
-        </View>
-        
-        {/* Tool Options Panel */}
-        <View style={imageEditStyles.toolPanel}>
-          {/* Transform Tools */}
-          {toolMode === 'transform' && (
-            <View style={imageEditStyles.transformTools}>
-              <TouchableOpacity 
-                style={imageEditStyles.transformButton}
-                onPress={() => rotateBy90('left')}
-              >
-                <Ionicons name="arrow-undo" size={24} color="#FFFFFF" />
-                <Text style={imageEditStyles.transformButtonText}>Rotate Left</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={imageEditStyles.transformButton}
-                onPress={() => rotateBy90('right')}
-              >
-                <Ionicons name="arrow-redo" size={24} color="#FFFFFF" />
-                <Text style={imageEditStyles.transformButtonText}>Rotate Right</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={imageEditStyles.transformButton}
-                onPress={resetTransform}
-              >
-                <Ionicons name="refresh" size={24} color="#FFFFFF" />
-                <Text style={imageEditStyles.transformButtonText}>Reset</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-          
-          {/* Crop Aspect Ratio Options */}
-          {toolMode === 'crop' && (
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={imageEditStyles.cropOptions}
-            >
-              {CROP_PRESETS.map((preset) => (
-                <TouchableOpacity
-                  key={preset.id}
-                  style={[
-                    imageEditStyles.cropPreset,
-                    cropAspectRatio === preset.id && imageEditStyles.cropPresetActive,
-                  ]}
-                  onPress={() => setCropAspectRatio(preset.id)}
-                >
-                  <Ionicons 
-                    name={preset.icon as any} 
-                    size={24} 
-                    color={cropAspectRatio === preset.id ? '#FFFFFF' : '#8E8E93'} 
-                  />
-                  <Text 
-                    style={[
-                      imageEditStyles.cropPresetText,
-                      cropAspectRatio === preset.id && imageEditStyles.cropPresetTextActive,
-                    ]}
-                  >
-                    {preset.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-          
-          {/* Filter Options */}
-          {toolMode === 'filters' && (
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={imageEditStyles.filterOptions}
-            >
-              {FILTER_PRESETS.map((filter) => (
-                <TouchableOpacity
-                  key={filter.id}
-                  style={[
-                    imageEditStyles.filterPreset,
-                    selectedFilter === filter.id && imageEditStyles.filterPresetActive,
-                  ]}
-                  onPress={() => setSelectedFilter(filter.id)}
-                >
-                  <View style={imageEditStyles.filterPreview}>
-                    <ExpoImage
-                      source={{ uri: imageUri }}
-                      style={[imageEditStyles.filterPreviewImage, getFilterStyle(filter.id)]}
-                      contentFit="cover"
-                    />
-                    {filter.overlay && (
-                      <View
-                        style={[
-                          imageEditStyles.filterPreviewOverlay,
-                          { backgroundColor: filter.overlay },
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <Text 
-                    style={[
-                      imageEditStyles.filterPresetText,
-                      selectedFilter === filter.id && imageEditStyles.filterPresetTextActive,
-                    ]}
-                  >
-                    {filter.name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-          
-          {/* Adjustment Sliders */}
-          {toolMode === 'adjust' && (
-            <View style={imageEditStyles.adjustOptions}>
-              {/* Brightness */}
-              <View style={imageEditStyles.adjustRow}>
-                <View style={imageEditStyles.adjustLabelRow}>
-                  <Ionicons name="sunny-outline" size={20} color="#FFFFFF" />
-                  <Text style={imageEditStyles.adjustLabel}>Brightness</Text>
-                </View>
-                <View style={imageEditStyles.sliderContainer}>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, brightness: Math.max(0.5, prev.brightness - 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="remove" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  <View style={imageEditStyles.sliderTrack}>
-                    <View style={[imageEditStyles.sliderFill, { width: `${((adjustments.brightness - 0.5) / 1) * 100}%` }]} />
-                  </View>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, brightness: Math.min(1.5, prev.brightness + 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              {/* Contrast */}
-              <View style={imageEditStyles.adjustRow}>
-                <View style={imageEditStyles.adjustLabelRow}>
-                  <Ionicons name="contrast-outline" size={20} color="#FFFFFF" />
-                  <Text style={imageEditStyles.adjustLabel}>Contrast</Text>
-                </View>
-                <View style={imageEditStyles.sliderContainer}>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, contrast: Math.max(0.5, prev.contrast - 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="remove" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  <View style={imageEditStyles.sliderTrack}>
-                    <View style={[imageEditStyles.sliderFill, { width: `${((adjustments.contrast - 0.5) / 1) * 100}%` }]} />
-                  </View>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, contrast: Math.min(1.5, prev.contrast + 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              {/* Saturation */}
-              <View style={imageEditStyles.adjustRow}>
-                <View style={imageEditStyles.adjustLabelRow}>
-                  <Ionicons name="color-palette-outline" size={20} color="#FFFFFF" />
-                  <Text style={imageEditStyles.adjustLabel}>Saturation</Text>
-                </View>
-                <View style={imageEditStyles.sliderContainer}>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, saturation: Math.max(0, prev.saturation - 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="remove" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                  <View style={imageEditStyles.sliderTrack}>
-                    <View style={[imageEditStyles.sliderFill, { width: `${(adjustments.saturation / 2) * 100}%` }]} />
-                  </View>
-                  <TouchableOpacity 
-                    onPress={() => setAdjustments(prev => ({ ...prev, saturation: Math.min(2, prev.saturation + 0.1) }))}
-                    style={imageEditStyles.sliderButton}
-                  >
-                    <Ionicons name="add" size={18} color="#FFFFFF" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-              
-              {/* Reset button */}
-              <TouchableOpacity 
-                style={imageEditStyles.resetAdjustButton}
-                onPress={() => setAdjustments({ brightness: 1, contrast: 1, saturation: 1 })}
-              >
-                <Ionicons name="refresh" size={18} color="#0095F6" />
-                <Text style={imageEditStyles.resetAdjustText}>Reset Adjustments</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      </Animated.View>
-      )}
-    </Modal>
-  );
-};
-
-// ========== Image Editing Modal Styles ==========
-const imageEditStyles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#000000',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#000000',
-  },
-  headerButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  headerDoneButton: {
-    backgroundColor: '#0095F6',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  headerDoneText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  canvasContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#1C1C1E',
-  },
-  cropFrame: {
-    overflow: 'hidden',
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#000000',
-  },
-  imageWrapper: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  image: {
-    // Dimensions set dynamically
-  },
-  filterOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    pointerEvents: 'none',
-  },
-  cropBorder: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  cropCorner: {
-    position: 'absolute',
-    width: 20,
-    height: 20,
-    borderColor: '#FFFFFF',
-  },
-  topLeft: {
-    top: -1,
-    left: -1,
-    borderTopWidth: 3,
-    borderLeftWidth: 3,
-  },
-  topRight: {
-    top: -1,
-    right: -1,
-    borderTopWidth: 3,
-    borderRightWidth: 3,
-  },
-  bottomLeft: {
-    bottom: -1,
-    left: -1,
-    borderBottomWidth: 3,
-    borderLeftWidth: 3,
-  },
-  bottomRight: {
-    bottom: -1,
-    right: -1,
-    borderBottomWidth: 3,
-    borderRightWidth: 3,
-  },
-  gridLineH: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  gridLineV: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    width: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-  },
-  hintText: {
-    position: 'absolute',
-    bottom: 20,
-    color: 'rgba(255, 255, 255, 0.6)',
-    fontSize: 13,
-    textAlign: 'center',
-  },
-  toolTabs: {
-    flexDirection: 'row',
-    backgroundColor: '#1C1C1E',
-    borderTopWidth: 0.5,
-    borderTopColor: '#2C2C2E',
-    paddingVertical: 8,
-  },
-  toolTab: {
-    flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-  },
-  toolTabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#0095F6',
-  },
-  toolTabText: {
-    fontSize: 12,
-    color: '#8E8E93',
-    marginTop: 4,
-  },
-  toolTabTextActive: {
-    color: '#FFFFFF',
-  },
-  toolPanel: {
-    backgroundColor: '#000000',
-    paddingVertical: 16,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
-    minHeight: 140,
-  },
-  transformTools: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 20,
-  },
-  transformButton: {
-    alignItems: 'center',
-    padding: 12,
-  },
-  transformButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    marginTop: 6,
-  },
-  cropOptions: {
-    paddingHorizontal: 16,
-    gap: 16,
-  },
-  cropPreset: {
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 12,
-    backgroundColor: '#1C1C1E',
-    minWidth: 70,
-  },
-  cropPresetActive: {
-    backgroundColor: '#0095F6',
-  },
-  cropPresetText: {
-    color: '#8E8E93',
-    fontSize: 12,
-    marginTop: 6,
-  },
-  cropPresetTextActive: {
-    color: '#FFFFFF',
-  },
-  filterOptions: {
-    paddingHorizontal: 16,
-    gap: 12,
-  },
-  filterPreset: {
-    alignItems: 'center',
-  },
-  filterPresetActive: {
-    // Active state handled by border
-  },
-  filterPreview: {
-    width: 70,
-    height: 70,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginBottom: 6,
-  },
-  filterPreviewImage: {
-    width: '100%',
-    height: '100%',
-  },
-  filterPreviewOverlay: {
-    ...StyleSheet.absoluteFillObject,
-  },
-  filterPresetText: {
-    color: '#8E8E93',
-    fontSize: 11,
-  },
-  filterPresetTextActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  adjustOptions: {
-    paddingHorizontal: 20,
-  },
-  adjustRow: {
-    marginBottom: 16,
-  },
-  adjustLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  adjustLabel: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  sliderContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sliderButton: {
-    padding: 8,
-    backgroundColor: '#2C2C2E',
-    borderRadius: 8,
-  },
-  sliderTrack: {
-    flex: 1,
-    height: 4,
-    backgroundColor: '#2C2C2E',
-    borderRadius: 2,
-    marginHorizontal: 12,
-    overflow: 'hidden',
-  },
-  sliderFill: {
-    height: '100%',
-    backgroundColor: '#0095F6',
-    borderRadius: 2,
-  },
-  resetAdjustButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    marginTop: 8,
-  },
-  resetAdjustText: {
-    color: '#0095F6',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-});
-
 export default function EditStoryScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
-  const { clinicId } = useClinic();
+  const { clinicId } = useAuth();
+  const { selectedLocation, clearLocation } = useLocationSelection();
   const params = useLocalSearchParams<{
     uri: string;
     width: string;
     height: string;
     mediaType: string;
-    showLocationSticker?: string;
-    captureTime?: string; // ISO timestamp of when image was captured
-    frameImageUri?: string;
-    frameCaption?: string;
-    frameTime?: string;
-    frameClinicName?: string;
-    questionText?: string;
-    questionBgColor?: string;
-    questionProfileUrl?: string;
-    replyText?: string;
-    questionStickerId?: string;
-    responseId?: string;
   }>();
-
-  // ========== Capture Time ==========
-  // Use the image's capture time, fallback to current time
-  const captureTime = useMemo(() => {
-    if (params.captureTime) {
-      const parsed = new Date(params.captureTime);
-      return isNaN(parsed.getTime()) ? new Date() : parsed;
-    }
-    return new Date();
-  }, [params.captureTime]);
-
-  // ========== Clinic Data (dynamic from Firestore) ==========
-  const [clinicData, setClinicData] = useState<ClinicData | null>(null);
-
-  useEffect(() => {
-    if (!clinicId) return;
-    let cancelled = false;
-    fetchClinicData(clinicId).then(data => {
-      if (!cancelled && data) setClinicData(data);
-    });
-    return () => { cancelled = true; };
-  }, [clinicId]);
-
-  // Derived values – fall back to defaults until data loads
-  const clinicName = clinicData?.clinicName ?? 'My Clinic';
-  const clinicPhoneNumber = clinicData?.clinicPhone ?? clinicData?.phone ?? '';
-  const clinicCity = clinicData?.city ?? '';
-  const clinicType = clinicData?.clinicType ?? '';
-
-  // ========== Reply Mode State ==========
-  const [isReplyMode, setIsReplyMode] = useState(false);
-  const [replyBannerVisible, setReplyBannerVisible] = useState(false);
-  const replyProcessedRef = useRef<string | null>(null);
-
-  useEffect(() => {
-    if (
-      params.replyText &&
-      params.questionStickerId &&
-      params.responseId &&
-      params.responseId !== replyProcessedRef.current
-    ) {
-      replyProcessedRef.current = params.responseId;
-      setIsReplyMode(true);
-      setReplyBannerVisible(true);
-    }
-  }, [params.replyText, params.questionStickerId, params.responseId]);
 
   // ========== Tool States ==========
   const [activeMode, setActiveMode] = useState<'none' | 'text' | 'draw' | 'stickers'>('none');
@@ -5132,20 +588,6 @@ export default function EditStoryScreen() {
   const [stickerTrayVisible, setStickerTrayVisible] = useState(false);
   const [aiLabelModalVisible, setAiLabelModalVisible] = useState(false);
   const [toolsExpanded, setToolsExpanded] = useState(false);
-  const [locationStickerSheetVisible, setLocationStickerSheetVisible] = useState(false);
-  
-  // ========== Location Sticker State ==========
-  const [locationSticker, setLocationSticker] = useState<{
-    id: string;
-    clinicName: string;
-    city: string;
-    visible: boolean;
-    x: number;
-    y: number;
-    scale: number;
-    rotation: number;
-    variant: LocationStickerVariant;
-  } | null>(null);
   
   // ========== Text Editor States ==========
   const [textEditorVisible, setTextEditorVisible] = useState(false);
@@ -5169,22 +611,6 @@ export default function EditStoryScreen() {
   const [clockStyle, setClockStyle] = useState<ClockStyle>('digital');
   const [currentTime, setCurrentTime] = useState(new Date());
   
-  // ========== Clock Sticker State ==========
-  const [clockSticker, setClockSticker] = useState<{
-    id: string;
-    designIndex: number;
-    visible: boolean;
-    x: number;
-    y: number;
-    scale: number;
-    rotation: number;
-    time: Date; // The capture time to display
-  } | null>(null);
-  
-  // ========== GIF Picker State ==========
-  const [gifPickerVisible, setGifPickerVisible] = useState(false);
-  const [gifSearchQuery, setGifSearchQuery] = useState('');
-
   // ========== Music Picker States ==========
   const [musicPickerVisible, setMusicPickerVisible] = useState(false);
   const [musicSearchQuery, setMusicSearchQuery] = useState('');
@@ -5201,70 +627,20 @@ export default function EditStoryScreen() {
   // ========== Text Overlays ==========
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([]);
   
-  // ========== Photo Sticker States ==========
-  const [photoStickers, setPhotoStickers] = useState<PhotoSticker[]>([]);
-  const [backgroundImageUri, setBackgroundImageUri] = useState<string | null>(null);
-  const pendingPhotoPickerOpen = useRef(false);
-  const pendingFramePickerOpen = useRef(false);
-  const pendingQuestionEditorOpen = useRef(false);
-  const frameImageUriProcessed = useRef<string | null>(null);
+  // ========== Sticker Canvas State ==========
+  const [stickers, setStickers] = useState<StickerItem[]>([]);
+  const locationStickerAddedRef = useRef(false);
+  const [activeStickerId, setActiveStickerId] = useState<string | null>(null);
 
-  // ========== Phone Sticker States ==========
-  const [phoneStickersOnCanvas, setPhoneStickersOnCanvas] = useState<PhoneStickerOnCanvas[]>([]);
-  const [phoneStickerSettingsId, setPhoneStickerSettingsId] = useState<string | null>(null);
-
-  // ========== Clinic Name Sticker States ==========
-  const [clinicNameStickersOnCanvas, setClinicNameStickersOnCanvas] = useState<ClinicNameStickerOnCanvas[]>([]);
-  const [clinicNameStickerSettingsId, setClinicNameStickerSettingsId] = useState<string | null>(null);
-
-  // ========== Combo Sticker States ==========
-  const [comboStickersOnCanvas, setComboStickersOnCanvas] = useState<ComboStickerOnCanvas[]>([]);
-  const [comboStickerSettingsId, setComboStickerSettingsId] = useState<string | null>(null);
-
-  // ========== Dental Sticker States ==========
-  const [dentalStickersOnCanvas, setDentalStickersOnCanvas] = useState<DentalStickerOnCanvas[]>([]);
-
-  // ========== Laser Sticker States ==========
-  const [laserStickersOnCanvas, setLaserStickersOnCanvas] = useState<LaserStickerOnCanvas[]>([]);
-
-  // ========== Beauty Sticker States ==========
-  const [beautyStickersOnCanvas, setBeautyStickersOnCanvas] = useState<BeautyStickerOnCanvas[]>([]);
-
-  // ========== Frame Sticker States ==========
-  const [frameStickersOnCanvas, setFrameStickersOnCanvas] = useState<FrameStickerOnCanvas[]>([]);
-
-  // ========== Question Sticker States ==========
-  const [questionStickersOnCanvas, setQuestionStickersOnCanvas] = useState<QuestionStickerOnCanvas[]>([]);
-  const questionStickerProcessed = useRef<string | null>(null);
-
-  // ========== Trash Zone State ==========
-  const [isDraggingStickerToTrash, setIsDraggingStickerToTrash] = useState(false);
-  const [isHoveringTrash, setIsHoveringTrash] = useState(false);
-  const trashScaleAnim = useRef(new Animated.Value(1)).current;
-  const isDraggingRef = useRef(false);
-  const isHoveringRef = useRef(false);
-
-  // ========== Top Boundary Warning State ==========
-  const [isStickerAboveBoundary, setIsStickerAboveBoundary] = useState(false);
-  const isAboveBoundaryRef = useRef(false);
-  const boundaryFlashAnim = useRef(new Animated.Value(0)).current;
-  const boundaryShakeAnim = useRef(new Animated.Value(0)).current;
-  const DRAG_GUIDE_BOUNDARY_Y = Platform.OS === 'ios' ? 78 : 62; // guide top + some padding
-
-  // ========== Image Editing Modal State ==========
-  const [imageEditingVisible, setImageEditingVisible] = useState(false);
-  const [pendingEditImage, setPendingEditImage] = useState<{
-    uri: string;
-    width: number;
-    height: number;
-  } | null>(null);
-  
   // ========== Text Editing State ==========
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
 
+  // ========== Publishing State ==========
+  const [isPublishing, setIsPublishing] = useState(false);
+
   // ========== Computed Values ==========
-  const hasMedia = Boolean(params.uri) || Boolean(backgroundImageUri);
-  const hasValidContent = hasMedia || textOverlays.length > 0 || photoStickers.length > 0;
+  const hasMedia = Boolean(params.uri);
+  const hasValidContent = hasMedia || textOverlays.length > 0;
   const canShare = hasValidContent;
 
   // ========== Clock Update Effect ==========
@@ -5275,47 +651,103 @@ export default function EditStoryScreen() {
     return () => clearInterval(timer);
   }, []);
 
-  // ========== Handle Return from Location Permission Screen ==========
+  // ========== Auto-inject location sticker on return from picker ==========
   useEffect(() => {
-    if (params.showLocationSticker === 'true') {
-      // Small delay to ensure screen is fully rendered
-      setTimeout(() => {
-        setLocationStickerSheetVisible(true);
-      }, 300);
+    if (selectedLocation && !locationStickerAddedRef.current) {
+      locationStickerAddedRef.current = true;
+      setStickers(prev => [
+        ...prev,
+        {
+          id: `loc-${Date.now()}`,
+          type: 'location',
+          x: 0,
+          y: SCREEN_HEIGHT * 0.32,
+          scale: 1,
+          rotation: 0,
+          data: {
+            name: selectedLocation.name,
+            lat: selectedLocation.lat,
+            lng: selectedLocation.lng,
+            id: selectedLocation.id,
+            address: selectedLocation.address,
+            styleVariant: 'pill-gradient',
+          },
+        },
+      ]);
     }
-  }, [params.showLocationSticker]);
+    if (!selectedLocation) {
+      locationStickerAddedRef.current = false;
+    }
+  }, [selectedLocation]);
 
-  // ========== Handle Return from Frame Editor Screen ==========
-  useEffect(() => {
-    if (params.frameImageUri && params.frameImageUri !== frameImageUriProcessed.current) {
-      frameImageUriProcessed.current = params.frameImageUri;
-      const returnedClinicName = params.frameClinicName || clinicName;
-      if (!returnedClinicName || returnedClinicName === 'My Clinic') {
-      }
-      setTimeout(() => {
-        addFrameStickerToCanvas(
-          params.frameImageUri!,
-          params.frameCaption || '',
-          params.frameTime || '',
-          returnedClinicName,
-        );
-      }, 200);
-    }
-  }, [params.frameImageUri]);
+  // ========== Sticker CRUD ==========
+  const addSticker = useCallback((item: StickerItem) => {
+    setStickers(prev => [...prev, item]);
+  }, []);
 
-  // ========== Handle Return from Question Editor Screen ==========
-  useEffect(() => {
-    if (params.questionText && params.questionText !== questionStickerProcessed.current) {
-      questionStickerProcessed.current = params.questionText;
-      setTimeout(() => {
-        addQuestionStickerToCanvas(
-          params.questionText!,
-          params.questionBgColor || '#FFFFFF',
-          params.questionProfileUrl || 'https://ui-avatars.com/api/?name=Me&background=888&color=fff&size=112',
-        );
-      }, 200);
-    }
-  }, [params.questionText]);
+  const updateStickerTransform = useCallback(
+    (id: string, updates: { x: number; y: number; scale: number; rotation: number }) => {
+      setStickers(prev => prev.map(s => (s.id === id ? { ...s, ...updates } : s)));
+    },
+    [],
+  );
+
+  const handleStickerTap = useCallback((id: string) => {
+    setStickers(prev =>
+      prev.map(s => {
+        if (s.id !== id) return s;
+        if (s.type === 'location') {
+          return { ...s, data: { ...s.data, styleVariant: nextLocationStyle(s.data.styleVariant) } };
+        }
+        return s;
+      }),
+    );
+  }, []);
+
+  // ========== S2 — Active sticker management ==========
+  const selectSticker = useCallback((id: string) => {
+    setActiveStickerId(prev => prev === id ? prev : id);
+  }, []);
+
+  const deleteSticker = useCallback((id: string) => {
+    setStickers(prev => prev.filter(s => s.id !== id));
+    setActiveStickerId(null);
+  }, []);
+
+  const duplicateSticker = useCallback((id: string) => {
+    setStickers(prev => {
+      const source = prev.find(s => s.id === id);
+      if (!source) return prev;
+      const clone: StickerItem = {
+        ...source,
+        id: `${source.type}-${Date.now()}`,
+        x: source.x + 20,
+        y: source.y + 20,
+      };
+      return [...prev, clone];
+    });
+  }, []);
+
+  const bringToFront = useCallback((id: string) => {
+    setStickers(prev => {
+      const target = prev.find(s => s.id === id);
+      if (!target) return prev;
+      return [...prev.filter(s => s.id !== id), target];
+    });
+  }, []);
+
+  // ========== L1-L3 — Long-press lock/unlock ==========
+  const handleStickerLongPress = useCallback((_id: string) => {
+    // StickerCanvas handles selector display; no extra state needed here
+  }, []);
+
+  const toggleStickerLock = useCallback((id: string, locked: boolean) => {
+    setStickers(prev =>
+      prev.map(s =>
+        s.id === id ? { ...s, data: { ...s.data, isLocked: locked } } : s,
+      ),
+    );
+  }, []);
 
   // Animation refs
   const toolbarAnim = useRef(new Animated.Value(1)).current;
@@ -5324,7 +756,6 @@ export default function EditStoryScreen() {
   // Bottom sheet swipe animation refs
   const stickerTrayTranslateY = useRef(new Animated.Value(0)).current;
   const musicPickerTranslateY = useRef(new Animated.Value(0)).current;
-  const locationSheetTranslateY = useRef(new Animated.Value(0)).current;
 
   // ========== Memoized PanResponders for Bottom Sheets ==========
   const stickerTrayPanResponder = useMemo(() => PanResponder.create({
@@ -5391,37 +822,6 @@ export default function EditStoryScreen() {
     },
   }), [musicPickerTranslateY]);
 
-  const locationSheetPanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_, gestureState) => {
-      return gestureState.dy > 15 && Math.abs(gestureState.dx) < Math.abs(gestureState.dy);
-    },
-    onPanResponderMove: (_, gestureState) => {
-      if (gestureState.dy > 0) {
-        locationSheetTranslateY.setValue(gestureState.dy);
-      }
-    },
-    onPanResponderRelease: (_, gestureState) => {
-      if (gestureState.dy > 150 || (gestureState.dy > 50 && gestureState.vy > 0.5)) {
-        Animated.timing(locationSheetTranslateY, {
-          toValue: SCREEN_HEIGHT,
-          duration: 250,
-          useNativeDriver: true,
-        }).start(() => {
-          setLocationStickerSheetVisible(false);
-          locationSheetTranslateY.setValue(0);
-        });
-      } else {
-        Animated.spring(locationSheetTranslateY, {
-          toValue: 0,
-          useNativeDriver: true,
-          tension: 100,
-          friction: 10,
-        }).start();
-      }
-    },
-  }), [locationSheetTranslateY]);
-
   // ========== Media Transform State ==========
   const mediaScale = useRef(new Animated.Value(1)).current;
   const mediaTranslateX = useRef(new Animated.Value(0)).current;
@@ -5468,14 +868,9 @@ export default function EditStoryScreen() {
 
   // ========== Pan Responder for Gestures ==========
   const mediaPanResponder = useMemo(() => PanResponder.create({
-    onStartShouldSetPanResponder: (evt) => {
-      // Only respond to two-finger gestures to prevent accidental image movement
-      return evt.nativeEvent.touches.length >= 2;
-    },
-    onMoveShouldSetPanResponder: (evt, gestureState) => {
-      // Only respond to two-finger gestures
-      const touches = evt.nativeEvent.touches;
-      if (touches.length < 2) return false;
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, gestureState) => {
+      // Respond to any movement
       return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
     },
     onPanResponderGrant: (evt) => {
@@ -5489,13 +884,12 @@ export default function EditStoryScreen() {
         pinchCenterY.current = center.y;
         pinchStartTranslateX.current = lastTranslateX.current;
         pinchStartTranslateY.current = lastTranslateY.current;
+      } else {
+        isPinching.current = false;
       }
     },
     onPanResponderMove: (evt, gestureState) => {
       const touches = evt.nativeEvent.touches;
-      
-      // Only process two-finger gestures
-      if (touches.length < 2) return;
       
       if (touches.length >= 2) {
         // Initialize pinch if just started
@@ -5533,6 +927,19 @@ export default function EditStoryScreen() {
         const newY = pinchStartTranslateY.current + centerDy;
         
         // Increased movement range for smaller scaled images
+        const maxOffset = SCREEN_WIDTH;
+        const clampedX = Math.max(-maxOffset, Math.min(maxOffset, newX));
+        const clampedY = Math.max(-maxOffset, Math.min(maxOffset, newY));
+        
+        mediaTranslateX.setValue(clampedX);
+        mediaTranslateY.setValue(clampedY);
+        
+      } else if (touches.length === 1 && !isPinching.current) {
+        // Single finger pan
+        const newX = lastTranslateX.current + gestureState.dx;
+        const newY = lastTranslateY.current + gestureState.dy;
+        
+        // Increased movement range
         const maxOffset = SCREEN_WIDTH;
         const clampedX = Math.max(-maxOffset, Math.min(maxOffset, newX));
         const clampedY = Math.max(-maxOffset, Math.min(maxOffset, newY));
@@ -5586,541 +993,85 @@ export default function EditStoryScreen() {
   }, [router]);
 
   const handleShare = useCallback(async () => {
-    // TODO: Implement story sharing with all overlays
+    if (!clinicId || !params.uri || isPublishing) return;
 
-    // Attach reply metadata if in reply mode
-    if (isReplyMode && params.questionStickerId && params.responseId) {
+    setIsPublishing(true);
+    try {
+      // ── 1. Upload media to Firebase Storage ──
+      const blob: Blob = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.response);
+          else reject(new Error(`Upload blob failed: ${xhr.status}`));
+        };
+        xhr.onerror = () => reject(new Error('Failed to read media file'));
+        xhr.responseType = 'blob';
+        xhr.timeout = 30000;
+        xhr.open('GET', params.uri, true);
+        xhr.send(null);
+      });
 
-      // Mark the response as read after publish
-      if (clinicId) {
-        try {
-          await markQuestionResponseRead(clinicId, params.responseId);
-        } catch (e) {
-          console.error('Failed to mark response as read:', e);
-        }
+      const isVideo = params.mediaType === 'video';
+      const ext = isVideo ? 'mp4' : 'jpg';
+      const contentType = isVideo ? 'video/mp4' : 'image/jpeg';
+      const filename = `${Date.now()}.${ext}`;
+      const storageRef = ref(storage, `clinics/${clinicId}/stories/${filename}`);
+
+      const downloadURL: string = await new Promise((resolve, reject) => {
+        const uploadTask = uploadBytesResumable(storageRef, blob, { contentType });
+        uploadTask.on(
+          'state_changed',
+          null,
+          (err) => reject(err),
+          async () => {
+            const url = await getDownloadURL(uploadTask.snapshot.ref);
+            resolve(url);
+          },
+        );
+      });
+
+      // ── 2. Build optional location from context ──
+      let storyLocation: StoryLocation | undefined;
+      if (
+        selectedLocation?.lat != null &&
+        selectedLocation?.lng != null &&
+        isFinite(selectedLocation.lat) &&
+        isFinite(selectedLocation.lng)
+      ) {
+        storyLocation = {
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lng,
+          ...(selectedLocation.name ? { placeName: selectedLocation.name } : {}),
+          ...(selectedLocation.id ? { placeId: selectedLocation.id } : {}),
+          ...(selectedLocation.address ? { address: selectedLocation.address } : {}),
+        };
       }
 
-      // Clean exit — restore normal edit state
-      setIsReplyMode(false);
-      setReplyBannerVisible(false);
+      // ── 3. Create story in Firestore ──
+      await createStory(clinicId, {
+        mediaUrl: downloadURL,
+        caption: caption || undefined,
+        type: isVideo ? 'video' : 'image',
+        allowReplies: commentsEnabled,
+        location: storyLocation,
+        stickers: stickersToSnapshots(stickers),
+      });
+
+      // ── 4. Clean up and navigate back ──
+      clearLocation();
+      router.dismissAll();
+      router.replace('/(tabs)/create');
+    } catch (error: any) {
+      console.error('[Story] Publish failed:', error);
+      Alert.alert('Publish Failed', error?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setIsPublishing(false);
     }
-  }, [params.uri, aiLabelEnabled, commentsEnabled, textOverlays, isReplyMode, params.questionStickerId, params.responseId, params.replyText, clinicId]);
+  }, [clinicId, params.uri, params.mediaType, isPublishing, selectedLocation, caption, commentsEnabled, clearLocation, router, stickers]);
 
   const handleDownload = useCallback(() => {
     // TODO: Implement download functionality
-  }, []);
-
-  // ========== Location Sticker Handlers ==========
-  const updateLocationStickerTransform = useCallback((updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setLocationSticker(prev => prev ? { ...prev, ...updates } : null);
-  }, []);
-
-  // Add clinic sticker directly (no selection screen needed)
-  const addClinicSticker = useCallback(() => {
-    setLocationSticker({
-      id: 'clinic-sticker',
-      clinicName: clinicName,
-      city: clinicCity,
-      visible: true,
-      x: SCREEN_WIDTH / 2 - 70,
-      y: SCREEN_HEIGHT / 2 - 40,
-      scale: 1,
-      rotation: -4, // Slight rotation for style
-      variant: 'branded',
-    });
-  }, [clinicName, clinicCity]);
-
-  // ========== Clock Sticker Handlers ==========
-  const updateClockStickerTransform = useCallback((updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setClockSticker(prev => prev ? { ...prev, ...updates } : null);
-  }, []);
-
-  // Add clock sticker to canvas (starts with Style 7 = index 6)
-  const addClockSticker = useCallback(() => {
-    setClockSticker({
-      id: 'clock-sticker',
-      designIndex: 6, // Style 7 as default
-      visible: true,
-      x: SCREEN_WIDTH / 2 - 60,
-      y: SCREEN_HEIGHT / 2 - 60,
-      scale: 1,
-      rotation: 0,
-      time: captureTime, // Use image capture time
-    });
-  }, [captureTime]);
-
-  // Cycle to next clock design when tapped (8 styles total)
-  const cycleClockDesign = useCallback(() => {
-    setClockSticker(prev => {
-      if (!prev) return null;
-      return {
-        ...prev,
-        designIndex: (prev.designIndex + 1) % 8,
-      };
-    });
-  }, []);
-
-  // ========== Photo Sticker Handlers ==========
-  const addPhotoSticker = useCallback((asset: ImagePicker.ImagePickerAsset) => {
-    const newSticker: PhotoSticker = {
-      id: `photo-${Date.now()}`,
-      uri: asset.uri,
-      width: asset.width || 300,
-      height: asset.height || 300,
-      x: SCREEN_WIDTH / 2 - 75,
-      y: SCREEN_HEIGHT / 2 - 75,
-      scale: 1,
-      rotation: 0,
-    };
-    
-    setPhotoStickers(prev => [...prev, newSticker]);
-  }, []);
-
-  const openPhotoPicker = useCallback(async () => {
-    // Determine if we already have a background image
-    const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
-    try {
-      // Request permission using the direct expo-image-picker method
-      // This ensures proper native picker is launched
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
-      if (!permissionResult.granted) {
-        Alert.alert(
-          'Permission Required',
-          'Photo library access is required to use this feature. Please enable it in your device settings.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
-      
-      // Launch the native image picker directly
-      // Using single selection mode for maximum compatibility across iOS versions
-      // This ensures we get the proper native photo picker, not a share sheet
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: false,
-        quality: 1,
-        allowsEditing: false,
-        exif: false,
-        base64: false,
-      });
-      
-      
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        
-        if (alreadyHasBackground) {
-          // Background already exists — add new photo as a draggable sticker on top
-          addPhotoSticker(asset);
-        } else {
-          // No background yet — open editing modal, first photo becomes background
-          const imageData = {
-            uri: asset.uri,
-            width: asset.width || 1080,
-            height: asset.height || 1920,
-          };
-          
-          setPendingEditImage(imageData);
-          
-          // Then show the modal (with a small delay to ensure state is set)
-          setTimeout(() => {
-            setImageEditingVisible(true);
-          }, 100);
-        }
-      } else {
-      }
-    } catch (error) {
-      console.error('=== ERROR in openPhotoPicker ===', error);
-      Alert.alert(
-        'Error',
-        'Failed to open photo library. Please try again.',
-        [{ text: 'OK' }]
-      );
-    }
-  }, [params.uri, backgroundImageUri, addPhotoSticker]);
-
-  // Open image picker for Frames sticker (called after Modal is fully dismissed)
-  const openFramePicker = useCallback(async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
-          'Please allow access to your photo library to use Frames.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsMultipleSelection: false,
-        allowsEditing: false,
-        quality: 1,
-        exif: false,
-        base64: false,
-      });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        router.push({
-          pathname: '/story/frame-editor',
-          params: {
-            imageUri: result.assets[0].uri,
-            editUri: params.uri || '',
-            editWidth: params.width || '',
-            editHeight: params.height || '',
-            editMediaType: params.mediaType || '',
-            clinicName: clinicName,
-          },
-        });
-      } else {
-      }
-    } catch (error) {
-      console.error('Error opening image picker for Frames:', error);
-      Alert.alert(
-        'Error',
-        'Failed to open photo library. Please try again.',
-        [{ text: 'OK' }]
-      );
-    }
-  }, [router, params.uri, params.width, params.height, params.mediaType, clinicName]);
-
-  // Handler for when image editing is complete
-  const handleImageEditingDone = useCallback((editedUri: string, width: number, height: number) => {
-    const alreadyHasBackground = Boolean(params.uri) || Boolean(backgroundImageUri);
-    
-    if (!alreadyHasBackground) {
-      // First photo — set as the main background canvas
-      setBackgroundImageUri(editedUri);
-    } else {
-      // Subsequent photos — add as draggable sticker layer
-      const newSticker: PhotoSticker = {
-        id: `photo-${Date.now()}`,
-        uri: editedUri,
-        width: width,
-        height: height,
-        x: SCREEN_WIDTH / 2 - 75,
-        y: SCREEN_HEIGHT / 2 - 75,
-        scale: 1,
-        rotation: 0,
-      };
-      setPhotoStickers(prev => [...prev, newSticker]);
-    }
-    
-    setImageEditingVisible(false);
-    setPendingEditImage(null);
-  }, [params.uri, backgroundImageUri]);
-
-  // Handler for canceling image editing
-  const handleImageEditingCancel = useCallback(() => {
-    setImageEditingVisible(false);
-    setPendingEditImage(null);
-  }, []);
-
-  const updatePhotoStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setPhotoStickers(prev => prev.map(sticker => 
-      sticker.id === id ? { ...sticker, ...updates } : sticker
-    ));
-  }, []);
-
-  const removePhotoSticker = useCallback((id: string) => {
-    setPhotoStickers(prev => prev.filter(sticker => sticker.id !== id));
-  }, []);
-
-  // ========== Phone Sticker Handlers ==========
-  const addPhoneStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: PhoneStickerOnCanvas = {
-      id: `phone-${Date.now()}`,
-      designId,
-      phoneNumber: clinicPhoneNumber,
-      x: SCREEN_WIDTH / 2 - 70,
-      y: SCREEN_HEIGHT / 2 - 40,
-      scale: 1,
-      rotation: 0,
-      isCallable: true, // unlocked (tap-to-call) by default
-    };
-    setPhoneStickersOnCanvas(prev => [...prev, newSticker]);
-  }, [clinicPhoneNumber]);
-
-  const updatePhoneStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setPhoneStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removePhoneStickerFromCanvas = useCallback((id: string) => {
-    setPhoneStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-    // Close settings panel if this sticker was showing it
-    setPhoneStickerSettingsId(prev => prev === id ? null : prev);
-  }, []);
-
-  const togglePhoneStickerCallable = useCallback((id: string) => {
-    setPhoneStickersOnCanvas(prev => prev.map(s =>
-      s.id === id ? { ...s, isCallable: !s.isCallable } : s
-    ));
-  }, []);
-
-  // ========== Clinic Name Sticker Handlers ==========
-  const addClinicNameStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: ClinicNameStickerOnCanvas = {
-      id: `clinicname-${Date.now()}`,
-      designId,
-      clinicName,
-      x: SCREEN_WIDTH / 2 - 70,
-      y: SCREEN_HEIGHT / 2 - 40,
-      scale: 1,
-      rotation: 0,
-      isNavigable: true, // default: unlocked (tap navigates to clinic profile)
-    };
-    setClinicNameStickersOnCanvas(prev => [...prev, newSticker]);
-  }, [clinicName]);
-
-  const updateClinicNameStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setClinicNameStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeClinicNameStickerFromCanvas = useCallback((id: string) => {
-    setClinicNameStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  const toggleClinicNameStickerNavigable = useCallback((id: string) => {
-    setClinicNameStickersOnCanvas(prev => prev.map(s =>
-      s.id === id ? { ...s, isNavigable: !s.isNavigable } : s
-    ));
-  }, []);
-
-  // ========== Combo Sticker Handlers ==========
-  const addComboStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: ComboStickerOnCanvas = {
-      id: `combo-${Date.now()}`,
-      designId,
-      clinicName,
-      clinicPhoneNumber,
-      x: SCREEN_WIDTH / 2 - 80,
-      y: SCREEN_HEIGHT / 2 - 50,
-      scale: 1,
-      rotation: 0,
-      isInteractive: true, // default: unlocked
-    };
-    setComboStickersOnCanvas(prev => [...prev, newSticker]);
-  }, [clinicName, clinicPhoneNumber]);
-
-  const updateComboStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setComboStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeComboStickerFromCanvas = useCallback((id: string) => {
-    setComboStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  const toggleComboStickerInteractive = useCallback((id: string) => {
-    setComboStickersOnCanvas(prev => prev.map(s =>
-      s.id === id ? { ...s, isInteractive: !s.isInteractive } : s
-    ));
-  }, []);
-
-  // ========== Dental Sticker Handlers ==========
-  const addDentalStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: DentalStickerOnCanvas = {
-      id: `dental-${Date.now()}`,
-      designId,
-      x: SCREEN_WIDTH / 2 - 60,
-      y: SCREEN_HEIGHT / 2 - 60,
-      scale: 1,
-      rotation: 0,
-    };
-    setDentalStickersOnCanvas(prev => [...prev, newSticker]);
-  }, []);
-
-  const updateDentalStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setDentalStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeDentalStickerFromCanvas = useCallback((id: string) => {
-    setDentalStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  // ========== Laser Sticker Handlers ==========
-  const addLaserStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: LaserStickerOnCanvas = {
-      id: `laser-${Date.now()}`,
-      designId,
-      x: SCREEN_WIDTH / 2 - 60,
-      y: SCREEN_HEIGHT / 2 - 60,
-      scale: 1,
-      rotation: 0,
-    };
-    setLaserStickersOnCanvas(prev => [...prev, newSticker]);
-  }, []);
-
-  const updateLaserStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setLaserStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeLaserStickerFromCanvas = useCallback((id: string) => {
-    setLaserStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  // ========== Beauty Sticker Handlers ==========
-  const addBeautyStickerToCanvas = useCallback((designId: string) => {
-    const newSticker: BeautyStickerOnCanvas = {
-      id: `beauty-${Date.now()}`,
-      designId,
-      x: SCREEN_WIDTH / 2 - 60,
-      y: SCREEN_HEIGHT / 2 - 60,
-      scale: 1,
-      rotation: 0,
-    };
-    setBeautyStickersOnCanvas(prev => [...prev, newSticker]);
-  }, []);
-
-  const updateBeautyStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setBeautyStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeBeautyStickerFromCanvas = useCallback((id: string) => {
-    setBeautyStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  // ========== Frame Sticker Handlers ==========
-  const addFrameStickerToCanvas = useCallback((imageUri: string, caption: string, time: string, username: string) => {
-    // Smart initial scale: frame sticker is 180px wide, target ~45% of canvas width
-    const frameStickerBaseSize = 180;
-    const targetWidth = SCREEN_WIDTH * 0.45;
-    const smartScale = Math.max(0.5, Math.min(1.5, targetWidth / frameStickerBaseSize));
-
-    const newSticker: FrameStickerOnCanvas = {
-      id: `frame-${Date.now()}`,
-      imageUri,
-      caption: caption.length > 150 ? caption.slice(0, 150) : caption,
-      username,
-      time,
-      x: SCREEN_WIDTH / 2 - (frameStickerBaseSize * smartScale) / 2,
-      y: SCREEN_HEIGHT / 2 - (frameStickerBaseSize * smartScale) / 2,
-      scale: smartScale,
-      rotation: 0,
-      shape: 'square',
-    };
-    setFrameStickersOnCanvas(prev => [...prev, newSticker]);
-  }, []);
-
-  const updateFrameStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setFrameStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeFrameStickerFromCanvas = useCallback((id: string) => {
-    setFrameStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  const toggleFrameStickerShape = useCallback((id: string) => {
-    setFrameStickersOnCanvas(prev => prev.map(s =>
-      s.id === id ? { ...s, shape: s.shape === 'square' ? 'circle' as const : 'square' as const } : s
-    ));
-  }, []);
-
-  // ========== Question Sticker Handlers ==========
-  const addQuestionStickerToCanvas = useCallback((questionText: string, backgroundColor: string, profileImageUrl: string) => {
-    const baseSize = QUESTION_STICKER_SIZE;
-    const targetWidth = SCREEN_WIDTH * 0.45;
-    const smartScale = Math.max(0.5, Math.min(1.5, targetWidth / baseSize));
-
-    const newSticker: QuestionStickerOnCanvas = {
-      id: `question-${Date.now()}`,
-      questionText: questionText.length > 200 ? questionText.slice(0, 200) : questionText,
-      backgroundColor,
-      profileImageUrl,
-      x: SCREEN_WIDTH / 2 - (baseSize * smartScale) / 2,
-      y: SCREEN_HEIGHT / 2 - (baseSize * smartScale) / 2,
-      scale: smartScale,
-      rotation: 0,
-    };
-    setQuestionStickersOnCanvas(prev => [...prev, newSticker]);
-  }, []);
-
-  const updateQuestionStickerTransform = useCallback((id: string, updates: Partial<{ x: number; y: number; scale: number; rotation: number }>) => {
-    setQuestionStickersOnCanvas(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
-  }, []);
-
-  const removeQuestionStickerFromCanvas = useCallback((id: string) => {
-    setQuestionStickersOnCanvas(prev => prev.filter(s => s.id !== id));
-  }, []);
-
-  // ========== Trash Zone Handler (optimized — only setState on actual transitions) ==========
-  const handlePhoneStickerDragState = useCallback((isDragging: boolean, pageY?: number) => {
-    // Only update dragging state when it actually changes
-    if (isDraggingRef.current !== isDragging) {
-      isDraggingRef.current = isDragging;
-      setIsDraggingStickerToTrash(isDragging);
-      // Close settings panel when dragging starts
-      if (isDragging) {
-        setPhoneStickerSettingsId(null);
-        setClinicNameStickerSettingsId(null);
-        setComboStickerSettingsId(null);
-      }
-    }
-    if (!isDragging) {
-      if (isHoveringRef.current) {
-        isHoveringRef.current = false;
-        setIsHoveringTrash(false);
-        Animated.spring(trashScaleAnim, { toValue: 1, useNativeDriver: true, tension: 200, friction: 15 }).start();
-      }
-      // Reset boundary warning on drag end
-      if (isAboveBoundaryRef.current) {
-        isAboveBoundaryRef.current = false;
-        setIsStickerAboveBoundary(false);
-        boundaryFlashAnim.setValue(0);
-        boundaryShakeAnim.setValue(0);
-      }
-      return;
-    }
-    if (pageY !== undefined) {
-      const TRASH_ZONE_TOP = SCREEN_HEIGHT - 120;
-      const hovering = pageY > TRASH_ZONE_TOP;
-      // Only update hover state & animate on actual transition
-      if (isHoveringRef.current !== hovering) {
-        isHoveringRef.current = hovering;
-        setIsHoveringTrash(hovering);
-        Animated.spring(trashScaleAnim, {
-          toValue: hovering ? 1.35 : 1,
-          useNativeDriver: true,
-          tension: 200,
-          friction: 15,
-        }).start();
-      }
-
-      // ── Top boundary detection ──
-      const aboveBoundary = pageY < DRAG_GUIDE_BOUNDARY_Y;
-      if (isAboveBoundaryRef.current !== aboveBoundary) {
-        isAboveBoundaryRef.current = aboveBoundary;
-        setIsStickerAboveBoundary(aboveBoundary);
-        if (aboveBoundary) {
-          // Flash red + shake animation
-          Animated.sequence([
-            Animated.timing(boundaryFlashAnim, { toValue: 1, duration: 150, useNativeDriver: false }),
-            Animated.timing(boundaryFlashAnim, { toValue: 0.6, duration: 150, useNativeDriver: false }),
-            Animated.timing(boundaryFlashAnim, { toValue: 1, duration: 150, useNativeDriver: false }),
-          ]).start();
-          Animated.sequence([
-            Animated.timing(boundaryShakeAnim, { toValue: 8, duration: 60, useNativeDriver: true }),
-            Animated.timing(boundaryShakeAnim, { toValue: -8, duration: 60, useNativeDriver: true }),
-            Animated.timing(boundaryShakeAnim, { toValue: 6, duration: 60, useNativeDriver: true }),
-            Animated.timing(boundaryShakeAnim, { toValue: -6, duration: 60, useNativeDriver: true }),
-            Animated.timing(boundaryShakeAnim, { toValue: 0, duration: 60, useNativeDriver: true }),
-          ]).start();
-        } else {
-          boundaryFlashAnim.setValue(0);
-          boundaryShakeAnim.setValue(0);
-        }
-      }
-    }
-  }, [trashScaleAnim, boundaryFlashAnim, boundaryShakeAnim, DRAG_GUIDE_BOUNDARY_Y]);
-
-  // ========== Memoized Long-Press Handlers (prevents PanResponder re-creation) ==========
-  const handlePhoneStickerLongPress = useCallback((id: string) => {
-    setPhoneStickerSettingsId(prev => prev === id ? null : id);
-  }, []);
-  const handleClinicNameStickerLongPress = useCallback((id: string) => {
-    setClinicNameStickerSettingsId(prev => prev === id ? null : id);
-  }, []);
-  const handleComboStickerLongPress = useCallback((id: string) => {
-    setComboStickerSettingsId(prev => prev === id ? null : id);
+    console.log('Downloading story...');
   }, []);
 
   // ========== Text Editor ==========
@@ -6154,6 +1105,7 @@ export default function EditStoryScreen() {
     }
     setTextEditorVisible(true);
     setActiveMode('text');
+    setActiveStickerId(null);
   }, [textOverlays]);
 
   const closeTextEditor = useCallback(() => {
@@ -6235,6 +1187,7 @@ export default function EditStoryScreen() {
   const openStickerTray = useCallback(() => {
     setStickerTrayVisible(true);
     setActiveMode('stickers');
+    setActiveStickerId(null);
   }, []);
 
   const closeStickerTray = useCallback(() => {
@@ -6242,198 +1195,81 @@ export default function EditStoryScreen() {
     setActiveMode('none');
   }, []);
 
-  // Called when the sticker tray Modal finishes its dismiss animation (iOS only)
-  const handleStickerTrayDismiss = useCallback(() => {
-    if (pendingPhotoPickerOpen.current) {
-      pendingPhotoPickerOpen.current = false;
-      setTimeout(() => {
-        openPhotoPicker();
-      }, 150);
-    } else if (pendingFramePickerOpen.current) {
-      pendingFramePickerOpen.current = false;
-      setTimeout(() => {
-        openFramePicker();
-      }, 150);
-    } else if (pendingQuestionEditorOpen.current) {
-      pendingQuestionEditorOpen.current = false;
-      setTimeout(() => {
-        router.push({
-          pathname: '/story/question-editor',
-          params: {
-            editUri: params.uri || '',
-            editWidth: params.width || '',
-            editHeight: params.height || '',
-            editMediaType: params.mediaType || '',
-          },
-        });
-      }, 150);
-    }
-  }, [openPhotoPicker, openFramePicker, router, params.uri, params.width, params.height, params.mediaType]);
-
-  // Android fallback: onDismiss doesn't fire on Android, so use useEffect
-  useEffect(() => {
-    if (!stickerTrayVisible && Platform.OS === 'android') {
-      if (pendingPhotoPickerOpen.current) {
-        pendingPhotoPickerOpen.current = false;
-        setTimeout(() => {
-          openPhotoPicker();
-        }, 300);
-      } else if (pendingFramePickerOpen.current) {
-        pendingFramePickerOpen.current = false;
-        setTimeout(() => {
-          openFramePicker();
-        }, 300);
-      } else if (pendingQuestionEditorOpen.current) {
-        pendingQuestionEditorOpen.current = false;
-        setTimeout(() => {
-          router.push({
-            pathname: '/story/question-editor',
-            params: {
-              editUri: params.uri || '',
-              editWidth: params.width || '',
-              editHeight: params.height || '',
-              editMediaType: params.mediaType || '',
-            },
-          });
-        }, 300);
-      }
-    }
-  }, [stickerTrayVisible, openPhotoPicker, openFramePicker, router, params.uri, params.width, params.height, params.mediaType]);
-
-  // Close location sticker sheet
-  const closeLocationStickerSheet = useCallback(() => {
-    Animated.timing(locationSheetTranslateY, {
-      toValue: SCREEN_HEIGHT,
-      duration: 250,
-      useNativeDriver: true,
-    }).start(() => {
-      setLocationStickerSheetVisible(false);
-      locationSheetTranslateY.setValue(0);
-    });
-  }, [locationSheetTranslateY]);
-
-  // Handle selecting a location sticker style from the sheet
-  const handleLocationStickerSelect = useCallback((styleVariant: string) => {
-    closeLocationStickerSheet();
-    // Add clinic sticker after animation completes
-    setTimeout(() => addClinicSticker(), 250);
-  }, [closeLocationStickerSheet, addClinicSticker]);
-
-  const handleStickerSelect = useCallback(async (stickerId: string) => {
-    // Handle location sticker - check permission first
+  const handleStickerSelect = useCallback((stickerId: string) => {
     if (stickerId === 'location') {
       closeStickerTray();
-      
-      try {
-        // Check if location permission is already granted
-        const { status } = await Location.getForegroundPermissionsAsync();
-        
-        if (status === 'granted') {
-          // Permission already granted - show sticker style selector directly
-          setTimeout(() => setLocationStickerSheetVisible(true), 200);
-        } else {
-          // Permission not granted - navigate to permission screen
-          // Build the return URL with current params plus the showLocationSticker flag
-          const returnParams = new URLSearchParams();
-          if (params.uri) returnParams.set('uri', params.uri);
-          if (params.width) returnParams.set('width', params.width);
-          if (params.height) returnParams.set('height', params.height);
-          if (params.mediaType) returnParams.set('mediaType', params.mediaType);
-          returnParams.set('showLocationSticker', 'true');
-          
-          router.push({
-            pathname: '/story/location-permission',
-            params: { returnTo: `/story/edit?${returnParams.toString()}` }
-          });
-        }
-      } catch (error) {
-        console.error('Error checking location permission:', error);
-        // On error, navigate to permission screen anyway
-        router.push('/story/location-permission');
-      }
+      setTimeout(() => router.push('/story/location-list' as any), 300);
       return;
     }
-    
-    // Handle clock sticker - add directly to canvas
-    if (stickerId === 'clock') {
-      closeStickerTray();
-      setTimeout(() => addClockSticker(), 200);
-      return;
-    }
-    
-    // Handle photo sticker - open image picker
-    if (stickerId === 'photo') {
-      pendingPhotoPickerOpen.current = true;
+    if (stickerId === 'emoji') {
+      addSticker({
+        id: `emoji-${Date.now()}`,
+        type: 'emoji',
+        x: 0,
+        y: SCREEN_HEIGHT * 0.25,
+        scale: 1,
+        rotation: 0,
+        data: { emoji: '😊', size: 48 },
+      });
       closeStickerTray();
       return;
     }
-    
-    // Handle GIF picker
-    if (stickerId === 'gif') {
-      closeStickerTray();
-      setTimeout(() => setGifPickerVisible(true), 300);
-      return;
-    }
-
-    // Handle Frames sticker – set pending flag, open picker after Modal fully dismisses
-    if (stickerId === 'frames') {
-      pendingFramePickerOpen.current = true;
-      closeStickerTray();
-      return;
-    }
-
-    // Handle Questions sticker – set pending flag, open editor after Modal fully dismisses
-    if (stickerId === 'questions') {
-      pendingQuestionEditorOpen.current = true;
+    if (stickerId === 'hashtag') {
+      addSticker({
+        id: `tag-${Date.now()}`,
+        type: 'hashtag',
+        x: 0,
+        y: SCREEN_HEIGHT * 0.3,
+        scale: 1,
+        rotation: 0,
+        data: { tag: 'dental' },
+      });
       closeStickerTray();
       return;
     }
-
-    // Handle phone stickers – add to canvas
-    if (stickerId.startsWith('phone_')) {
+    if (stickerId === 'poll') {
+      addSticker({
+        id: `poll-${Date.now()}`,
+        type: 'poll',
+        x: 0,
+        y: SCREEN_HEIGHT * 0.22,
+        scale: 1,
+        rotation: 0,
+        data: { question: 'Yes or No?', optionA: 'Yes', optionB: 'No' },
+      });
       closeStickerTray();
-      setTimeout(() => addPhoneStickerToCanvas(stickerId), 200);
       return;
     }
-
-    // Handle clinic name stickers – add to canvas
-    if (stickerId.startsWith('clinicname_')) {
+    if (stickerId === 'countdown') {
+      addSticker({
+        id: `time-${Date.now()}`,
+        type: 'time',
+        x: 0,
+        y: SCREEN_HEIGHT * 0.12,
+        scale: 1,
+        rotation: 0,
+        data: {},
+      });
       closeStickerTray();
-      setTimeout(() => addClinicNameStickerToCanvas(stickerId), 200);
       return;
     }
-
-    // Handle combo stickers – add to canvas
-    if (stickerId.startsWith('combo_')) {
+    if (stickerId === 'slider') {
+      addSticker({
+        id: `music-${Date.now()}`,
+        type: 'music',
+        x: 0,
+        y: SCREEN_HEIGHT * 0.35,
+        scale: 1,
+        rotation: 0,
+        data: { title: 'Now Playing', artist: 'Artist' },
+      });
       closeStickerTray();
-      setTimeout(() => addComboStickerToCanvas(stickerId), 200);
       return;
     }
-
-    // Handle dental stickers – add to canvas (decorative, no data props)
-    if (stickerId.startsWith('dental_')) {
-      closeStickerTray();
-      setTimeout(() => addDentalStickerToCanvas(stickerId), 200);
-      return;
-    }
-
-    // Handle laser stickers – add to canvas (decorative, no data props)
-    if (stickerId.startsWith('laser_')) {
-      closeStickerTray();
-      setTimeout(() => addLaserStickerToCanvas(stickerId), 200);
-      return;
-    }
-
-    // Handle beauty stickers – add to canvas (decorative, no data props)
-    if (stickerId.startsWith('beauty_')) {
-      closeStickerTray();
-      setTimeout(() => addBeautyStickerToCanvas(stickerId), 200);
-      return;
-    }
-
-    // TODO: Add sticker to canvas
+    // Default: log unhandled sticker
+    console.log('Selected sticker:', stickerId);
     closeStickerTray();
-  }, [closeStickerTray, params, router, addClockSticker, openPhotoPicker, addPhoneStickerToCanvas, addClinicNameStickerToCanvas, addComboStickerToCanvas, addDentalStickerToCanvas, addLaserStickerToCanvas, addBeautyStickerToCanvas]);
+  }, [closeStickerTray, router, addSticker]);
 
   // ========== Draw Mode ==========
   const toggleDrawMode = useCallback(() => {
@@ -6863,7 +1699,6 @@ export default function EditStoryScreen() {
         animationType="slide"
         transparent={true}
         onRequestClose={closeStickerTray}
-        onDismiss={handleStickerTrayDismiss}
       >
         <View style={styles.stickerOverlay}>
           {/* Tap outside to close - wraps background blur and gradient */}
@@ -6921,7 +1756,12 @@ export default function EditStoryScreen() {
                 {/* Row 1: Location, Music */}
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-4deg' }] }]} onPress={() => handleStickerSelect('location')}>
                   <Ionicons name="location" size={14} color="#A855F7" />
-                  <Text style={styles.featurePillText}>Location</Text>
+                  <Text style={styles.featurePillText} numberOfLines={1}>
+                    {selectedLocation ? selectedLocation.name : 'Location'}
+                  </Text>
+                  {selectedLocation && (
+                    <Ionicons name="checkmark-circle" size={12} color="#34C759" />
+                  )}
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-6deg' }] }]} onPress={() => {
@@ -6932,18 +1772,20 @@ export default function EditStoryScreen() {
                   <Text style={styles.featurePillText}>Music</Text>
                 </TouchableOpacity>
 
-                {/* Row 2: Photo, GIF */}
-                <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-5deg' }] }]} onPress={() => {
-                  pendingPhotoPickerOpen.current = true;
-                  closeStickerTray();
-                }}>
-                  <Ionicons name="images-outline" size={14} color="#22C55E" />
+                {/* Row 2: Photo, GIF, Add Yours */}
+                <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-5deg' }] }]} onPress={() => handleStickerSelect('photo')}>
+                  <Ionicons name="checkbox-outline" size={14} color="#22C55E" />
                   <Text style={styles.featurePillText}>Photo</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-7deg' }] }]} onPress={() => handleStickerSelect('gif')}>
                   <Ionicons name="search" size={12} color="#10B981" />
                   <Text style={[styles.featurePillText, { color: '#10B981', fontWeight: '700' }]}>GIF</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity style={[styles.featurePill, { transform: [{ rotate: '-4deg' }] }]} onPress={() => handleStickerSelect('addyours')}>
+                  <Ionicons name="camera-outline" size={14} color="#F97316" />
+                  <Text style={styles.featurePillText}>Add Yours</Text>
                 </TouchableOpacity>
 
                 {/* Row 3: Frames, Questions, Cutouts */}
@@ -7060,11 +1902,33 @@ export default function EditStoryScreen() {
                           return (
                             <TouchableOpacity 
                               key={item.id}
-                              style={[itemStyle, { justifyContent: 'center', alignItems: 'center' }]}
+                              style={itemStyle}
                               onPress={() => handleStickerSelect('clock')}
                               activeOpacity={0.8}
                             >
-                              <ClockStickerDesign style={7} time={captureTime} size={70} />
+                              <View style={[
+                                styles.clockStickerContainer,
+                                currentTime.getHours() >= 6 && currentTime.getHours() < 18 
+                                  ? styles.clockStickerMorning 
+                                  : styles.clockStickerNight
+                              ]}>
+                                <Text style={[
+                                  styles.clockStickerTime,
+                                  currentTime.getHours() >= 6 && currentTime.getHours() < 18 
+                                    ? styles.clockTimeMorning 
+                                    : styles.clockTimeNight
+                                ]}>
+                                  {currentTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                </Text>
+                                <Text style={[
+                                  styles.clockStickerLabel,
+                                  currentTime.getHours() >= 6 && currentTime.getHours() < 18 
+                                    ? styles.clockLabelMorning 
+                                    : styles.clockLabelNight
+                                ]}>
+                                  {currentTime.getHours() >= 6 && currentTime.getHours() < 18 ? '☀️ morning' : '🌙 evening'}
+                                </Text>
+                              </View>
                             </TouchableOpacity>
                           );
                         } else {
@@ -7085,436 +1949,8 @@ export default function EditStoryScreen() {
                   ));
                 })()}
               </View>
-
-              {/* Phone Number Stickers Section */}
-              {clinicPhoneNumber ? (
-                <View style={styles.stickerGridSection}>
-                  <Text style={styles.stickerSectionTitle}>📞 Phone</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const GRID_PADDING = 10;
-                    const ITEM_SPACING = 8;
-                    const AVAILABLE_WIDTH = SCREEN_WIDTH - (GRID_PADDING * 2);
-                    const ITEM_WIDTH = Math.floor((AVAILABLE_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    const rows: (typeof PHONE_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < PHONE_STICKER_DESIGNS.length; i += COLUMNS) {
-                      rows.push(PHONE_STICKER_DESIGNS.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, rowIndex) => (
-                      <View key={`phone-row-${rowIndex}`} style={[styles.stickerRow, { justifyContent: 'flex-start' }]}>
-                        {row.map((item, itemIndex) => {
-                          const isLastInRow = itemIndex === COLUMNS - 1;
-                          return (
-                            <TouchableOpacity
-                              key={item.id}
-                              style={[
-                                styles.stickerGridItem4Col,
-                                { width: ITEM_WIDTH, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                                !isLastInRow && { marginRight: ITEM_SPACING },
-                              ]}
-                              onPress={() => handleStickerSelect(item.id)}
-                              activeOpacity={0.8}
-                            >
-                              <item.Component phoneNumber={clinicPhoneNumber} size={ITEM_WIDTH + 10} />
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
             </ScrollView>
           </Animated.View>
-        </View>
-      </Modal>
-    );
-  };
-
-  // ========== Render GIF Picker Modal ==========
-  const renderGifPicker = () => {
-    return (
-      <Modal
-        visible={gifPickerVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => { setGifPickerVisible(false); setGifSearchQuery(''); }}
-      >
-        <View style={styles.stickerOverlay}>
-          {/* Tap outside to close */}
-          <TouchableOpacity 
-            style={styles.stickerOverlayDismiss} 
-            activeOpacity={1} 
-            onPress={() => { setGifPickerVisible(false); setGifSearchQuery(''); }}
-          >
-            <BlurView
-              intensity={50}
-              tint="dark"
-              style={StyleSheet.absoluteFillObject}
-            />
-            <LinearGradient
-              colors={['rgba(30,40,80,0.7)', 'rgba(20,20,30,0.9)', 'rgba(15,12,10,0.95)']}
-              locations={[0, 0.4, 1]}
-              style={StyleSheet.absoluteFillObject}
-            />
-          </TouchableOpacity>
-          
-          {/* GIF Picker Panel */}
-          <View style={styles.stickerTray}>
-            {/* Handle */}
-            <View style={styles.stickerTrayHandle} />
-            
-            {/* Title */}
-            <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 12 }}>GIFs</Text>
-            
-            {/* Search Bar */}
-            <View style={styles.stickerSearchContainer}>
-              <Ionicons name="search" size={16} color="#98989F" />
-              <TextInput
-                style={styles.stickerSearchInput}
-                placeholder="Search GIPHY…"
-                placeholderTextColor="#98989F"
-                value={gifSearchQuery}
-                onChangeText={setGifSearchQuery}
-                returnKeyType="search"
-              />
-              {gifSearchQuery.length > 0 && (
-                <TouchableOpacity onPress={() => setGifSearchQuery('')}>
-                  <Ionicons name="close-circle" size={18} color="#98989F" />
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Scrollable content */}
-            <ScrollView
-              style={{ flex: 1 }}
-              contentContainerStyle={{ paddingBottom: 40 }}
-              showsVerticalScrollIndicator={false}
-              bounces={true}
-              keyboardShouldPersistTaps="handled"
-            >
-              {/* Phone Number Stickers */}
-              {clinicPhoneNumber ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>📞 Phone Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    // Filter featured by clinicType + search-matched extended (label + tags, partial)
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const featuredFiltered = (PHONE_STICKER_DESIGNS as unknown as any[]).filter((d: any) =>
-                      !d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)
-                    );
-                    const extMatched = q.length > 0
-                      ? (PHONE_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          (!d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)) &&
-                          (d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q))))
-                        )
-                      : [];
-                    const allItems = [...featuredFiltered, ...extMatched];
-
-                    const rows: (typeof PHONE_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gp-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component phoneNumber={clinicPhoneNumber} size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-
-              {/* Clinic Name Stickers */}
-              {clinicName ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>🏷️ Name Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const featuredFiltered = (CLINIC_NAME_STICKER_DESIGNS as unknown as any[]).filter((d: any) =>
-                      !d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)
-                    );
-                    const extMatched = q.length > 0
-                      ? (CLINIC_NAME_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          (!d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)) &&
-                          (d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q))))
-                        )
-                      : [];
-                    const allItems = [...featuredFiltered, ...extMatched];
-
-                    const rows: (typeof CLINIC_NAME_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gn-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component clinicName={clinicName} size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-
-              {/* Combo Stickers */}
-              {clinicName && clinicPhoneNumber ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>✨ Combo Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    // Combo stickers: filter by clinicType + match label, tags, clinicName, or clinicPhoneNumber
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const featuredFiltered = (COMBO_STICKER_DESIGNS as unknown as any[]).filter((d: any) =>
-                      !d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)
-                    );
-                    const comboQueryMatch = q.length > 0 && (
-                      clinicName.toLowerCase().includes(q) ||
-                      clinicPhoneNumber.toLowerCase().includes(q)
-                    );
-                    const extMatched = q.length > 0
-                      ? (COMBO_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          (!d.clinicTypes || !clinicType || d.clinicTypes.includes(clinicType)) &&
-                          (comboQueryMatch ||
-                          d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q))))
-                        )
-                      : [];
-                    const allItems = [...featuredFiltered, ...extMatched];
-
-                    const rows: (typeof COMBO_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gc-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 100, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component clinicName={clinicName} clinicPhoneNumber={clinicPhoneNumber} size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-
-              {/* Dental Stickers — only for dental clinics */}
-              {clinicType === 'dental' ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>🦷 Dental Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const extMatched = q.length > 0
-                      ? (DENTAL_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q)))
-                        )
-                      : [];
-                    const allItems = [...DENTAL_STICKER_DESIGNS, ...extMatched];
-
-                    const rows: (typeof DENTAL_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gd-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-
-              {/* Laser Stickers — only for laser clinics */}
-              {clinicType === 'laser' ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>✨ Laser Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const extMatched = q.length > 0
-                      ? (LASER_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q)))
-                        )
-                      : [];
-                    const allItems = [...LASER_STICKER_DESIGNS, ...extMatched];
-
-                    const rows: (typeof LASER_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gl-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-
-              {/* Beauty Stickers — only for beauty/aesthetic clinics */}
-              {clinicType === 'beauty' ? (
-                <View style={{ paddingHorizontal: 10 }}>
-                  <Text style={styles.stickerSectionTitle}>💎 Beauty Stickers</Text>
-                  {(() => {
-                    const COLUMNS = 3;
-                    const ITEM_SPACING = 8;
-                    const CONTAINER_WIDTH = SCREEN_WIDTH - 20;
-                    const ITEM_W = Math.floor((CONTAINER_WIDTH - (ITEM_SPACING * (COLUMNS - 1))) / COLUMNS);
-
-                    const q = gifSearchQuery.trim().toLowerCase();
-                    const extMatched = q.length > 0
-                      ? (BEAUTY_STICKER_DESIGNS_EXTENDED as unknown as any[]).filter((d: any) =>
-                          d.label.toLowerCase().includes(q) ||
-                          (d.tags && d.tags.some((t: string) => t.toLowerCase().includes(q)))
-                        )
-                      : [];
-                    const allItems = [...BEAUTY_STICKER_DESIGNS, ...extMatched];
-
-                    const rows: (typeof BEAUTY_STICKER_DESIGNS[number])[][] = [];
-                    for (let i = 0; i < allItems.length; i += COLUMNS) {
-                      rows.push(allItems.slice(i, i + COLUMNS) as any);
-                    }
-
-                    return rows.map((row, ri) => (
-                      <View key={`gb-row-${ri}`} style={[styles.stickerRow, { justifyContent: 'center' }]}>
-                        {row.map((item, ci) => (
-                          <TouchableOpacity
-                            key={item.id}
-                            style={[
-                              styles.stickerGridItem4Col,
-                              { width: ITEM_W, height: 90, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
-                              ci < COLUMNS - 1 && { marginRight: ITEM_SPACING },
-                            ]}
-                            onPress={() => {
-                              setGifPickerVisible(false);
-                              setGifSearchQuery('');
-                              handleStickerSelect(item.id);
-                            }}
-                            activeOpacity={0.8}
-                          >
-                            <item.Component size={ITEM_W + 10} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
-                    ));
-                  })()}
-                </View>
-              ) : null}
-            </ScrollView>
-          </View>
         </View>
       </Modal>
     );
@@ -7558,100 +1994,6 @@ export default function EditStoryScreen() {
       </TouchableOpacity>
     </Modal>
   );
-
-  // ========== Render Location Sticker Sheet ==========
-  const renderLocationStickerSheet = () => {
-    if (!locationStickerSheetVisible) return null;
-
-    // Different style previews for the same clinic sticker
-    const stickerStyles = [
-      { id: 'normal', rotation: 0, label: 'Classic' },
-      { id: 'tilted', rotation: -8, label: 'Tilted' },
-      { id: 'bold', rotation: 4, label: 'Bold' },
-      { id: 'glow', rotation: -3, label: 'Glow' },
-    ];
-
-    return (
-      <Modal
-        visible={locationStickerSheetVisible}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={closeLocationStickerSheet}
-      >
-        {/* Transparent backdrop - tap to close */}
-        <TouchableOpacity
-          style={styles.locationSheetBackdrop}
-          activeOpacity={1}
-          onPress={closeLocationStickerSheet}
-        >
-          {/* Bottom sheet */}
-          <Animated.View
-            style={[
-              styles.locationSheetContainer,
-              { transform: [{ translateY: locationSheetTranslateY }] },
-            ]}
-            {...locationSheetPanResponder.panHandlers}
-          >
-            <TouchableOpacity activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-              {/* Handle bar */}
-              <View style={styles.locationSheetHandle}>
-                <View style={styles.locationSheetHandleBar} />
-              </View>
-
-              {/* Title */}
-              <Text style={styles.locationSheetTitle}>Location Sticker</Text>
-              <Text style={styles.locationSheetSubtitle}>Tap a style to add</Text>
-
-              {/* Sticker style options */}
-              <View style={styles.locationStickerGrid}>
-                {stickerStyles.map((style) => (
-                  <TouchableOpacity
-                    key={style.id}
-                    style={styles.locationStickerOption}
-                    onPress={() => handleLocationStickerSelect(style.id)}
-                    activeOpacity={0.8}
-                  >
-                    <View style={[
-                      styles.locationStickerPreviewContainer,
-                      style.id === 'glow' && styles.locationStickerGlowEffect,
-                    ]}>
-                      <LinearGradient
-                        colors={['#833AB4', '#E91E63', '#F77737']}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={[
-                          styles.locationStickerPreview,
-                          { transform: [{ rotate: `${style.rotation}deg` }] },
-                          style.id === 'bold' && styles.locationStickerPreviewBold,
-                        ]}
-                      >
-                        <Text style={[
-                          styles.locationStickerPreviewName,
-                          style.id === 'bold' && styles.locationStickerPreviewNameBold,
-                        ]}>
-                          {clinicName}
-                        </Text>
-                        <Text style={styles.locationStickerPreviewCity}>
-                          {clinicCity}
-                        </Text>
-                      </LinearGradient>
-                    </View>
-                    <Text style={styles.locationStickerStyleLabel}>{style.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Info text */}
-              <Text style={styles.locationSheetInfo}>
-                Your clinic location will be added to the story
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </TouchableOpacity>
-      </Modal>
-    );
-  };
 
   // ========== Render Music Picker ==========
   const renderMusicPicker = () => {
@@ -7908,7 +2250,7 @@ export default function EditStoryScreen() {
       </View>
       
       {/* Media Preview with Gesture Support */}
-      {(params.uri || backgroundImageUri) && (
+      {params.uri && (
         <Animated.View
           {...mediaPanResponder.panHandlers}
           style={[
@@ -7928,7 +2270,7 @@ export default function EditStoryScreen() {
           ]}
         >
           <ExpoImage
-            source={{ uri: backgroundImageUri || params.uri }}
+            source={{ uri: params.uri }}
             style={styles.mediaPreview}
             contentFit="cover"
           />
@@ -7950,391 +2292,32 @@ export default function EditStoryScreen() {
           onEdit={openTextEditor}
           onTransformUpdate={updateTextOverlayTransform}
           getTextStyle={getTextStyle}
-          onDragStateChange={handlePhoneStickerDragState}
         />
       ))}
 
-      {/* Location Sticker */}
-      {locationSticker && locationSticker.visible && (
-        <DraggableClinicSticker
-          sticker={locationSticker}
-          onTransformUpdate={updateLocationStickerTransform}
-          onDragStateChange={handlePhoneStickerDragState}
+      {/* Draggable Sticker Overlays */}
+      {stickers.length > 0 && (
+        <StickerCanvas
+          stickers={stickers}
+          activeStickerId={activeStickerId}
+          onTransformEnd={updateStickerTransform}
+          onStickerTap={handleStickerTap}
+          onSelectSticker={selectSticker}
+          onDeleteSticker={deleteSticker}
+          onDuplicateSticker={duplicateSticker}
+          onBringToFront={bringToFront}
+          onStickerLongPress={handleStickerLongPress}
+          onToggleStickerLock={toggleStickerLock}
         />
       )}
 
-      {/* Clock Sticker */}
-      {clockSticker && clockSticker.visible && (
-        <DraggableClockSticker
-          sticker={clockSticker}
-          onTransformUpdate={updateClockStickerTransform}
-          onTap={cycleClockDesign}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      )}
-
-      {/* Photo Stickers */}
-      {photoStickers.map(sticker => (
-        <DraggablePhotoSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updatePhotoStickerTransform}
-          onRemove={removePhotoSticker}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Phone Stickers */}
-      {phoneStickersOnCanvas.map(sticker => (
-        <DraggablePhoneSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updatePhoneStickerTransform}
-          onRemove={removePhoneStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-          onLongPress={handlePhoneStickerLongPress}
-          isSettingsOpen={phoneStickerSettingsId === sticker.id}
-          onToggleCallable={togglePhoneStickerCallable}
-        />
-      ))}
-
-      {/* Phone Sticker Settings Panel — fixed left-center of screen */}
-      {phoneStickerSettingsId && (() => {
-        const activeSticker = phoneStickersOnCanvas.find(s => s.id === phoneStickerSettingsId);
-        if (!activeSticker) return null;
-        return (
-          <View style={{
-            position: 'absolute',
-            left: 16,
-            top: SCREEN_HEIGHT / 2 - 70,
-            width: 56,
-            backgroundColor: 'rgba(15, 23, 42, 0.92)',
-            borderRadius: 18,
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            alignItems: 'center',
-            zIndex: 30,
-            elevation: 30,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.35,
-            shadowRadius: 10,
-          }}>
-            {/* Unlock button */}
-            <TouchableOpacity
-              onPress={() => {
-                setPhoneStickersOnCanvas(prev => prev.map(s =>
-                  s.id === phoneStickerSettingsId ? { ...s, isCallable: true } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: activeSticker.isCallable ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: activeSticker.isCallable ? '#22C55E' : 'transparent',
-                marginBottom: 8,
-              }}
-            >
-              <Ionicons name="lock-open" size={20} color={activeSticker.isCallable ? '#22C55E' : '#64748B'} />
-            </TouchableOpacity>
-
-            {/* Lock button */}
-            <TouchableOpacity
-              onPress={() => {
-                setPhoneStickersOnCanvas(prev => prev.map(s =>
-                  s.id === phoneStickerSettingsId ? { ...s, isCallable: false } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: !activeSticker.isCallable ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: !activeSticker.isCallable ? '#EF4444' : 'transparent',
-              }}
-            >
-              <Ionicons name="lock-closed" size={20} color={!activeSticker.isCallable ? '#EF4444' : '#64748B'} />
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
-
-      {/* Clinic Name Stickers */}
-      {clinicNameStickersOnCanvas.map(sticker => (
-        <DraggableClinicNameSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateClinicNameStickerTransform}
-          onRemove={removeClinicNameStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-          onLongPress={handleClinicNameStickerLongPress}
-          isSettingsOpen={clinicNameStickerSettingsId === sticker.id}
-          onToggleNavigable={toggleClinicNameStickerNavigable}
-          clinicId={clinicId}
-        />
-      ))}
-
-      {/* Clinic Name Sticker Settings Panel — fixed left-center of screen */}
-      {clinicNameStickerSettingsId && (() => {
-        const activeSticker = clinicNameStickersOnCanvas.find(s => s.id === clinicNameStickerSettingsId);
-        if (!activeSticker) return null;
-        return (
-          <View style={{
-            position: 'absolute',
-            left: 16,
-            top: SCREEN_HEIGHT / 2 - 70,
-            width: 56,
-            backgroundColor: 'rgba(15, 23, 42, 0.92)',
-            borderRadius: 18,
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            alignItems: 'center',
-            zIndex: 30,
-            elevation: 30,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.35,
-            shadowRadius: 10,
-          }}>
-            {/* Unlock button (navigable) */}
-            <TouchableOpacity
-              onPress={() => {
-                setClinicNameStickersOnCanvas(prev => prev.map(s =>
-                  s.id === clinicNameStickerSettingsId ? { ...s, isNavigable: true } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: activeSticker.isNavigable ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: activeSticker.isNavigable ? '#22C55E' : 'transparent',
-                marginBottom: 8,
-              }}
-            >
-              <Ionicons name="lock-open" size={20} color={activeSticker.isNavigable ? '#22C55E' : '#64748B'} />
-            </TouchableOpacity>
-
-            {/* Lock button (static) */}
-            <TouchableOpacity
-              onPress={() => {
-                setClinicNameStickersOnCanvas(prev => prev.map(s =>
-                  s.id === clinicNameStickerSettingsId ? { ...s, isNavigable: false } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: !activeSticker.isNavigable ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: !activeSticker.isNavigable ? '#EF4444' : 'transparent',
-              }}
-            >
-              <Ionicons name="lock-closed" size={20} color={!activeSticker.isNavigable ? '#EF4444' : '#64748B'} />
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
-
-      {/* Combo Stickers */}
-      {comboStickersOnCanvas.map(sticker => (
-        <DraggableComboSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateComboStickerTransform}
-          onRemove={removeComboStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-          onLongPress={handleComboStickerLongPress}
-          isSettingsOpen={comboStickerSettingsId === sticker.id}
-          onToggleInteractive={toggleComboStickerInteractive}
-          clinicId={clinicId}
-        />
-      ))}
-
-      {/* Combo Sticker Settings Panel — fixed left-center of screen */}
-      {comboStickerSettingsId && (() => {
-        const activeSticker = comboStickersOnCanvas.find(s => s.id === comboStickerSettingsId);
-        if (!activeSticker) return null;
-        return (
-          <View style={{
-            position: 'absolute',
-            left: 16,
-            top: SCREEN_HEIGHT / 2 + 50,
-            width: 56,
-            backgroundColor: 'rgba(15, 23, 42, 0.92)',
-            borderRadius: 18,
-            paddingVertical: 10,
-            paddingHorizontal: 6,
-            alignItems: 'center',
-            zIndex: 30,
-            elevation: 30,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.35,
-            shadowRadius: 10,
-          }}>
-            {/* Unlock button (interactive) */}
-            <TouchableOpacity
-              onPress={() => {
-                setComboStickersOnCanvas(prev => prev.map(s =>
-                  s.id === comboStickerSettingsId ? { ...s, isInteractive: true } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: activeSticker.isInteractive ? 'rgba(34,197,94,0.25)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: activeSticker.isInteractive ? '#22C55E' : 'transparent',
-                marginBottom: 8,
-              }}
-            >
-              <Ionicons name="lock-open" size={20} color={activeSticker.isInteractive ? '#22C55E' : '#64748B'} />
-            </TouchableOpacity>
-
-            {/* Lock button (static) */}
-            <TouchableOpacity
-              onPress={() => {
-                setComboStickersOnCanvas(prev => prev.map(s =>
-                  s.id === comboStickerSettingsId ? { ...s, isInteractive: false } : s
-                ));
-              }}
-              activeOpacity={0.7}
-              style={{
-                width: 42,
-                height: 42,
-                borderRadius: 14,
-                backgroundColor: !activeSticker.isInteractive ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)',
-                justifyContent: 'center',
-                alignItems: 'center',
-                borderWidth: 1.5,
-                borderColor: !activeSticker.isInteractive ? '#EF4444' : 'transparent',
-              }}
-            >
-              <Ionicons name="lock-closed" size={20} color={!activeSticker.isInteractive ? '#EF4444' : '#64748B'} />
-            </TouchableOpacity>
-          </View>
-        );
-      })()}
-
-      {/* Dental Stickers */}
-      {dentalStickersOnCanvas.map(sticker => (
-        <DraggableDentalSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateDentalStickerTransform}
-          onRemove={removeDentalStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Laser Stickers */}
-      {laserStickersOnCanvas.map(sticker => (
-        <DraggableLaserSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateLaserStickerTransform}
-          onRemove={removeLaserStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Beauty Stickers */}
-      {beautyStickersOnCanvas.map(sticker => (
-        <DraggableBeautySticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateBeautyStickerTransform}
-          onRemove={removeBeautyStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Frame Stickers */}
-      {frameStickersOnCanvas.map(sticker => (
-        <DraggableFrameSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateFrameStickerTransform}
-          onRemove={removeFrameStickerFromCanvas}
-          onToggleShape={toggleFrameStickerShape}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Question Stickers */}
-      {questionStickersOnCanvas.map(sticker => (
-        <DraggableQuestionSticker
-          key={sticker.id}
-          sticker={sticker}
-          onTransformUpdate={updateQuestionStickerTransform}
-          onRemove={removeQuestionStickerFromCanvas}
-          onDragStateChange={handlePhoneStickerDragState}
-        />
-      ))}
-
-      {/* Trash Zone — visible while dragging a phone sticker */}
-      {isDraggingStickerToTrash && (
-        <View style={{
-          position: 'absolute',
-          bottom: 40,
-          alignSelf: 'center',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 25,
-          elevation: 25,
-        }} pointerEvents="none">
-          <Animated.View style={{
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: isHoveringTrash ? 'rgba(239,68,68,0.85)' : 'rgba(255,255,255,0.18)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            borderWidth: 2,
-            borderColor: isHoveringTrash ? '#EF4444' : 'rgba(255,255,255,0.4)',
-            transform: [{ scale: trashScaleAnim }],
-          }}>
-            <Ionicons name="trash" size={24} color={isHoveringTrash ? '#FFFFFF' : 'rgba(255,255,255,0.7)'} />
-          </Animated.View>
-          <Text style={{
-            color: isHoveringTrash ? '#EF4444' : 'rgba(255,255,255,0.5)',
-            fontSize: 11,
-            fontWeight: '600',
-            marginTop: 6,
-          }}>
-            {isHoveringTrash ? 'Release to delete' : 'Drag here to delete'}
-          </Text>
-        </View>
-      )}
-
-      {/* ========== Top Controls (always visible) ========== */}
-      <SafeAreaView style={styles.topControlsBar} pointerEvents="box-none">
+      {/* Top Controls */}
+      <SafeAreaView style={styles.topControls}>
         <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
           <Ionicons name="close" size={28} color="#FFFFFF" />
         </TouchableOpacity>
-
+        
+        {/* Undo/Redo for draw mode */}
         {activeMode === 'draw' && (
           <View style={styles.drawControls}>
             <TouchableOpacity style={styles.topButton}>
@@ -8346,62 +2329,6 @@ export default function EditStoryScreen() {
           </View>
         )}
       </SafeAreaView>
-
-      {/* ========== Reply Banner (visible in reply mode) ========== */}
-      {replyBannerVisible && isReplyMode && params.replyText && (
-        <SafeAreaView style={styles.replyBannerSafe} pointerEvents="box-none">
-          <View style={styles.replyBanner}>
-            <View style={styles.replyBannerContent}>
-              <Text style={styles.replyBannerLabel}>Replying to:</Text>
-              <Text style={styles.replyBannerText} numberOfLines={2}>
-                "{params.replyText}"
-              </Text>
-            </View>
-            <TouchableOpacity
-              style={styles.replyBannerClose}
-              onPress={() => setReplyBannerVisible(false)}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            >
-              <Ionicons name="close-circle" size={20} color="rgba(255,255,255,0.6)" />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      )}
-
-      {/* ========== Drag Guide: Clinic Name + Dashed Line (only while dragging) ========== */}
-      {isDraggingStickerToTrash && (
-        <Animated.View
-          style={[
-            styles.dragGuideContainer,
-            { transform: [{ translateX: boundaryShakeAnim }] },
-          ]}
-          pointerEvents="none"
-        >
-          <Text
-            style={[
-              styles.dragGuideClinicName,
-              isStickerAboveBoundary && { color: 'rgba(239, 68, 68, 0.9)' },
-            ]}
-            numberOfLines={1}
-          >
-            {clinicName}
-          </Text>
-          <Animated.View
-            style={[
-              styles.dragGuideDashedLine,
-              isStickerAboveBoundary && {
-                borderBottomColor: 'rgba(239, 68, 68, 0.85)',
-                borderBottomWidth: 2.5,
-              },
-            ]}
-          />
-          {isStickerAboveBoundary && (
-            <Text style={styles.dragGuideWarningText}>
-              Too high — move down
-            </Text>
-          )}
-        </Animated.View>
-      )}
 
       {/* Right Side Tool Stack - Only show when media is selected */}
       {hasMedia && (
@@ -8531,24 +2458,30 @@ export default function EditStoryScreen() {
       {/* Floating Share Button - Bottom Right */}
       {hasMedia && (
         <TouchableOpacity 
-          style={[styles.floatingShareButton, !canShare && styles.floatingShareButtonDisabled]}
+          style={[styles.floatingShareButton, (!canShare || isPublishing) && styles.floatingShareButtonDisabled]}
           onPress={handleShare}
-          disabled={!canShare}
+          disabled={!canShare || isPublishing}
           activeOpacity={0.8}
         >
           <LinearGradient
-            colors={canShare ? ['#0095F6', '#0077E6'] : ['#3A3A3C', '#2C2C2E']}
+            colors={canShare && !isPublishing ? ['#0095F6', '#0077E6'] : ['#3A3A3C', '#2C2C2E']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={styles.floatingShareGradient}
           >
-            <Ionicons name="arrow-forward" size={22} color="#FFFFFF" />
+            {isPublishing ? (
+              <Animated.View style={{ transform: [{ rotate: '0deg' }] }}>
+                <Ionicons name="hourglass-outline" size={22} color="#FFFFFF" />
+              </Animated.View>
+            ) : (
+              <Ionicons name="arrow-forward" size={22} color="#FFFFFF" />
+            )}
           </LinearGradient>
         </TouchableOpacity>
       )}
 
       {/* Placeholder message */}
-      {!params.uri && !backgroundImageUri && (
+      {!params.uri && (
         <View style={styles.placeholderContainer}>
           <Ionicons name="image-outline" size={64} color="rgba(255,255,255,0.5)" />
           <Text style={styles.placeholderText}>Story Editor</Text>
@@ -8559,21 +2492,9 @@ export default function EditStoryScreen() {
       {/* Modals */}
       {renderTextEditor()}
       {renderStickerTray()}
-      {renderGifPicker()}
       {renderAiLabelModal()}
       {renderMoreMenu()}
       {renderMusicPicker()}
-      {renderLocationStickerSheet()}
-      
-      {/* Image Editing Modal */}
-      <ImageEditingModal
-        visible={imageEditingVisible}
-        imageUri={pendingEditImage?.uri || null}
-        imageWidth={pendingEditImage?.width || 1080}
-        imageHeight={pendingEditImage?.height || 1920}
-        onCancel={handleImageEditingCancel}
-        onDone={handleImageEditingDone}
-      />
     </View>
   );
 }
@@ -8611,277 +2532,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 0,
-    borderRadius: 24,
-    overflow: 'hidden',
   },
   mediaPreview: {
     width: SCREEN_WIDTH,
     height: SCREEN_HEIGHT,
-    borderRadius: 24,
   },
   gradientOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
 
-  // ========== Clinic Location Sticker Styles ==========
-  clinicStickerContainer: {
-    position: 'absolute',
-    zIndex: 15,
-  },
-  clinicStickerGradient: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 12,
-    elevation: 10,
-    minWidth: 140,
-  },
-  clinicStickerName: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-    letterSpacing: 0.5,
-  },
-  clinicStickerCity: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 14,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 2,
-    textShadowColor: 'rgba(0, 0, 0, 0.2)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-  },
-
-  // ========== Photo Sticker Styles ==========
-  photoStickerContainer: {
-    position: 'absolute',
-    zIndex: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-
-  // ========== Clock Sticker Draggable Styles ==========
-  clockStickerDraggable: {
-    position: 'absolute',
-    zIndex: 15,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-
-  // ========== Location Sticker Sheet Styles ==========
-  locationSheetBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  locationSheetContainer: {
-    backgroundColor: '#1C1C1E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingBottom: 40,
-    height: SCREEN_HEIGHT * 0.75, // Exactly 3/4 of screen height
-  },
-  locationSheetHandle: {
-    alignItems: 'center',
-    paddingVertical: 12,
-  },
-  locationSheetHandleBar: {
-    width: 40,
-    height: 4,
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-    borderRadius: 2,
-  },
-  locationSheetTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  locationSheetSubtitle: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.6)',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  locationStickerGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    paddingHorizontal: 16,
-    gap: 16,
-  },
-  locationStickerOption: {
-    alignItems: 'center',
-    width: (SCREEN_WIDTH - 64) / 2,
-    marginBottom: 16,
-  },
-  locationStickerPreviewContainer: {
-    padding: 12,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
-  },
-  locationStickerGlowEffect: {
-    shadowColor: '#E91E63',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  locationStickerPreview: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
-    minWidth: 100,
-  },
-  locationStickerPreviewBold: {
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderRadius: 14,
-  },
-  locationStickerPreviewName: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0, 0, 0, 0.3)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  locationStickerPreviewNameBold: {
-    fontSize: 22,
-    fontWeight: '900',
-  },
-  locationStickerPreviewCity: {
-    color: 'rgba(255, 255, 255, 0.85)',
-    fontSize: 11,
-    fontWeight: '500',
-    textAlign: 'center',
-    marginTop: 2,
-  },
-  locationStickerStyleLabel: {
-    fontSize: 12,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginTop: 8,
-    fontWeight: '500',
-  },
-  locationSheetInfo: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.5)',
-    textAlign: 'center',
-    marginTop: 16,
-    paddingHorizontal: 32,
-  },
-
-  // Top Controls (always visible)
-  topControlsBar: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
+  // Top Controls
+  topControls: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingHorizontal: 16,
     paddingTop: 8,
-    zIndex: 20,
-    elevation: 20,
-  },
-  // Reply Banner
-  replyBannerSafe: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 100 : 80,
-    left: 0,
-    right: 0,
-    zIndex: 18,
-    elevation: 18,
-    alignItems: 'center',
-  },
-  replyBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    maxWidth: '85%',
-  },
-  replyBannerContent: {
-    flex: 1,
-    marginRight: 8,
-  },
-  replyBannerLabel: {
-    color: 'rgba(255,255,255,0.6)',
-    fontSize: 11,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  replyBannerText: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '500',
-    fontStyle: 'italic',
-  },
-  replyBannerClose: {
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Drag Guide (only while dragging)
-  dragGuideContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 58 : 42,
-    left: 0,
-    right: 0,
-    zIndex: 19,
-    elevation: 19,
-    paddingHorizontal: 16,
-  },
-  dragGuideClinicName: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.65)',
-    marginBottom: 6,
-    letterSpacing: 0.3,
-    textShadowColor: 'rgba(0,0,0,0.4)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
-  },
-  dragGuideDashedLine: {
-    height: 2,
-    borderBottomWidth: 1.5,
-    borderBottomColor: 'rgba(77, 163, 255, 0.5)',
-    borderStyle: 'dashed' as const,
-  },
-  dragGuideWarningText: {
-    fontSize: 12,
-    fontWeight: '700' as const,
-    color: 'rgba(239, 68, 68, 0.95)',
-    textAlign: 'center' as const,
-    marginTop: 6,
-    letterSpacing: 0.4,
-    textShadowColor: 'rgba(0,0,0,0.5)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
+    zIndex: 10,
   },
   closeButton: {
     width: 44,
@@ -8912,8 +2579,7 @@ const styles = StyleSheet.create({
     top: 100,
     alignItems: 'flex-end',
     gap: 12,
-    zIndex: 20,
-    elevation: 20,
+    zIndex: 10,
   },
   toolRow: {
     flexDirection: 'row',
@@ -8972,8 +2638,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    zIndex: 20,
-    elevation: 20,
   },
   bottomLeftSection: {
     flex: 1,
@@ -9289,8 +2953,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 80,
-    zIndex: 20,
-    elevation: 20,
+    zIndex: 10,
   },
   captionContainer: {
     paddingBottom: Platform.OS === 'ios' ? 40 : 24,
@@ -9319,8 +2982,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.4,
     shadowRadius: 8,
-    elevation: 20,
-    zIndex: 20,
+    elevation: 8,
+    zIndex: 10,
   },
   floatingShareButtonDisabled: {
     shadowColor: '#000',
@@ -9601,6 +3264,52 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 4,
+  },
+  // Dynamic Clock Sticker Styles - Styled like other stickers with background
+  clockStickerContainer: {
+    width: '90%',
+    height: '90%',
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  clockStickerMorning: {
+    backgroundColor: '#FFF7ED', // Warm cream/orange tint
+    borderWidth: 2,
+    borderColor: '#FB923C', // Orange border
+  },
+  clockStickerNight: {
+    backgroundColor: '#1E1B4B', // Deep indigo/purple
+    borderWidth: 2,
+    borderColor: '#8B5CF6', // Purple border
+  },
+  clockStickerTime: {
+    fontSize: 14,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  clockTimeMorning: {
+    color: '#C2410C', // Dark orange for morning
+  },
+  clockTimeNight: {
+    color: '#FFFFFF', // White for night
+  },
+  clockStickerLabel: {
+    fontSize: 8,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  clockLabelMorning: {
+    color: '#EA580C', // Orange for morning
+  },
+  clockLabelNight: {
+    color: '#C4B5FD', // Light purple for night
   },
   customStickerImage: {
     width: '100%',
@@ -10147,7 +3856,4 @@ const styles = StyleSheet.create({
     color: '#34C759',
     marginLeft: 6,
   },
-
 });
-
-

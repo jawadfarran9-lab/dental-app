@@ -10,6 +10,7 @@ import i18n from '@/i18n';
 import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { AuthProvider } from '@/src/context/AuthContext';
 import { ClinicProvider } from '@/src/context/ClinicContext';
+import { LocationSelectionProvider } from '@/src/context/LocationSelectionContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
 import { useAppUsageTracker } from '@/src/hooks/useAppUsageTracker';
@@ -115,10 +116,12 @@ export default function RootLayout() {
         <AuthProvider>
           <ClinicProvider>
             <StorySettingsProvider>
-              <NavThemeProvider value={navTheme}>
-                <RootNavigator />
-                <StatusBar style="dark" translucent backgroundColor="transparent" />
-              </NavThemeProvider>
+              <LocationSelectionProvider>
+                <NavThemeProvider value={navTheme}>
+                  <RootNavigator />
+                  <StatusBar style="dark" translucent backgroundColor="transparent" />
+                </NavThemeProvider>
+              </LocationSelectionProvider>
             </StorySettingsProvider>
           </ClinicProvider>
         </AuthProvider>

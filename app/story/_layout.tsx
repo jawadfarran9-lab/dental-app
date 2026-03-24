@@ -16,6 +16,7 @@ export default function StoryLayout() {
       <Stack.Screen name="frame-editor" />
       <Stack.Screen name="question-editor" />
       <Stack.Screen name="boomerang" />
+      <Stack.Screen name="location-list" options={{ presentation: 'transparentModal', animation: 'none' }} />
     </Stack>
   );
 }
