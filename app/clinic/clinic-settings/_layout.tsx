@@ -43,7 +43,7 @@ export default function ClinicSettingsLayout() {
       <Stack.Screen
         name="clinic-status"
         options={{
-          title: 'Clinic Status',
+          title: 'Clinic Hours & Status',
           headerLeft: () => (
             <Pressable
               onPress={() => router.back()}

@@ -22,7 +22,7 @@ type MenuItem = {
 
 const MENU_ITEMS: MenuItem[] = [
   { key: 'archive', title: 'Archive', icon: 'albums-outline', route: '/clinic/archive' },
-  { key: 'status', title: 'Clinic Status', icon: 'pulse-outline', route: '/clinic/clinic-settings/clinic-status' },
+  { key: 'status', title: 'Clinic Hours & Status', icon: 'pulse-outline', route: '/clinic/clinic-settings/clinic-status' },
   { key: 'device-permissions', title: 'Device Permissions', icon: 'phone-portrait-outline', route: '/clinic/clinic-settings/device-permissions' },
   { key: 'archive-download', title: 'Archiving and Downloading', icon: 'archive-outline', route: '/clinic/clinic-settings/archive-download' },
   { key: 'like-share-counts', title: 'Like and Share Counts', icon: 'heart-outline', route: '/clinic/clinic-settings/like-share-counts' },

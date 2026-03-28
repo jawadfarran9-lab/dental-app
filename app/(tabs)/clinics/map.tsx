@@ -9,7 +9,7 @@ import {
 import { getDistanceBetween } from '@/src/utils/geoDistance';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -237,19 +237,23 @@ function ClinicsMapScreenInner() {
   }, []);
 
   // ─── Fetch clinics (same pipeline as index.tsx) ───
-  useEffect(() => {
+  const fetchClinics = useCallback(() => {
+    let cancelled = false;
     (async () => {
       setLoading(true);
       try {
         const all = await fetchPublishedClinics();
-        setClinics(all);
+        if (!cancelled) setClinics(all);
       } catch (err) {
         console.error('[CLINICS_MAP] Failed to fetch clinics:', err);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     })();
+    return () => { cancelled = true; };
   }, []);
+
+  useFocusEffect(fetchClinics);
 
   // ─── Filtered clinics with valid geo ───
   const filteredClinics = useMemo(() => {

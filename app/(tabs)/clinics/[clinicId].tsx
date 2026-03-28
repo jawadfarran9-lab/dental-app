@@ -21,6 +21,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, setDoc } from 'firebase/firestore';
+
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -253,7 +254,6 @@ export default function ClinicProfileScreen() {
   const [manualClose, setManualClose] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [isPublished, setIsPublished] = useState<boolean | null>(null);
-  const [statusMenuVisible, setStatusMenuVisible] = useState(false);
 
   // Refetch on focus so manualClose changes from Profile are reflected
   const fetchClinic = useCallback(() => {
@@ -282,39 +282,6 @@ export default function ClinicProfileScreen() {
   // Use === false (not !== true) so null (unknown/loading) is NOT treated as inactive
   const ownerInactive = isOwner && auth.isSubscribed === false;
   const visitorInactive = !isOwner && isPublished === false;
-
-  // ── Manual status override (owner only, active subscription only) ──
-  const canToggleDot = isOwner && auth.isSubscribed === true;
-
-  const setClinicStatus = useCallback(async (mode: 'open' | 'close' | 'schedule') => {
-    if (!canToggleDot || !clinicId) return;
-    const prev = { manualClose, manualOpen };
-    const next =
-      mode === 'open'     ? { manualClose: false, manualOpen: true } :
-      mode === 'close'    ? { manualClose: true,  manualOpen: false } :
-      /* schedule */        { manualClose: false, manualOpen: false };
-
-    // Derive status for lightweight public reads (map markers, list cards)
-    let derivedStatus: 'open' | 'closed' = 'closed';
-    if (next.manualClose) {
-      derivedStatus = 'closed';
-    } else if (next.manualOpen) {
-      derivedStatus = 'open';
-    } else if (clinic?.workingHours) {
-      derivedStatus = getClinicOpenStatus(clinic.workingHours).status === 'open' ? 'open' : 'closed';
-    }
-
-    setManualClose(next.manualClose);
-    setManualOpen(next.manualOpen);
-    try {
-      await setDoc(doc(db, 'clinics_public', clinicId), { ...next, status: derivedStatus }, { merge: true });
-    } catch (err) {
-      console.error('Clinic status update failed:', err);
-      setManualClose(prev.manualClose);
-      setManualOpen(prev.manualOpen);
-      Alert.alert('Status Update Failed', 'Unable to update clinic status. Please try again.');
-    }
-  }, [canToggleDot, clinicId, manualClose, manualOpen, clinic?.workingHours]);
 
   // ─── Media Data ───
   const [allMedia, setAllMedia] = useState<ClinicMedia[]>([]);
@@ -612,26 +579,6 @@ export default function ClinicProfileScreen() {
     }
   }, [highlights.length, isOwner, hlFadeAnim, hlSlideAnim]);
 
-  // ─── Dot pulse animation (must be before early returns) ───
-  const dotPulse = useRef(new Animated.Value(1)).current;
-  const dotOpacity = useRef(new Animated.Value(0.85)).current;
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(dotPulse, { toValue: 1.08, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(dotPulse, { toValue: 1,    duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ]),
-        Animated.sequence([
-          Animated.timing(dotOpacity, { toValue: 1,    duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-          Animated.timing(dotOpacity, { toValue: 0.85, duration: 1000, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        ]),
-      ]),
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [dotPulse, dotOpacity]);
-
   // ─── Header sparkle animation (must be before early returns) ───
   const sparkleOpacities = useRef(
     Array.from({ length: 8 }, () => new Animated.Value(0.1 + Math.random() * 0.2)),
@@ -780,19 +727,6 @@ export default function ClinicProfileScreen() {
     );
   }
 
-  // ─── Dot color logic ───
-  const dotColor = ownerInactive
-    ? '#94A3B8' // GRAY  — subscription inactive
-    : manualClose
-      ? '#EF4444' // RED  — owner manually closed
-      : manualOpen
-        ? '#10B981' // GREEN — owner manually opened
-        : openStatus?.status === 'closed'
-          ? '#EF4444' // RED  — closed by schedule
-          : openStatus?.status === 'open'
-            ? '#10B981' // GREEN — open by schedule
-            : '#94A3B8'; // GRAY — status not yet loaded
-
   // ─── Header component for FlatList ───
   const ListHeader = (
     <>
@@ -911,23 +845,6 @@ export default function ClinicProfileScreen() {
         style={styles.headerFade}
         pointerEvents="none"
       />
-
-      {/* Status dot positioned under the ⋮ menu — owner + subscribed only */}
-      {isOwner && auth.isSubscribed === true && (
-        <View style={styles.dotWrap} pointerEvents="box-none">
-          <Pressable
-            onPress={canToggleDot ? () => setStatusMenuVisible(true) : undefined}
-            style={styles.dotPressable}
-          >
-            <Animated.View
-              style={[
-                styles.statusDot,
-                { backgroundColor: dotColor, transform: [{ scale: dotPulse }], opacity: dotOpacity },
-              ]}
-            />
-          </Pressable>
-        </View>
-      )}
 
       {/* ══════ Owner Inactive Banner ══════ */}
       {ownerInactive && (
@@ -1394,75 +1311,6 @@ export default function ClinicProfileScreen() {
         </Modal>
       )}
 
-      {/* ══════ Clinic Status Menu (Owner) ══════ */}
-      {statusMenuVisible && canToggleDot && (
-        <Modal
-          visible
-          transparent
-          animationType="fade"
-          onRequestClose={() => setStatusMenuVisible(false)}
-        >
-          <Pressable
-            style={statusMenuStyles.overlay}
-            onPress={() => setStatusMenuVisible(false)}
-          >
-            <View style={[
-              statusMenuStyles.card,
-              { backgroundColor: isDark ? 'rgba(30,42,60,0.97)' : 'rgba(255,255,255,0.96)' },
-            ]}>
-              <Text style={[statusMenuStyles.heading, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
-                Clinic Status
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  statusMenuStyles.option,
-                  manualOpen && statusMenuStyles.optionActive,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => { setClinicStatus('open'); setStatusMenuVisible(false); }}
-              >
-                <View style={[statusMenuStyles.optionDot, { backgroundColor: '#10B981' }]} />
-                <Text style={[statusMenuStyles.optionText, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
-                  Open Clinic Now
-                </Text>
-                {manualOpen && <Ionicons name="checkmark" size={18} color="#10B981" />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  statusMenuStyles.option,
-                  manualClose && statusMenuStyles.optionActive,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => { setClinicStatus('close'); setStatusMenuVisible(false); }}
-              >
-                <View style={[statusMenuStyles.optionDot, { backgroundColor: '#EF4444' }]} />
-                <Text style={[statusMenuStyles.optionText, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
-                  Close Clinic Now
-                </Text>
-                {manualClose && <Ionicons name="checkmark" size={18} color="#EF4444" />}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  statusMenuStyles.option,
-                  !manualClose && !manualOpen && statusMenuStyles.optionActive,
-                ]}
-                activeOpacity={0.7}
-                onPress={() => { setClinicStatus('schedule'); setStatusMenuVisible(false); }}
-              >
-                <View style={[statusMenuStyles.optionDot, { backgroundColor: '#3D9EFF' }]} />
-                <Text style={[statusMenuStyles.optionText, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
-                  Return to Schedule
-                </Text>
-                {!manualClose && !manualOpen && <Ionicons name="checkmark" size={18} color="#3D9EFF" />}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Modal>
-      )}
-
       {/* ══════ Create Post/Reel Modal ══════ */}
       {clinicId && (
         <CreatePostModal
@@ -1662,59 +1510,6 @@ const hoursModalStyles = StyleSheet.create({
 });
 
 /* ── Status Menu Styles ── */
-const statusMenuStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 24,
-  },
-  card: {
-    width: '80%',
-    maxWidth: 340,
-    borderRadius: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0D1B2A',
-        shadowOpacity: 0.15,
-        shadowRadius: 14,
-        shadowOffset: { width: 0, height: 6 },
-      },
-      android: { elevation: 10 },
-    }),
-  },
-  heading: {
-    fontSize: 17,
-    fontWeight: '700',
-    marginBottom: 14,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 10,
-    marginBottom: 4,
-  },
-  optionActive: {
-    backgroundColor: 'rgba(61,158,255,0.08)',
-  },
-  optionDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-  },
-  optionText: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-});
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1900,37 +1695,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 
-  dotWrap: {
-    alignItems: 'flex-end',
-    paddingRight: 31,
-    marginTop: 6,
-    marginBottom: 0,
-  },
-  dotPressable: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusDot: {
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#0D1B2A',
-        shadowOpacity: 0.15,
-        shadowRadius: 3,
-        shadowOffset: { width: 0, height: 1 },
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
   profileRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',

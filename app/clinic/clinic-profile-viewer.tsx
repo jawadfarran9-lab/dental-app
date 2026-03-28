@@ -18,6 +18,8 @@ interface ClinicProfile {
   whatsapp?: string;
   isPublished?: boolean;
   workingHours?: WeeklySchedule;
+  manualClose?: boolean;
+  manualOpen?: boolean;
 }
 
 export default function ClinicProfileViewer() {
@@ -31,6 +33,15 @@ export default function ClinicProfileViewer() {
     if (!profile?.workingHours) return null;
     return getClinicOpenStatus(profile.workingHours);
   }, [profile]);
+
+  // Effective status: manual overrides take priority over schedule
+  const effectiveStatus = useMemo<{ status: 'open' | 'closed'; closesAt?: string; opensAt?: string } | null>(() => {
+    if (!profile) return null;
+    if (profile.manualClose) return { status: 'closed' };
+    if (profile.manualOpen) return { status: 'open' };
+    if (openStatus) return openStatus;
+    return null;
+  }, [profile, openStatus]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -96,19 +107,19 @@ export default function ClinicProfileViewer() {
             </Text>
 
             {/* Open / Closed status pill */}
-            {openStatus && (
+            {effectiveStatus && (
               <View style={styles.statusRow}>
-                <View style={[styles.statusPill, { backgroundColor: openStatus.status === 'open' ? 'rgba(16,185,129,0.12)' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') }]}>
-                  <View style={[styles.statusDot, { backgroundColor: openStatus.status === 'open' ? '#10b981' : '#94A3B8' }]} />
-                  <Text style={[styles.statusText, { color: openStatus.status === 'open' ? '#10b981' : colors.textSecondary }]}>
-                    {openStatus.status === 'open' ? 'Open Now' : 'Closed Now'}
+                <View style={[styles.statusPill, { backgroundColor: effectiveStatus.status === 'open' ? 'rgba(16,185,129,0.12)' : (isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)') }]}>
+                  <View style={[styles.statusDot, { backgroundColor: effectiveStatus.status === 'open' ? '#10b981' : '#94A3B8' }]} />
+                  <Text style={[styles.statusText, { color: effectiveStatus.status === 'open' ? '#10b981' : colors.textSecondary }]}>
+                    {effectiveStatus.status === 'open' ? 'Open Now' : 'Closed Now'}
                   </Text>
                 </View>
-                {openStatus.status === 'open' && (
-                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Closes at {openStatus.closesAt}</Text>
+                {effectiveStatus.status === 'open' && effectiveStatus.closesAt && (
+                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Closes at {effectiveStatus.closesAt}</Text>
                 )}
-                {openStatus.status === 'closed' && openStatus.opensAt && (
-                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Opens at {openStatus.opensAt}</Text>
+                {effectiveStatus.status === 'closed' && effectiveStatus.opensAt && (
+                  <Text style={[styles.statusDetail, { color: colors.textSecondary }]}>Opens at {effectiveStatus.opensAt}</Text>
                 )}
               </View>
             )}
