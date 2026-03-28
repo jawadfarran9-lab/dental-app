@@ -7,6 +7,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useClinicDistance } from '@/src/hooks/useClinicDistance';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
+import { fetchHighlights, Highlight } from '@/src/services/highlightsService';
 import { PostType } from '@/src/services/postCreationService';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
 import { ClinicMedia } from '@/src/types/clinicMedia';
@@ -34,6 +35,7 @@ import {
     Platform,
     Pressable,
     SafeAreaView,
+    ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -332,6 +334,19 @@ export default function ClinicProfileScreen() {
     return () => { cancelled = true; };
   }, [clinicId]);
 
+  // ─── Highlights Data ───
+  const [highlights, setHighlights] = useState<Highlight[]>([]);
+
+  useEffect(() => {
+    if (!clinicId) return;
+    let cancelled = false;
+    (async () => {
+      const items = await fetchHighlights(clinicId);
+      if (!cancelled) setHighlights(items);
+    })();
+    return () => { cancelled = true; };
+  }, [clinicId]);
+
   // ─── Tabs ───
   const [activeTab, setActiveTab] = useState<TabKey>('posts');
 
@@ -563,6 +578,17 @@ export default function ClinicProfileScreen() {
     [clinicId, router],
   );
 
+  const handleHighlightPress = useCallback(
+    (highlightId: string) => {
+      router.push(`/clinic/archive?highlightId=${highlightId}` as any);
+    },
+    [router],
+  );
+
+  const handleNewHighlight = useCallback(() => {
+    router.push('/clinic/archive' as any);
+  }, [router]);
+
   const keyExtractor = useCallback((item: ClinicMedia) => item.id, []);
 
   const renderMediaItem = useCallback(
@@ -573,6 +599,18 @@ export default function ClinicProfileScreen() {
   );
 
   const ItemSeparator = useCallback(() => <View style={{ height: GRID_GAP }} />, []);
+
+  // ─── Highlights row fade-in animation ───
+  const hlFadeAnim = useRef(new Animated.Value(0)).current;
+  const hlSlideAnim = useRef(new Animated.Value(8)).current;
+  useEffect(() => {
+    if (highlights.length > 0 || isOwner) {
+      Animated.parallel([
+        Animated.timing(hlFadeAnim, { toValue: 1, duration: 350, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+        Animated.timing(hlSlideAnim, { toValue: 0, duration: 350, easing: Easing.out(Easing.ease), useNativeDriver: true }),
+      ]).start();
+    }
+  }, [highlights.length, isOwner, hlFadeAnim, hlSlideAnim]);
 
   // ─── Dot pulse animation (must be before early returns) ───
   const dotPulse = useRef(new Animated.Value(1)).current;
@@ -864,6 +902,16 @@ export default function ClinicProfileScreen() {
         </View>
       </View>
 
+      {/* ══════ Header bottom gradient fade (glass depth) ══════ */}
+      <LinearGradient
+        colors={isDark
+          ? ['rgba(15,23,42,0.0)', 'rgba(15,23,42,0.04)']
+          : ['rgba(224,242,254,0.0)', 'rgba(224,242,254,0.06)']
+        }
+        style={styles.headerFade}
+        pointerEvents="none"
+      />
+
       {/* Status dot positioned under the ⋮ menu — owner + subscribed only */}
       {isOwner && auth.isSubscribed === true && (
         <View style={styles.dotWrap} pointerEvents="box-none">
@@ -902,7 +950,7 @@ export default function ClinicProfileScreen() {
       <View style={styles.profileSection}>
         <View style={styles.avatarRow}>
           <View style={styles.avatarWrap}>
-            <StarAvatar size={110} uri={profileImageUri} borderWidth={3} />
+            <StarAvatar size={100} uri={profileImageUri} borderWidth={3} />
             {uploadingImage && (
               <View style={styles.avatarOverlay}>
                 <ActivityIndicator size="small" color="#FFF" />
@@ -978,6 +1026,78 @@ export default function ClinicProfileScreen() {
           />
         )}
       </View>
+
+      {/* ══════ Highlights Row (Instagram-style) ══════ */}
+      {(highlights.length > 0 || isOwner) && (
+        <Animated.View style={[hlStyles.container, { opacity: hlFadeAnim, transform: [{ translateY: hlSlideAnim }] }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={hlStyles.scrollContent}
+          >
+            {/* "New" button — owner only */}
+            {isOwner && !ownerInactive && (
+              <Pressable
+                style={({ pressed }) => [hlStyles.item, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}
+                onPress={handleNewHighlight}
+              >
+                <View style={[
+                  hlStyles.circle,
+                  hlStyles.newCircle,
+                  { borderColor: isDark ? 'rgba(61,158,255,0.30)' : 'rgba(61,158,255,0.25)' },
+                ]}>
+                  <Ionicons name="add" size={26} color={isDark ? '#60A5FA' : '#3D9EFF'} />
+                </View>
+                <Text
+                  style={[hlStyles.label, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}
+                  numberOfLines={1}
+                >
+                  New
+                </Text>
+              </Pressable>
+            )}
+
+            {/* Highlight items */}
+            {highlights.map((hl) => (
+              <Pressable
+                key={hl.id}
+                style={({ pressed }) => [hlStyles.item, { transform: [{ scale: pressed ? 0.94 : 1 }] }]}
+                onPress={() => handleHighlightPress(hl.id)}
+              >
+                <Animated.View style={[
+                  hlStyles.circle,
+                  hlStyles.ringCircle,
+                  { borderColor: isDark ? 'rgba(61,158,255,0.5)' : 'rgba(61,158,255,0.4)' },
+                ]}>
+                  {hl.coverUrl ? (
+                    <Image
+                      source={{ uri: hl.coverUrl }}
+                      style={hlStyles.coverImage}
+                      contentFit="cover"
+                      transition={200}
+                    />
+                  ) : (
+                    <LinearGradient
+                      colors={isDark ? ['#1E293B', '#334155'] : ['#E0F2FE', '#BAE6FD']}
+                      style={hlStyles.coverFallback}
+                    >
+                      <Text style={[hlStyles.coverInitial, { color: isDark ? '#60A5FA' : '#3D9EFF' }]}>
+                        {hl.name.charAt(0).toUpperCase()}
+                      </Text>
+                    </LinearGradient>
+                  )}
+                </Animated.View>
+                <Text
+                  style={[hlStyles.label, { color: isDark ? '#C0CAD4' : '#1A2B3F' }]}
+                  numberOfLines={1}
+                >
+                  {hl.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
 
       {/* ══════ Section Divider + Posts / Reels ══════ */}
       <View style={styles.tabsContainer}>
@@ -1673,6 +1793,12 @@ const styles = StyleSheet.create({
     paddingTop: Platform.OS === 'android' ? 12 : 4,
     paddingBottom: 8,
     minHeight: 48,
+    zIndex: 2,
+  },
+  headerFade: {
+    height: 6,
+    marginTop: -1,
+    zIndex: 1,
   },
   navLeft: {
     flexDirection: 'row',
@@ -1741,7 +1867,7 @@ const styles = StyleSheet.create({
   /* ── Profile Section ── */
   profileSection: {
     alignItems: 'flex-start',
-    paddingTop: 12,
+    paddingTop: 6,
     paddingBottom: 0,
     paddingHorizontal: 18,
   },
@@ -1751,15 +1877,15 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   avatarWrap: {
-    marginBottom: 12,
+    marginBottom: 4,
     alignSelf: 'flex-start',
     marginLeft: 8,
     ...Platform.select({
       ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.30,
-        shadowRadius: 8,
+        shadowColor: '#3D9EFF',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.18,
+        shadowRadius: 10,
       },
       android: {
         elevation: 8,
@@ -1769,7 +1895,7 @@ const styles = StyleSheet.create({
   avatarOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.35)',
-    borderRadius: 55,
+    borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1777,7 +1903,7 @@ const styles = StyleSheet.create({
   dotWrap: {
     alignItems: 'flex-end',
     paddingRight: 31,
-    marginTop: 14,
+    marginTop: 6,
     marginBottom: 0,
   },
   dotPressable: {
@@ -1810,6 +1936,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 22,
+    marginBottom: 6,
   },
   contactColumn: {
     flex: 1,
@@ -1865,7 +1992,7 @@ const styles = StyleSheet.create({
   profileDivider: {
     height: 1,
     marginTop: 0,
-    marginBottom: 12,
+    marginBottom: 6,
     marginHorizontal: 16,
   },
   tabsContainer: {
@@ -1904,6 +2031,70 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+});
+
+/* ── Highlights Row Styles (Instagram-style) ── */
+const HIGHLIGHT_SIZE = 58;
+const hlStyles = StyleSheet.create({
+  container: {
+    paddingTop: 4,
+    paddingBottom: 4,
+  },
+  scrollContent: {
+    paddingHorizontal: 18,
+    gap: 12,
+  },
+  item: {
+    alignItems: 'center',
+    width: HIGHLIGHT_SIZE + 10,
+  },
+  circle: {
+    width: HIGHLIGHT_SIZE,
+    height: HIGHLIGHT_SIZE,
+    borderRadius: HIGHLIGHT_SIZE / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  newCircle: {
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#3D9EFF',
+        shadowOpacity: 0.12,
+        shadowRadius: 6,
+        shadowOffset: { width: 0, height: 0 },
+      },
+      android: {},
+    }),
+  },
+  ringCircle: {
+    borderWidth: 2,
+  },
+  coverImage: {
+    width: HIGHLIGHT_SIZE - 6,
+    height: HIGHLIGHT_SIZE - 6,
+    borderRadius: (HIGHLIGHT_SIZE - 6) / 2,
+  },
+  coverFallback: {
+    width: HIGHLIGHT_SIZE - 6,
+    height: HIGHLIGHT_SIZE - 6,
+    borderRadius: (HIGHLIGHT_SIZE - 6) / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverInitial: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  label: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginTop: 3,
+    maxWidth: HIGHLIGHT_SIZE + 6,
+    textAlign: 'center',
   },
 });
 
