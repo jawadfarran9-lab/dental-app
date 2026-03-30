@@ -1,4 +1,4 @@
-import { toggleSavePost } from '@/services/engagementService';
+import { hideReel, isPostSaved, markInterested, reportReel, toggleSavePost } from '@/services/engagementService';
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -7,9 +7,11 @@ import {
     Modal,
     Pressable,
     StyleSheet,
+    Switch,
     Text,
     View,
 } from 'react-native';
+import useToast from './useToast';
 
 interface ReelOptionsSheetProps {
   visible: boolean;
@@ -17,9 +19,11 @@ interface ReelOptionsSheetProps {
   clinicId: string;
   onClose: () => void;
   onHide: () => void;
+  autoScroll?: boolean;
+  onAutoScrollToggle?: () => void;
 }
 
-const SHEET_HEIGHT = 300;
+const SHEET_HEIGHT = 350;
 
 const REPORT_REASONS = [
   'Spam',
@@ -33,47 +37,27 @@ const REPORT_REASONS = [
   "I just don't like it",
 ];
 
-// ---- Tiny inline toast ----
-const useToast = () => {
-  const opacity = useRef(new Animated.Value(0)).current;
-  const [message, setMessage] = useState('');
-  const [showing, setShowing] = useState(false);
-
-  const show = useCallback(
-    (text: string) => {
-      setMessage(text);
-      setShowing(true);
-      opacity.setValue(0);
-      Animated.sequence([
-        Animated.timing(opacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-        Animated.delay(700),
-        Animated.timing(opacity, { toValue: 0, duration: 300, useNativeDriver: true }),
-      ]).start(() => setShowing(false));
-    },
-    [opacity],
-  );
-
-  const element = showing ? (
-    <Animated.View style={[toastStyles.wrap, { opacity }]} pointerEvents="none">
-      <Text style={toastStyles.text}>{message}</Text>
-    </Animated.View>
-  ) : null;
-
-  return { show, element };
-};
-
 const ReelOptionsSheet = ({
   visible,
   reelId,
   clinicId,
   onClose,
   onHide,
+  autoScroll,
+  onAutoScrollToggle,
 }: ReelOptionsSheetProps) => {
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
   const [saved, setSaved] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const toast = useToast();
+
+  // Sync saved state from backend when sheet opens
+  useEffect(() => {
+    if (visible && reelId) {
+      isPostSaved(reelId).then(setSaved).catch(() => {});
+    }
+  }, [visible, reelId]);
 
   useEffect(() => {
     if (visible) {
@@ -119,24 +103,32 @@ const ReelOptionsSheet = ({
     dismiss();
   }, [reelId, dismiss, toast]);
 
-  const handleNotInterested = useCallback(() => {
+  const handleNotInterested = useCallback(async () => {
+    await hideReel(reelId);
     toast.show('Not interested');
     onHide();
     dismiss();
-  }, [onHide, dismiss, toast]);
+  }, [reelId, onHide, dismiss, toast]);
 
   const handleReport = useCallback(() => {
     setReportOpen(true);
   }, []);
 
   const handleReportReason = useCallback(
-    (reason: string) => {
+    async (reason: string) => {
       setReportOpen(false);
+      await reportReel(reelId, reason);
       toast.show('Thanks for reporting');
       dismiss();
     },
-    [dismiss, toast],
+    [reelId, dismiss, toast],
   );
+
+  const handleInterested = useCallback(async () => {
+    await markInterested(reelId);
+    toast.show('Marked as interested');
+    dismiss();
+  }, [reelId, dismiss, toast]);
 
   const closeReport = useCallback(() => {
     setReportOpen(false);
@@ -159,40 +151,74 @@ const ReelOptionsSheet = ({
           <View style={styles.handle} />
         </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-          onPress={handleSave}
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons
-              name={saved ? 'bookmark' : 'bookmark-outline'}
-              size={24}
-              color="#fff"
+        {/* Section 1 — Primary */}
+        <View style={styles.section}>
+          <Pressable
+            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            onPress={handleSave}
+          >
+            <View style={styles.iconWrap}>
+              <Ionicons
+                name={saved ? 'bookmark' : 'bookmark-outline'}
+                size={24}
+                color="#fff"
+              />
+            </View>
+            <Text style={styles.optionText}>{saved ? 'Unsave' : 'Save'}</Text>
+          </Pressable>
+          <View style={styles.sectionDivider} />
+          <View style={styles.toggleRow}>
+            <View style={styles.iconWrap}>
+              <Ionicons name="play-forward-outline" size={24} color="#fff" />
+            </View>
+            <Text style={styles.optionText}>Auto scroll</Text>
+            <Switch
+              value={autoScroll}
+              onValueChange={onAutoScrollToggle}
+              trackColor={{ false: 'rgba(255,255,255,0.15)', true: '#34C759' }}
+              thumbColor="#fff"
+              style={styles.switch}
             />
           </View>
-          <Text style={styles.optionText}>{saved ? 'Unsave' : 'Save'}</Text>
-        </Pressable>
+        </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-          onPress={handleNotInterested}
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons name="eye-off-outline" size={24} color="#fff" />
-          </View>
-          <Text style={styles.optionText}>Not interested</Text>
-        </Pressable>
+        {/* Section 2 — Recommendation signals */}
+        <View style={styles.section}>
+          <Pressable
+            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            onPress={handleInterested}
+          >
+            <View style={styles.iconWrap}>
+              <Ionicons name="thumbs-up-outline" size={24} color="#fff" />
+            </View>
+            <Text style={styles.optionText}>Interested</Text>
+          </Pressable>
+          <View style={styles.sectionDivider} />
+          <Pressable
+            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            onPress={handleNotInterested}
+          >
+            <View style={styles.iconWrap}>
+              <Ionicons name="eye-off-outline" size={24} color="#fff" />
+            </View>
+            <Text style={styles.optionText}>Not interested</Text>
+          </Pressable>
+        </View>
 
-        <Pressable
-          style={({ pressed }) => [styles.option, pressed && styles.pressed]}
-          onPress={handleReport}
-        >
-          <View style={styles.iconWrap}>
-            <Ionicons name="flag-outline" size={24} color="#FF453A" />
-          </View>
-          <Text style={[styles.optionText, { color: '#FF453A' }]}>Report</Text>
-        </Pressable>
+        {/* Section 3 — Danger zone */}
+        <View style={styles.section}>
+          <Pressable
+            style={({ pressed }) => [styles.option, pressed && styles.pressed]}
+            onPress={handleReport}
+          >
+            <View style={styles.iconWrap}>
+              <Ionicons name="flag-outline" size={24} color="#FF453A" />
+            </View>
+            <Text style={[styles.optionText, { color: '#FF453A' }]}>Report</Text>
+          </Pressable>
+        </View>
 
+        {/* Cancel */}
         <Pressable
           style={({ pressed }) => [styles.option, styles.cancel, pressed && styles.pressed]}
           onPress={dismiss}
@@ -252,11 +278,33 @@ const styles = StyleSheet.create({
     borderRadius: 2,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
+  section: {
+    marginHorizontal: 14,
+    marginBottom: 10,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  sectionDivider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 22,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 22,
+  },
+  switch: {
+    marginLeft: 'auto',
+  },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    paddingVertical: 18,
+    paddingVertical: 16,
     paddingHorizontal: 22,
   },
   pressed: {
@@ -273,8 +321,9 @@ const styles = StyleSheet.create({
   },
   cancel: {
     justifyContent: 'center',
-    marginTop: 10,
-    paddingTop: 18,
+    marginTop: 4,
+    paddingTop: 16,
+    marginHorizontal: 14,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: 'rgba(255,255,255,0.1)',
   },
@@ -282,6 +331,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.45)',
     fontSize: 16,
     fontWeight: '500',
+    textAlign: 'center',
   },
   // Report modal
   reportSheet: {
@@ -315,24 +365,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '400',
-  },
-});
-
-const toastStyles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    bottom: 100,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    zIndex: 100,
-  },
-  text: {
-    color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
   },
 });
 

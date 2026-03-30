@@ -205,3 +205,123 @@ export const getSavedPostIds = async (): Promise<string[]> => {
     return [];
   }
 };
+
+/**
+ * Check if a single post is saved.
+ */
+export const isPostSaved = async (postId: string): Promise<boolean> => {
+  try {
+    const deviceId = await getDeviceId();
+    const snap = await getDoc(savedDoc(deviceId, postId));
+    return snap.exists();
+  } catch {
+    return false;
+  }
+};
+
+// ========== Hidden Reels (Not Interested) ==========
+const HIDDEN_REELS_KEY = '@hidden_reels';
+
+export const hideReel = async (reelId: string): Promise<void> => {
+  try {
+    const ids = await getHiddenReelIds();
+    if (!ids.includes(reelId)) {
+      ids.push(reelId);
+      await AsyncStorage.setItem(HIDDEN_REELS_KEY, JSON.stringify(ids));
+    }
+  } catch (error) {
+    console.error('[ENGAGEMENT] Error hiding reel:', error);
+  }
+};
+
+export const getHiddenReelIds = async (): Promise<string[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(HIDDEN_REELS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+// ========== Reports ==========
+const REPORTS_KEY = '@reel_reports';
+
+export interface ReelReport {
+  reelId: string;
+  reason: string;
+  timestamp: number;
+}
+
+export const reportReel = async (reelId: string, reason: string): Promise<void> => {
+  try {
+    const raw = await AsyncStorage.getItem(REPORTS_KEY);
+    const reports: ReelReport[] = raw ? JSON.parse(raw) : [];
+    reports.push({ reelId, reason, timestamp: Date.now() });
+    await AsyncStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
+  } catch (error) {
+    console.error('[ENGAGEMENT] Error reporting reel:', error);
+  }
+};
+
+export const getReelReports = async (): Promise<ReelReport[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(REPORTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+// ========== Interested ==========
+const INTERESTED_REELS_KEY = '@interested_reels';
+
+export const markInterested = async (reelId: string): Promise<void> => {
+  try {
+    const ids = await getInterestedReelIds();
+    if (!ids.includes(reelId)) {
+      ids.push(reelId);
+      await AsyncStorage.setItem(INTERESTED_REELS_KEY, JSON.stringify(ids));
+    }
+  } catch (error) {
+    console.error('[ENGAGEMENT] Error marking interested:', error);
+  }
+};
+
+export const getInterestedReelIds = async (): Promise<string[]> => {
+  try {
+    const raw = await AsyncStorage.getItem(INTERESTED_REELS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+// ========== Category Preference Profile ==========
+const CATEGORY_PROFILE_KEY = '@reel_category_profile';
+
+export const saveCategoryProfile = async (profile: Record<string, number>): Promise<void> => {
+  try {
+    const stored: Record<string, { score: number }> = {};
+    for (const [cat, score] of Object.entries(profile)) {
+      stored[cat] = { score };
+    }
+    await AsyncStorage.setItem(CATEGORY_PROFILE_KEY, JSON.stringify(stored));
+  } catch (error) {
+    console.error('[ENGAGEMENT] Error saving category profile:', error);
+  }
+};
+
+export const loadCategoryProfile = async (): Promise<Record<string, number>> => {
+  try {
+    const raw = await AsyncStorage.getItem(CATEGORY_PROFILE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, { score: number }>;
+    const result: Record<string, number> = {};
+    for (const [cat, val] of Object.entries(parsed)) {
+      if (typeof val?.score === 'number') result[cat] = val.score;
+    }
+    return result;
+  } catch {
+    return {};
+  }
+};

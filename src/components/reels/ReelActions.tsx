@@ -11,11 +11,13 @@ interface ReelActionsProps {
   likeCount: number;
   menuOpen: boolean;
   muted: boolean;
+  autoScroll?: boolean;
   onLike: () => void;
   onMenuOpen: () => void;
   onMenuClose: () => void;
   onMuteToggle: () => void;
   onHide: () => void;
+  onAutoScrollToggle?: () => void;
 }
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -27,11 +29,13 @@ const ReelActions = ({
   likeCount,
   menuOpen,
   muted,
+  autoScroll,
   onLike,
   onMenuOpen,
   onMenuClose,
   onMuteToggle,
   onHide,
+  onAutoScrollToggle,
 }: ReelActionsProps) => {
   // ---- Heart animation ----
   const heartScale = useRef(new Animated.Value(1)).current;
@@ -168,6 +172,8 @@ const ReelActions = ({
         clinicId={clinicId}
         onClose={onMenuClose}
         onHide={onHide}
+        autoScroll={autoScroll}
+        onAutoScrollToggle={onAutoScrollToggle}
       />
 
       <ReelShareSheet
@@ -193,7 +199,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: 'center',
     marginTop: 3,
-  },  likedGlow: {
+  },
+  likedGlow: {
     shadowColor: '#FF3040',
     shadowOpacity: 0.35,
     shadowRadius: 8,

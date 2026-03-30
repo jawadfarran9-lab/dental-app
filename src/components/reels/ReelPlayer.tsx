@@ -11,7 +11,6 @@ import ReelProgressBar from './ReelProgressBar';
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const DOUBLE_TAP_DELAY = 250;
-const HIT_SLOP = 20; // must match ReelProgressBar HIT_SLOP
 
 const MIN_SCALE = 1;
 const MAX_SCALE = 3;
@@ -75,11 +74,15 @@ interface ReelPlayerProps {
   mediaUrl?: string;
   isActive: boolean;
   isNext?: boolean;
+  autoScroll?: boolean;
   onHide: () => void;
   onLikeChange?: (reelId: string, liked: boolean, likeCount: number) => void;
+  onVideoEnd?: (reelId: string) => void;
+  onAutoScrollToggle?: () => void;
+  onWatchStats?: (reelId: string, stats: { watchTime: number; skipped: boolean; fullyWatched: boolean }) => void;
 }
 
-const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: initialLikeCount = 0, initialIsLiked = false, mediaUrl, isActive, isNext = false, onHide, onLikeChange }: ReelPlayerProps) => {
+const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: initialLikeCount = 0, initialIsLiked = false, mediaUrl, isActive, isNext = false, autoScroll = false, onHide, onLikeChange, onVideoEnd, onAutoScrollToggle, onWatchStats }: ReelPlayerProps) => {
 
   // ---- Media state ----
   const mediaType = getMediaType(mediaUrl);
@@ -96,6 +99,11 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
   isActiveRef.current = isActive;
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+
+  // ---- Watch intelligence (all refs — zero re-renders) ----
+  const watchStartRef = useRef(0);
+  const onWatchStatsRef = useRef(onWatchStats);
+  onWatchStatsRef.current = onWatchStats;
 
   // ---- Video player (expo-video) ----
   const player = useVideoPlayer(mediaType === 'video' && mediaUrl ? mediaUrl : null, (p) => {
@@ -182,6 +190,16 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
     if (isActive) {
       setPaused(false);
       pausedRef.current = false;
+      // Start watch timer
+      watchStartRef.current = Date.now();
+    } else if (watchStartRef.current > 0) {
+      // Flush watch stats when leaving this reel
+      const elapsed = (Date.now() - watchStartRef.current) / 1000;
+      const dur = player?.duration ?? 0;
+      const skipped = elapsed < 2;
+      const fullyWatched = dur > 0 && elapsed >= dur * 0.8;
+      onWatchStatsRef.current?.(id, { watchTime: elapsed, skipped, fullyWatched });
+      watchStartRef.current = 0;
     }
     gestureOverride.current = 'none';
     lastTap.current = 0;
@@ -207,6 +225,11 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
   const [videoDuration, setVideoDuration] = useState(0);
   const [videoCurrentTime, setVideoCurrentTime] = useState(0);
 
+  // ---- Video end detection (for auto-scroll) ----
+  const videoEndFiredRef = useRef(false);
+  const onVideoEndRef = useRef(onVideoEnd);
+  onVideoEndRef.current = onVideoEnd;
+
   useEffect(() => {
     if (!player || mediaType !== 'video') return;
     const sub = player.addListener('timeUpdate', ({ currentTime }: { currentTime: number }) => {
@@ -217,10 +240,19 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
         if (gestureOverride.current !== 'scrubbing') {
           progressAnim.setValue(currentTime / dur);
         }
+        // Detect video reaching end (within 0.3s of duration) — fire once per loop cycle
+        if (currentTime >= dur - 0.3 && !videoEndFiredRef.current && isActiveRef.current) {
+          videoEndFiredRef.current = true;
+          onVideoEndRef.current?.(id);
+        }
+        // Reset the flag when video loops back near the start
+        if (currentTime < 1 && videoEndFiredRef.current) {
+          videoEndFiredRef.current = false;
+        }
       }
     });
     return () => sub.remove();
-  }, [player, mediaType, progressAnim]);
+  }, [player, mediaType, progressAnim, id]);
 
   // ---- Scrub handlers ----
   const handleScrubStart = useCallback(() => {
@@ -250,24 +282,6 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
 
   // ---- Pause overlay icon ----
   const pauseIconOpacity = useRef(new Animated.Value(0)).current;
-
-  const flashPauseIcon = useCallback(() => {
-    pauseIconOpacity.setValue(1);
-    Animated.timing(pauseIconOpacity, {
-      toValue: 0,
-      duration: 600,
-      delay: 200,
-      useNativeDriver: true,
-    }).start();
-  }, [pauseIconOpacity]);
-
-  const togglePause = useCallback(() => {
-    setPaused((p) => {
-      const next = !p;
-      flashPauseIcon();
-      return next;
-    });
-  }, [flashPauseIcon]);
 
   // ---- Like state (owned here so double-tap + heart button share it) ----
   const [liked, setLiked] = useState(initialIsLiked);
@@ -671,6 +685,8 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
           onMenuClose={() => setMenuOpen(false)}
           onMuteToggle={() => setMuted((m) => !m)}
           onHide={onHide}
+          autoScroll={autoScroll}
+          onAutoScrollToggle={onAutoScrollToggle}
         />
         <ReelInfo
           clinicName={clinicName}
