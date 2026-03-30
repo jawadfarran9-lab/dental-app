@@ -76,7 +76,8 @@
           "cameraPermission": "This app needs access to your camera to take photos for stories."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true,

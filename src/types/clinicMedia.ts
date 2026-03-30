@@ -22,6 +22,10 @@ export interface ClinicMedia {
   caption?: string;
   /** Clinic display name (denormalised for viewer header) */
   clinicName?: string;
+  /** Parent clinic document ID (denormalised for service calls) */
+  clinicId?: string;
+  /** Cached like count (managed by engagementService) */
+  likeCount?: number;
   /** Unix timestamp (ms) */
   createdAt: number;
 }

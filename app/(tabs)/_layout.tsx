@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, useColorScheme, View } from 'react-native';
 
@@ -143,10 +143,12 @@ export default function TabsLayout() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const router = useRouter();
+  const pathname = usePathname();
+  const isReels = pathname === '/reels';
 
   // Premium glassmorphism colors
-  const activeColor = '#3D9EFF'; // Bright blue
-  const inactiveColor = isDark ? '#7A8BA3' : '#A0AAB8'; // Soft grey
+  const activeColor = isReels ? '#fff' : '#3D9EFF'; // White on Reels, bright blue elsewhere
+  const inactiveColor = isReels ? 'rgba(255,255,255,0.5)' : (isDark ? '#64748B' : '#94A3B8');
 
   return (
     <>
@@ -156,23 +158,23 @@ export default function TabsLayout() {
           tabBarInactiveTintColor: inactiveColor,
           tabBarStyle: {
             position: 'absolute',
-            bottom: 2,
+            bottom: 0,
             left: 16,
             right: 16,
-            height: 62,
+            height: 74,
             borderRadius: 28,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             borderWidth: 0,
-            paddingBottom: 4,
-            paddingTop: 4,
-            paddingHorizontal: 4,
+            paddingBottom: 12,
+            paddingTop: 6,
+            paddingHorizontal: 8,
             ...Platform.select({
               ios: {
                 shadowColor: '#0D1B2A',
-                shadowOpacity: 0.18,
-                shadowRadius: 20,
-                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 0.22,
+                shadowRadius: 14,
+                shadowOffset: { width: 0, height: 6 },
               },
               android: { elevation: 12 },
             }),
@@ -180,38 +182,41 @@ export default function TabsLayout() {
           tabBarBackground: () => (
             <View style={styles.tabBarBackground}>
               <BlurView
-                intensity={Platform.OS === 'ios' ? (isDark ? 55 : 65) : 0}
-                tint={isDark ? 'dark' : 'light'}
+                intensity={Platform.OS === 'ios' ? (isReels ? 40 : (isDark ? 55 : 65)) : 0}
+                tint={isReels ? 'dark' : (isDark ? 'dark' : 'light')}
                 style={StyleSheet.absoluteFillObject}
               />
               {/* Solid fallback for Android / tint overlay */}
               <View style={[
                 StyleSheet.absoluteFillObject,
                 {
-                  backgroundColor: isDark
-                    ? 'rgba(25, 40, 65, 0.82)'
-                    : 'rgba(235, 245, 255, 0.78)',
+                  backgroundColor: isReels
+                    ? 'rgba(0, 0, 0, 0.6)'
+                    : isDark
+                      ? 'rgba(25, 40, 65, 0.82)'
+                      : 'rgba(235, 245, 255, 0.78)',
                 },
               ]} />
               {/* Subtle border */}
               <View style={[
                 styles.tabBarBorder,
-                { borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.50)' },
+                { borderColor: isReels
+                    ? 'rgba(255,255,255,0.08)'
+                    : isDark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.50)' },
               ]} />
             </View>
           ),
           tabBarLabelStyle: {
-            fontSize: 11,
-            fontWeight: '700',
+            fontSize: 10.5,
+            fontWeight: '600',
             marginTop: 0,
-            letterSpacing: 0.3,
+            letterSpacing: 0.2,
           },
           tabBarIconStyle: {
             marginBottom: -2,
           },
           tabBarItemStyle: {
             paddingVertical: 2,
-            minWidth: 64,
             minHeight: 44, // Minimum tap target
           },
           headerShown: false,
@@ -229,13 +234,13 @@ export default function TabsLayout() {
           }}
         />
 
-        {/* 2. Clinic */}
+        {/* 2. Reels */}
         <Tabs.Screen
-          name="clinic"
+          name="reels"
           options={{
-            title: 'Clinic',
+            title: 'Reels',
             tabBarIcon: ({ color, focused }) => (
-              <TabIcon name="briefcase" focused={focused} color={color} isDark={isDark} />
+              <TabIcon name="play-circle" focused={focused} color={color} isDark={isDark} />
             ),
           }}
         />
@@ -244,7 +249,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="subscription"
           options={{
-            title: 'Subscription',
+            title: 'Subscribe',
             tabBarIcon: ({ color, focused }) => (
               <TabIcon name="star" focused={focused} color={color} isDark={isDark} />
             ),
@@ -262,7 +267,18 @@ export default function TabsLayout() {
           }}
         />
 
-        {/* 5. Clinics (public discovery) */}
+        {/* 5. Clinic */}
+        <Tabs.Screen
+          name="clinic"
+          options={{
+            title: 'Clinic',
+            tabBarIcon: ({ color, focused }) => (
+              <TabIcon name="briefcase" focused={focused} color={color} isDark={isDark} />
+            ),
+          }}
+        />
+
+        {/* 6. Clinics (public discovery) */}
         <Tabs.Screen
           name="clinics"
           options={{
@@ -317,15 +333,15 @@ const styles = StyleSheet.create({
     height: 46,
     borderRadius: 16,
     shadowColor: '#3D9EFF',
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
     elevation: 8,
   },
   iconShadow: {
     textShadowColor: '#3D9EFF',
     textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    textShadowRadius: 7,
   },
   orbitContainer: {
     position: 'absolute',
