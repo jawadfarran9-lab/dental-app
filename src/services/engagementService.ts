@@ -243,6 +243,14 @@ export const getHiddenReelIds = async (): Promise<string[]> => {
   }
 };
 
+export const clearHiddenReels = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(HIDDEN_REELS_KEY);
+  } catch {
+    // silent
+  }
+};
+
 // ========== Reports ==========
 const REPORTS_KEY = '@reel_reports';
 
@@ -293,6 +301,14 @@ export const getInterestedReelIds = async (): Promise<string[]> => {
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
+  }
+};
+
+export const clearInterestedReels = async (): Promise<void> => {
+  try {
+    await AsyncStorage.removeItem(INTERESTED_REELS_KEY);
+  } catch {
+    // silent
   }
 };
 

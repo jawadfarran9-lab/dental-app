@@ -78,6 +78,7 @@ function RootNavigator() {
       <Stack.Screen name="story" options={{ headerShown: false, presentation: 'fullScreenModal' }} />
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="public/clinics" options={{ headerShown: false }} />
+      <Stack.Screen name="algorithm" options={{ headerShown: false }} />
     </Stack>
     {isBlocked && <UsageBlockOverlay reason={blockReason!} />}
   </>

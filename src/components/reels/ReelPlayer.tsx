@@ -75,6 +75,7 @@ interface ReelPlayerProps {
   isActive: boolean;
   isNext?: boolean;
   autoScroll?: boolean;
+  screenFocused?: number;
   onHide: () => void;
   onLikeChange?: (reelId: string, liked: boolean, likeCount: number) => void;
   onVideoEnd?: (reelId: string) => void;
@@ -82,7 +83,7 @@ interface ReelPlayerProps {
   onWatchStats?: (reelId: string, stats: { watchTime: number; skipped: boolean; fullyWatched: boolean }) => void;
 }
 
-const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: initialLikeCount = 0, initialIsLiked = false, mediaUrl, isActive, isNext = false, autoScroll = false, onHide, onLikeChange, onVideoEnd, onAutoScrollToggle, onWatchStats }: ReelPlayerProps) => {
+const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: initialLikeCount = 0, initialIsLiked = false, mediaUrl, isActive, isNext = false, autoScroll = false, screenFocused, onHide, onLikeChange, onVideoEnd, onAutoScrollToggle, onWatchStats }: ReelPlayerProps) => {
 
   // ---- Media state ----
   const mediaType = getMediaType(mediaUrl);
@@ -106,7 +107,8 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
   onWatchStatsRef.current = onWatchStats;
 
   // ---- Video player (expo-video) ----
-  const player = useVideoPlayer(mediaType === 'video' && mediaUrl ? mediaUrl : null, (p) => {
+  const videoSource = mediaType === 'video' && mediaUrl ? mediaUrl : '';
+  const player = useVideoPlayer(videoSource, (p) => {
     p.loop = true;
     p.muted = true;
     p.timeUpdateEventInterval = 0.1;
@@ -163,10 +165,23 @@ const ReelPlayer = React.memo(({ id, clinicId, clinicName, caption, likeCount: i
     }
   }, [player, mediaType]);
 
-  // Re-reconcile whenever permanent state changes
+  // Re-reconcile whenever permanent state changes or screen regains focus
   useEffect(() => {
     reconcilePlayback();
-  }, [isActive, paused, reconcilePlayback]);
+  }, [isActive, paused, screenFocused, reconcilePlayback]);
+
+  // ---- Ensure playback starts once player is ready (iOS race condition fix) ----
+  useEffect(() => {
+    if (!player) return;
+
+    const sub = player.addListener('statusChange', ({ status }: { status: string }) => {
+      if (status === 'readyToPlay') {
+        reconcilePlayback();
+      }
+    });
+
+    return () => sub.remove();
+  }, [player, reconcilePlayback]);
 
   // ---- Preload next reel (brief play+pause to prime the buffer) ----
   useEffect(() => {

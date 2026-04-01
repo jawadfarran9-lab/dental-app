@@ -3,6 +3,7 @@ import { getHiddenReelIds, getInterestedReelIds, getPostsLikeData, getSavedPostI
 import { useAuth } from '@/src/hooks/useAuth';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Dimensions, FlatList, Pressable, RefreshControl, StyleSheet, Text, View, ViewToken } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,11 +13,11 @@ import Svg, { Path } from 'react-native-svg';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const MOCK_REELS = [
-  { id: '1', clinicId: 'clinic_1', clinicName: 'SmileBright Dental', caption: 'Before & after veneers transformation', likeCount: 42, category: 'veneers', mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4' },
-  { id: '2', clinicId: 'clinic_2', clinicName: 'Pearl White Clinic', caption: 'Invisalign journey \u2014 week 12 progress', likeCount: 128, category: 'orthodontics', mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4' },
-  { id: '3', clinicId: 'clinic_3', clinicName: 'ClearSmile Studio', caption: 'Same-day dental implant procedure', likeCount: 7, category: 'implants', mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4' },
-  { id: '4', clinicId: 'clinic_4', clinicName: 'Harmony Dental Care', caption: 'Teeth whitening results in 45 minutes', likeCount: 63, category: 'whitening', mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4' },
-  { id: '5', clinicId: 'clinic_5', clinicName: 'ProSmile Experts', caption: 'Full smile makeover case study', likeCount: 215, category: 'cosmetic', mediaUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4' },
+  { id: '1', clinicId: 'clinic_1', clinicName: 'SmileBright Dental', caption: 'Before & after veneers transformation', likeCount: 42, category: 'veneers', mediaUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+  { id: '2', clinicId: 'clinic_2', clinicName: 'Pearl White Clinic', caption: 'Invisalign journey \u2014 week 12 progress', likeCount: 128, category: 'orthodontics', mediaUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+  { id: '3', clinicId: 'clinic_3', clinicName: 'ClearSmile Studio', caption: 'Same-day dental implant procedure', likeCount: 7, category: 'implants', mediaUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+  { id: '4', clinicId: 'clinic_4', clinicName: 'Harmony Dental Care', caption: 'Teeth whitening results in 45 minutes', likeCount: 63, category: 'whitening', mediaUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
+  { id: '5', clinicId: 'clinic_5', clinicName: 'ProSmile Experts', caption: 'Full smile makeover case study', likeCount: 215, category: 'cosmetic', mediaUrl: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8' },
 ];
 
 // Reel item with stable id (Firebase key) + instanceId (FlatList key)
@@ -56,20 +57,48 @@ interface SignalsSnapshot {
   hidden: Set<string>;
 }
 
-// ---- Pure ranking function ----
+// ---- Feed Intelligence Engine ----
+
+// Exponential category weight: converts raw score [-10..+10] into a ranking multiplier
+function categoryWeight(score: number): number {
+  if (score >= 3) return 1.5 + (score - 3) * 0.25;   // 3→1.5, 4→1.75, 5→2.0, …10→3.25
+  if (score === 2) return 1.35;
+  if (score === 1) return 1.2;
+  if (score === 0) return 1.0;
+  if (score === -1) return 0.8;
+  if (score === -2) return 0.6;
+  return 0.15;                                         // -3 or worse → near-invisible
+}
+
+// Hard filter threshold: categories at or below this score are removed entirely
+const HARD_FILTER_THRESHOLD = -3;
+// Diversity guard: max consecutive reels from the same category
+const MAX_CONSECUTIVE_SAME_CAT = 2;
+
 function rankReels<T extends { id: string; category?: string }>(
   reels: T[],
   watchStats: Record<string, WatchStat>,
   signals: SignalsSnapshot,
   categoryStats?: Record<string, number>,
 ): T[] {
-  // If no data at all, return as-is
+  // If no data at all, apply cold start: balanced category mix via shuffle
   const hasStats = Object.keys(watchStats).length > 0;
   const hasSignals = signals.interested.size > 0 || signals.saved.size > 0 || signals.hidden.size > 0;
   const hasCatStats = categoryStats && Object.keys(categoryStats).length > 0;
-  if (!hasStats && !hasSignals && !hasCatStats) return reels;
+  if (!hasStats && !hasSignals && !hasCatStats) {
+    return coldStartShuffle(reels);
+  }
 
-  const scored = reels.map((reel) => {
+  // --- Hard filter: remove strongly disliked categories ---
+  const filtered = hasCatStats
+    ? reels.filter((r) => {
+        if (!r.category || !categoryStats![r.category]) return true;
+        return categoryStats![r.category] > HARD_FILTER_THRESHOLD;
+      })
+    : reels;
+
+  // --- Score each reel ---
+  const scored = (filtered.length > 0 ? filtered : reels).map((reel) => {
     let score = 0;
     const stat = watchStats[reel.id];
     if (stat) {
@@ -79,25 +108,131 @@ function rankReels<T extends { id: string; category?: string }>(
     if (signals.interested.has(reel.id)) score += 2;
     if (signals.saved.has(reel.id)) score += 2;
     if (signals.hidden.has(reel.id)) score -= 5;
-    // Category affinity boost
-    if (reel.category && categoryStats && categoryStats[reel.category]) {
-      score += categoryStats[reel.category];
-    }
-    return { reel, score };
+
+    // Apply exponential category weight as a multiplier on a positive base
+    const catScore = (reel.category && categoryStats && categoryStats[reel.category]) || 0;
+    const base = 10 + score;  // shift to positive range so multiplier works correctly
+    const weighted = base * categoryWeight(catScore);
+
+    return { reel, score: weighted };
   });
 
   scored.sort((a, b) => b.score - a.score);
-  return scored.map((s) => s.reel);
+
+  // --- Soft boost: ensure strongly liked categories appear regularly ---
+  const boostedCats = new Set<string>();
+  if (hasCatStats) {
+    for (const [cat, s] of Object.entries(categoryStats!)) {
+      if (s >= 3) boostedCats.add(cat);
+    }
+  }
+
+  let result = scored.map((s) => s.reel);
+
+  // --- Soft boost injection: every 4 items, ensure a boosted category reel ---
+  if (boostedCats.size > 0) {
+    result = injectBoostedReels(result, boostedCats, 4);
+  }
+
+  // --- Diversity guard: break consecutive same-category runs ---
+  result = enforceDiversity(result, MAX_CONSECUTIVE_SAME_CAT);
+
+  return result.length > 0 ? result : reels;
+}
+
+// Cold start: interleave categories for a balanced first impression
+function coldStartShuffle<T extends { category?: string }>(reels: T[]): T[] {
+  // Group by category
+  const buckets = new Map<string, T[]>();
+  for (const r of reels) {
+    const cat = r.category || '_none';
+    if (!buckets.has(cat)) buckets.set(cat, []);
+    buckets.get(cat)!.push(r);
+  }
+  // Round-robin interleave
+  const result: T[] = [];
+  const keys = Array.from(buckets.keys());
+  let idx = 0;
+  let placed = true;
+  while (placed) {
+    placed = false;
+    for (const key of keys) {
+      const bucket = buckets.get(key)!;
+      if (idx < bucket.length) {
+        result.push(bucket[idx]);
+        placed = true;
+      }
+    }
+    idx++;
+  }
+  return result.length > 0 ? result : reels;
+}
+
+// Inject boosted-category reels at regular intervals
+function injectBoostedReels<T extends { category?: string }>(
+  reels: T[],
+  boostedCats: Set<string>,
+  interval: number,
+): T[] {
+  // Find reels from boosted categories that aren't already well-positioned
+  const boostedPool = reels.filter((r) => r.category && boostedCats.has(r.category));
+  if (boostedPool.length === 0) return reels;
+
+  const result = [...reels];
+  let poolIdx = 0;
+  for (let i = interval; i < result.length; i += interval) {
+    // Check if any of the last `interval` items already has a boosted category
+    const window = result.slice(Math.max(0, i - interval), i);
+    const hasBoosted = window.some((r) => r.category && boostedCats.has(r.category));
+    if (!hasBoosted && poolIdx < boostedPool.length) {
+      // Find the boosted reel's current position and swap it to position i
+      const target = boostedPool[poolIdx];
+      const currentPos = result.indexOf(target);
+      if (currentPos > i) {
+        // Swap
+        [result[i], result[currentPos]] = [result[currentPos], result[i]];
+      }
+      poolIdx++;
+    }
+  }
+  return result;
+}
+
+// Enforce max consecutive same-category limit
+function enforceDiversity<T extends { category?: string }>(reels: T[], maxConsecutive: number): T[] {
+  if (reels.length <= maxConsecutive) return reels;
+  const result = [...reels];
+  for (let i = maxConsecutive; i < result.length; i++) {
+    const current = result[i].category;
+    if (!current) continue;
+    // Check if previous `maxConsecutive` items are all the same category
+    let allSame = true;
+    for (let j = 1; j <= maxConsecutive; j++) {
+      if (result[i - j].category !== current) { allSame = false; break; }
+    }
+    if (allSame) {
+      // Find next reel with a different category and swap
+      for (let k = i + 1; k < result.length; k++) {
+        if (result[k].category !== current) {
+          [result[i], result[k]] = [result[k], result[i]];
+          break;
+        }
+      }
+    }
+  }
+  return result;
 }
 
 const ReelsScreen = () => {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const { isSubscribed, loading: authLoading, clinicId: authClinicId } = useAuth();
   const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
   const [activeIndex, setActiveIndex] = useState(0);
   const [reels, setReels] = useState<ReelItem[]>(() => toReelItems(MOCK_REELS));
   const [refreshing, setRefreshing] = useState(false);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState(false);
+  const [focusTick, setFocusTick] = useState(0);
   const listRef = useRef<FlatList>(null);
   const loadingMore = useRef(false);
   const autoScrollRef = useRef(false);
@@ -135,8 +270,15 @@ const ReelsScreen = () => {
   const handleWatchStats = useCallback((reelId: string, stats: WatchStat) => {
     watchStatsRef.current[reelId] = stats;
     const cat = reelCategoryMapRef.current.get(reelId);
-    if (stats.fullyWatched) adjustCategoryScore(cat, 2);
-    if (stats.skipped) adjustCategoryScore(cat, -2);
+    // Graduated watch-time feedback
+    if (stats.fullyWatched) {
+      adjustCategoryScore(cat, 2);               // strong positive signal
+    } else if (stats.watchTime >= 5) {
+      adjustCategoryScore(cat, 1);               // moderate engagement
+    }
+    if (stats.skipped) {
+      adjustCategoryScore(cat, -1);              // mild negative signal
+    }
   }, [adjustCategoryScore]);
 
   // ---- Signals snapshot for ranking ----
@@ -228,10 +370,10 @@ const ReelsScreen = () => {
     };
   }, []);
 
-  const visibleReels = useMemo(
-    () => reels.filter((r) => !hiddenIds.has(r.id)),
-    [reels, hiddenIds],
-  );
+  const visibleReels = useMemo(() => {
+    const filtered = reels.filter((r) => !hiddenIds.has(r.id));
+    return filtered.length > 0 ? filtered : reels;
+  }, [reels, hiddenIds]);
 
   // Keep refs in sync with derived data
   useEffect(() => {
@@ -248,8 +390,18 @@ const ReelsScreen = () => {
 
   const handleRefresh = useCallback(async () => {
     clearAutoScrollTimeout();
+    // Cancel any pending category save from watch-stats so it doesn't overwrite fresh data
+    if (categorySaveTimerRef.current) {
+      clearTimeout(categorySaveTimerRef.current);
+      categorySaveTimerRef.current = null;
+    }
     setRefreshing(true);
-    await Promise.all([new Promise((r) => setTimeout(r, 600)), loadSignals()]);
+    const [, , freshProfile] = await Promise.all([
+      new Promise((r) => setTimeout(r, 600)),
+      loadSignals(),
+      loadCategoryProfile(),
+    ]);
+    categoryStatsRef.current = freshProfile;
     const fresh = toReelItems(shuffle(MOCK_REELS));
     await hydrateLikes(fresh);
     setReels(rankReels(fresh, watchStatsRef.current, signalsRef.current, categoryStatsRef.current));
@@ -263,6 +415,14 @@ const ReelsScreen = () => {
 
   // ---- Tab reselect → replace current + next reel in-place ----
   const navigation = useNavigation();
+
+  // Re-trigger video playback when screen regains focus (e.g. returning from /algorithm)
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      setFocusTick((t) => t + 1);
+    });
+    return unsubscribe;
+  }, [navigation]);
 
   // ---- Infinite feed: append a shuffled batch when nearing the end ----
   const handleEndReached = useCallback(async () => {
@@ -347,6 +507,7 @@ const ReelsScreen = () => {
           isActive={index === activeIndex}
           isNext={index === activeIndex + 1}
           autoScroll={autoScrollEnabled}
+          screenFocused={focusTick}
           onHide={() => hideReel(item.id)}
           onLikeChange={handleLikeChange}
           onVideoEnd={handleVideoEnd}
@@ -355,7 +516,7 @@ const ReelsScreen = () => {
         />
       );
     },
-    [hideReel, activeIndex, handleLikeChange, autoScrollEnabled, handleVideoEnd, toggleAutoScroll, handleWatchStats],
+    [hideReel, activeIndex, handleLikeChange, autoScrollEnabled, handleVideoEnd, toggleAutoScroll, handleWatchStats, focusTick],
   );
 
   const getItemLayout = useCallback(
@@ -382,7 +543,7 @@ const ReelsScreen = () => {
         initialNumToRender={2}
         maxToRenderPerBatch={3}
         windowSize={5}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         onViewableItemsChanged={onViewableItemsChanged}
         viewabilityConfig={viewabilityConfig}
         onScrollBeginDrag={clearAutoScrollTimeout}
@@ -413,7 +574,7 @@ const ReelsScreen = () => {
         <Text style={styles.headerTitle}>Reels</Text>
 
         <View style={styles.headerRight}>
-          <Pressable style={styles.headerButton} onPress={() => {}}>
+          <Pressable style={styles.headerButton} onPress={() => router.push('/algorithm')}>
             <Svg width={32} height={24} viewBox="0 0 36 24" fill="none">
               {/* Left heart */}
               <Path
