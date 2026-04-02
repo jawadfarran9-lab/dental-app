@@ -79,6 +79,8 @@ function RootNavigator() {
       <Stack.Screen name="notifications" options={{ headerShown: false }} />
       <Stack.Screen name="public/clinics" options={{ headerShown: false }} />
       <Stack.Screen name="algorithm" options={{ headerShown: false }} />
+      <Stack.Screen name="create-reel" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="post-preview" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
     {isBlocked && <UsageBlockOverlay reason={blockReason!} />}
   </>

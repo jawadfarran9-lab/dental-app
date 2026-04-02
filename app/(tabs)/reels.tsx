@@ -564,7 +564,7 @@ const ReelsScreen = () => {
       {/* Header — floating above feed */}
       <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         {!authLoading && isSubscribed === true && authClinicId != null ? (
-          <Pressable style={styles.headerButton} onPress={() => {}}>
+          <Pressable style={styles.headerButton} onPress={() => router.push('/create-reel' as any)}>
             <Ionicons name="add" size={28} color="#fff" />
           </Pressable>
         ) : (
