@@ -1,10 +1,10 @@
 import { CameraToolsSide, ContentType, useStorySettings } from '@/src/context/StorySettingsContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useCameraRollPermission } from '@/src/hooks/useCameraRollPermission';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    Linking,
     SafeAreaView,
     ScrollView,
     StatusBar,
@@ -19,18 +19,17 @@ export default function StorySettingsScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
   const { settings, updateSettings } = useStorySettings();
+  const { granted: cameraRollGranted, toggle: toggleCameraRoll } = useCameraRollPermission();
 
   // Local state initialized from context
   const [defaultFrontCamera, setDefaultFrontCamera] = useState(settings.defaultFrontCamera);
   const [cameraToolsSide, setCameraToolsSide] = useState<CameraToolsSide>(settings.cameraToolsSide);
-  const [allowCameraRollAccess, setAllowCameraRollAccess] = useState(settings.allowCameraRollAccess);
   const [contentType, setContentType] = useState<ContentType>(settings.contentType);
 
   // Sync local state with context when settings change externally
   useEffect(() => {
     setDefaultFrontCamera(settings.defaultFrontCamera);
     setCameraToolsSide(settings.cameraToolsSide);
-    setAllowCameraRollAccess(settings.allowCameraRollAccess);
     setContentType(settings.contentType);
   }, [settings]);
 
@@ -39,19 +38,9 @@ export default function StorySettingsScreen() {
     updateSettings({
       defaultFrontCamera,
       cameraToolsSide,
-      allowCameraRollAccess,
       contentType,
     });
     router.back();
-  };
-
-  const handleCameraRollToggle = (value: boolean) => {
-    if (!value) {
-      setAllowCameraRollAccess(false);
-    } else {
-      Linking.openSettings();
-      setAllowCameraRollAccess(true);
-    }
   };
 
   // Content Type Selector with icons (Instagram style)
@@ -260,8 +249,8 @@ export default function StorySettingsScreen() {
         <View style={styles.section}>
           {renderToggleRow(
             'Allow access',
-            allowCameraRollAccess,
-            handleCameraRollToggle,
+            cameraRollGranted,
+            toggleCameraRoll,
             'Enable to add photos from your library',
             true
           )}

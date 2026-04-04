@@ -1,7 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useCallback, useState } from 'react';
+import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useRouter } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useStorySettings } from '@/src/context/StorySettingsContext';
 import BottomTabsSwitcher, { type CreateMode } from './BottomTabsSwitcher';
 import PostPickerScreen from './PostPickerScreen';
 
@@ -19,19 +22,41 @@ interface ReelsCameraScreenProps {
 }
 
 /**
- * Static Reels Camera UI — no camera logic, no handlers (except close).
- * Matches Instagram Reels camera layout proportions with absolute positioning.
+ * Reels Camera UI with live camera preview via expo-camera.
+ * Reads defaultFrontCamera & cameraToolsSide from shared settings.
  */
 const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialMode = 'reel' }) => {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const { settings } = useStorySettings();
+  const [permission, requestPermission] = useCameraPermissions();
   const topPadding = insets.top + (Platform.OS === 'android' ? 8 : 4);
   const bottomPadding = insets.bottom + 8;
+
+  // Camera facing — initialized from settings, flippable at runtime
+  const [facing, setFacing] = useState<'front' | 'back'>(
+    settings.defaultFrontCamera ? 'front' : 'back',
+  );
+
+  // Sync if settings change (e.g. user changed default in settings screen)
+  useEffect(() => {
+    setFacing(settings.defaultFrontCamera ? 'front' : 'back');
+  }, [settings.defaultFrontCamera]);
+
+  const toolsOnLeft = settings.cameraToolsSide === 'left';
 
   const [mode, setMode] = useState<CreateMode>(initialMode);
 
   const handleSwitch = useCallback((next: CreateMode) => {
     setMode(next);
   }, []);
+
+  // Request camera permission on mount
+  useEffect(() => {
+    if (!permission?.granted) {
+      requestPermission();
+    }
+  }, [permission, requestPermission]);
 
   // ===== POST MODE → render gallery picker =====
   if (mode === 'post') {
@@ -51,6 +76,11 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" translucent />
 
+      {/* ===== LIVE CAMERA PREVIEW ===== */}
+      {permission?.granted && (
+        <CameraView style={StyleSheet.absoluteFill} facing={facing} />
+      )}
+
       {/* ===== TOP BAR ===== */}
       <View style={[styles.topBar, { top: topPadding }]}>
         {/* Close (X) — left */}
@@ -62,7 +92,7 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         <View style={styles.flex1} />
 
         {/* Settings — right */}
-        <Pressable style={styles.topButton} hitSlop={12}>
+        <Pressable style={styles.topButton} hitSlop={12} onPress={() => router.push('/reels-camera-settings' as any)}>
           <Ionicons name="settings-outline" size={26} color="#fff" />
         </Pressable>
       </View>
@@ -75,8 +105,12 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         </View>
       </View>
 
-      {/* ===== LEFT VERTICAL CONTROLS ===== */}
-      <View style={[styles.leftControls, { bottom: SCREEN_HEIGHT * 0.28 }]}>
+      {/* ===== VERTICAL CONTROLS (position from settings) ===== */}
+      <View style={[
+        styles.sideControls,
+        toolsOnLeft ? { left: 14 } : { right: 14 },
+        { bottom: SCREEN_HEIGHT * 0.28 },
+      ]}>
         <SideIcon icon="musical-notes" label="Music" />
         <SideIcon icon="sparkles" label="Effects" />
         <SideIcon icon="timer-outline" label="Timer" />
@@ -84,6 +118,20 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         <SideIcon icon="grid-outline" label="Layout" />
         <SideIcon icon="text" label="Text" />
       </View>
+
+      {/* ===== CAMERA FLIP (opposite side) ===== */}
+      <Pressable
+        style={[
+          styles.flipButton,
+          toolsOnLeft ? { right: 14 } : { left: 14 },
+          { bottom: SCREEN_HEIGHT * 0.28 },
+        ]}
+        hitSlop={12}
+        onPress={() => setFacing((f) => (f === 'front' ? 'back' : 'front'))}
+      >
+        <Ionicons name="camera-reverse-outline" size={28} color="#fff" />
+        <Text style={styles.sideIconLabel}>{facing === 'front' ? 'Front' : 'Back'}</Text>
+      </Pressable>
 
       {/* ===== BOTTOM CONTROLS ===== */}
       <View style={[styles.bottomArea, { bottom: bottomPadding }]}>
@@ -172,12 +220,17 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // ---- Left vertical controls ----
-  leftControls: {
+  // ---- Side vertical controls (positioned dynamically) ----
+  sideControls: {
     position: 'absolute',
-    left: 14,
     alignItems: 'center',
     gap: 24,
+    zIndex: 10,
+  },
+  flipButton: {
+    position: 'absolute',
+    alignItems: 'center',
+    gap: 4,
     zIndex: 10,
   },
   sideIconWrapper: {
