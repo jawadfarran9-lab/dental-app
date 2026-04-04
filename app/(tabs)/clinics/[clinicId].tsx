@@ -3,6 +3,7 @@ import ClinicProfileMapCard from '@/src/components/ClinicProfileMapCard';
 import ClinicTypeBadge from '@/src/components/ClinicTypeBadge';
 import StarAvatar from '@/src/components/StarAvatar';
 import { useTheme } from '@/src/context/ThemeContext';
+import { BRAND } from '@/src/theme/brand';
 import { useAuth } from '@/src/hooks/useAuth';
 import { useClinicDistance } from '@/src/hooks/useClinicDistance';
 import { fetchClinicMedia } from '@/src/services/clinicMediaService';
@@ -15,6 +16,8 @@ import { getClinicOpenStatus } from '@/src/utils/workingHoursStatus';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
+import { BlurView } from 'expo-blur';
+import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Location from 'expo-location';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
@@ -23,22 +26,22 @@ import { doc, setDoc } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    Easing,
-    FlatList,
-    Linking,
-    Modal,
-    Platform,
-    Pressable,
-    SafeAreaView,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  Easing,
+  FlatList,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -134,21 +137,25 @@ export default function ClinicProfileScreen() {
   const [showCreateSheet, setShowCreateSheet] = useState(false);
   const sheetAnim = useRef(new Animated.Value(0)).current;
   const backdropAnim = useRef(new Animated.Value(0)).current;
+  const contentAnim = useRef(new Animated.Value(0)).current;
 
   const openCreateSheet = useCallback(() => {
     setShowCreateSheet(true);
+    contentAnim.setValue(0);
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-      Animated.spring(sheetAnim, { toValue: 1, damping: 22, stiffness: 280, useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.spring(sheetAnim, { toValue: 1, damping: 24, stiffness: 300, useNativeDriver: true }),
+      Animated.timing(contentAnim, { toValue: 1, duration: 200, delay: 60, useNativeDriver: true }),
     ]).start();
-  }, [backdropAnim, sheetAnim]);
+  }, [backdropAnim, sheetAnim, contentAnim]);
 
   const closeCreateSheet = useCallback(() => {
     Animated.parallel([
-      Animated.timing(backdropAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(sheetAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(contentAnim, { toValue: 0, duration: 120, useNativeDriver: true }),
+      Animated.timing(backdropAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
+      Animated.timing(sheetAnim, { toValue: 0, duration: 180, useNativeDriver: true }),
     ]).start(() => setShowCreateSheet(false));
-  }, [backdropAnim, sheetAnim]);
+  }, [backdropAnim, sheetAnim, contentAnim]);
 
   const [uploadingImage, setUploadingImage] = useState(false);
   const [localProfileImage, setLocalProfileImage] = useState<string | null>(null);
@@ -665,8 +672,8 @@ export default function ClinicProfileScreen() {
       </SafeAreaView>
     ) : (
       <LinearGradient
-        colors={['#E0F2FE', '#E4F3FC', '#EDF8FF', '#F5FBFF', '#E4F5FC', '#E0F2FE']}
-        locations={[0, 0.2, 0.4, 0.6, 0.8, 1]}
+        colors={BRAND.gradientLight}
+        locations={BRAND.gradientLightLocations}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={styles.container}
@@ -687,7 +694,7 @@ export default function ClinicProfileScreen() {
             onPress={() => router.replace('/clinics' as any)}
             style={styles.backBtn}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+            <Ionicons name="arrow-back" size={24} color={colors.textHeading} />
           </TouchableOpacity>
         </View>
         <View style={styles.loadingWrap}>
@@ -703,15 +710,15 @@ export default function ClinicProfileScreen() {
       <GradientBg>
         <View style={styles.backBar}>
           <TouchableOpacity onPress={() => router.replace('/clinics' as any)} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+            <Ionicons name="arrow-back" size={24} color={colors.textHeading} />
           </TouchableOpacity>
         </View>
         <View style={styles.inactiveWrap}>
           <Ionicons name="business-outline" size={56} color={isDark ? '#454F5C' : '#B0BAC5'} />
-          <Text style={[styles.inactiveTitle, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}>
+          <Text style={[styles.inactiveTitle, { color: colors.textTertiary }]}>
             Clinic Unavailable
           </Text>
-          <Text style={[styles.inactiveSubtitle, { color: isDark ? '#5A6878' : '#B0BAC5' }]}>
+          <Text style={[styles.inactiveSubtitle, { color: colors.textInactive }]}>
             This clinic is currently not available.
           </Text>
         </View>
@@ -759,7 +766,7 @@ export default function ClinicProfileScreen() {
             activeOpacity={0.7}
             onPress={() => router.replace('/clinics' as any)}
           >
-            <Ionicons name="arrow-back" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+            <Ionicons name="arrow-back" size={24} color={colors.textHeading} />
           </TouchableOpacity>
         </View>
 
@@ -814,14 +821,14 @@ export default function ClinicProfileScreen() {
                 activeOpacity={0.7}
                 onPress={() => router.push('/notifications' as any)}
               >
-                <Ionicons name="notifications-outline" size={24} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+                <Ionicons name="notifications-outline" size={24} color={colors.textHeading} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.navBtn}
                 activeOpacity={0.7}
                 onPress={() => router.push(`/clinic/clinic-settings?clinicId=${clinicId}`)}
               >
-                <Ionicons name="ellipsis-vertical" size={22} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+                <Ionicons name="ellipsis-vertical" size={22} color={colors.textHeading} />
               </TouchableOpacity>
             </>
           )}
@@ -842,7 +849,7 @@ export default function ClinicProfileScreen() {
       {ownerInactive && (
         <View style={[styles.inactiveBanner, { backgroundColor: isDark ? 'rgba(148,163,184,0.10)' : 'rgba(148,163,184,0.08)' }]}>
           <Ionicons name="alert-circle-outline" size={20} color="#94A3B8" />
-          <Text style={[styles.inactiveBannerText, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}>
+          <Text style={[styles.inactiveBannerText, { color: colors.textTertiary }]}>
             Your subscription is inactive. Renew to reactivate your clinic.
           </Text>
           <TouchableOpacity
@@ -869,7 +876,7 @@ export default function ClinicProfileScreen() {
 
           {isOwner && !ownerInactive && (
             <TouchableOpacity style={styles.navBtn} activeOpacity={0.7} onPress={openCreateSheet}>
-              <Ionicons name="add" size={26} color={isDark ? '#F0F2F5' : '#1A2B3F'} />
+              <Ionicons name="add" size={26} color={colors.textHeading} />
             </TouchableOpacity>
           )}
         </View>
@@ -881,7 +888,7 @@ export default function ClinicProfileScreen() {
           <View style={styles.contactColumn}>
             {!!locationLine && (
               <View style={styles.infoRow}>
-                <Ionicons name="location-outline" size={18} color={isDark ? '#8A96A6' : '#7A8A9C'} />
+                <Ionicons name="location-outline" size={18} color={colors.textTertiary} />
                 <Text style={[styles.infoText, { color: isDark ? '#C0CAD4' : '#1A2B3F', fontSize: 20, fontWeight: '700' }]}>
                   {locationLine}
                 </Text>
@@ -907,10 +914,10 @@ export default function ClinicProfileScreen() {
               ]}>
                 <View style={styles.hoursCardHeader}>
                   <Ionicons name="time-outline" size={15} color="#3D9EFF" />
-                  <Text style={[styles.hoursCardTitle, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
+                  <Text style={[styles.hoursCardTitle, { color: colors.textHeading }]}>
                     Working Hours
                   </Text>
-                  <Ionicons name="chevron-down" size={14} color={isDark ? '#8A96A6' : '#7A8A9C'} />
+                  <Ionicons name="chevron-down" size={14} color={colors.textTertiary} />
                 </View>
                 {hoursSummaryLines.map((line, i) => (
                   <Text key={i} style={[styles.hoursCardLine, { color: isDark ? '#8A96A6' : '#6A7A8C' }]}>
@@ -958,7 +965,7 @@ export default function ClinicProfileScreen() {
                   <Ionicons name="add" size={26} color={isDark ? '#60A5FA' : '#3D9EFF'} />
                 </View>
                 <Text
-                  style={[hlStyles.label, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}
+                  style={[hlStyles.label, { color: colors.textTertiary }]}
                   numberOfLines={1}
                 >
                   New
@@ -1010,7 +1017,7 @@ export default function ClinicProfileScreen() {
 
       {/* ══════ Section Divider + Posts / Reels ══════ */}
       <View style={styles.tabsContainer}>
-        <View style={[styles.profileDivider, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]} />
+        <View style={[styles.profileDivider, { backgroundColor: colors.borderSoft }]} />
 
         {/* ══════ Posts / Reels Tabs ══════ */}
         <View style={[styles.tabBar, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
@@ -1022,13 +1029,13 @@ export default function ClinicProfileScreen() {
           <Ionicons
             name="grid-outline"
             size={22}
-            color={activeTab === 'posts' ? (isDark ? '#F0F2F5' : '#1A2B3F') : (isDark ? '#5A6878' : '#B0BAC5')}
+            color={activeTab === 'posts' ? (colors.textHeading) : (colors.textInactive)}
           />
           <Text
             style={[
               styles.tabLabel,
               {
-                color: activeTab === 'posts' ? (isDark ? '#F0F2F5' : '#1A2B3F') : (isDark ? '#5A6878' : '#B0BAC5'),
+                color: activeTab === 'posts' ? (colors.textHeading) : (colors.textInactive),
                 fontWeight: activeTab === 'posts' ? '700' : '500',
               },
             ]}
@@ -1045,13 +1052,13 @@ export default function ClinicProfileScreen() {
           <Ionicons
             name="film-outline"
             size={22}
-            color={activeTab === 'reels' ? (isDark ? '#F0F2F5' : '#1A2B3F') : (isDark ? '#5A6878' : '#B0BAC5')}
+            color={activeTab === 'reels' ? (colors.textHeading) : (colors.textInactive)}
           />
           <Text
             style={[
               styles.tabLabel,
               {
-                color: activeTab === 'reels' ? (isDark ? '#F0F2F5' : '#1A2B3F') : (isDark ? '#5A6878' : '#B0BAC5'),
+                color: activeTab === 'reels' ? (colors.textHeading) : (colors.textInactive),
                 fontWeight: activeTab === 'reels' ? '700' : '500',
               },
             ]}
@@ -1072,7 +1079,7 @@ export default function ClinicProfileScreen() {
         size={48}
         color={isDark ? '#454F5C' : '#B0BAC5'}
       />
-      <Text style={[styles.emptyText, { color: isDark ? '#5A6878' : '#B0BAC5' }]}>
+      <Text style={[styles.emptyText, { color: colors.textInactive }]}>
         {activeTab === 'posts' ? 'No posts yet' : 'No reels yet'}
       </Text>
     </View>
@@ -1116,7 +1123,6 @@ export default function ClinicProfileScreen() {
             style={[
               sheetStyles.sheet,
               {
-                backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF',
                 transform: [{
                   translateY: sheetAnim.interpolate({
                     inputRange: [0, 1],
@@ -1126,50 +1132,122 @@ export default function ClinicProfileScreen() {
               },
             ]}
           >
+            {/* Premium gradient background */}
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} style={StyleSheet.absoluteFill} />
+            {/* Dimming overlay to keep cards readable */}
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                { backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)' },
+              ]}
+            />
+            {/* Blur layer on top for frosted depth */}
+            <BlurView
+              intensity={Platform.OS === 'ios' ? (isDark ? 30 : 40) : 0}
+              tint={isDark ? 'dark' : 'light'}
+              style={StyleSheet.absoluteFill}
+            />
+
+            {/* Animated content wrapper */}
+            <Animated.View style={{
+              opacity: contentAnim,
+              transform: [{ translateY: contentAnim.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+            }}>
+
             {/* Handle */}
             <View style={sheetStyles.handleWrap}>
-              <View style={[sheetStyles.handle, { backgroundColor: isDark ? '#48484A' : '#D1D1D6' }]} />
+              <View style={[sheetStyles.handle, { backgroundColor: colors.sheetHandle }]} />
             </View>
 
-            <Text style={[sheetStyles.title, { color: isDark ? '#F5F5F7' : '#1C1C1E' }]}>
+            <Text style={[sheetStyles.title, { color: colors.sheetText }]}>
               Create
             </Text>
 
-            {([
-              { icon: 'camera-outline' as const, label: 'Upload Profile Image', accent: '#4A90D9' },
-              { icon: 'create-outline' as const, label: 'Create Post', accent: '#34C759' },
-              { icon: 'sparkles-outline' as const, label: 'Create Story', accent: '#AF52DE' },
-              { icon: 'film-outline' as const, label: 'Create Reel', accent: '#FF375F' },
-            ]).map((opt) => (
+            {/* Group 1: Post + Reel */}
+            <View style={[sheetStyles.group, isDark ? sheetStyles.groupDark : sheetStyles.groupLight]}>
               <TouchableOpacity
-                key={opt.label}
-                style={[
-                  sheetStyles.option,
-                  { backgroundColor: isDark ? '#2C2C2E' : '#F5F5F7' },
-                ]}
-                activeOpacity={0.7}
-                onPress={() => handleCreateOption(opt.label)}
+                style={sheetStyles.option}
+                activeOpacity={0.65}
+                onPress={() => handleCreateOption('Create Post')}
               >
-                <View style={[sheetStyles.iconCircle, { backgroundColor: opt.accent + '18' }]}>
-                  <Ionicons name={opt.icon} size={22} color={opt.accent} />
+                <View style={[sheetStyles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
+                  <Ionicons name="create-outline" size={22} color="#34C759" />
                 </View>
-                <Text style={[sheetStyles.optionLabel, { color: isDark ? '#F5F5F7' : '#1C1C1E' }]}>
-                  {opt.label}
+                <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
+                  Create Post
                 </Text>
-                <Ionicons name="chevron-forward" size={18} color={isDark ? '#48484A' : '#C7C7CC'} />
+                <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
               </TouchableOpacity>
-            ))}
+
+              <View style={[sheetStyles.divider, { backgroundColor: colors.borderSoft }]} />
+
+              <TouchableOpacity
+                style={sheetStyles.option}
+                activeOpacity={0.65}
+                onPress={() => handleCreateOption('Create Reel')}
+              >
+                <View style={[sheetStyles.iconCircle, { backgroundColor: '#FCE4EC' }]}>
+                  <Ionicons name="film-outline" size={22} color="#FF375F" />
+                </View>
+                <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
+                  Create Reel
+                </Text>
+                <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Spacer */}
+            <View style={sheetStyles.groupSpacer} />
+
+            {/* Group 2: Story */}
+            <View style={[sheetStyles.group, isDark ? sheetStyles.groupDark : sheetStyles.groupLight]}>
+              <TouchableOpacity
+                style={sheetStyles.option}
+                activeOpacity={0.65}
+                onPress={() => handleCreateOption('Create Story')}
+              >
+                <View style={[sheetStyles.iconCircle, { backgroundColor: '#F3E5F5' }]}>
+                  <Ionicons name="sparkles-outline" size={22} color="#AF52DE" />
+                </View>
+                <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
+                  Create Story
+                </Text>
+                <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Spacer */}
+            <View style={sheetStyles.groupSpacer} />
+
+            {/* Group 3: Profile Image */}
+            <View style={[sheetStyles.group, isDark ? sheetStyles.groupDark : sheetStyles.groupLight]}>
+              <TouchableOpacity
+                style={sheetStyles.option}
+                activeOpacity={0.65}
+                onPress={() => handleCreateOption('Upload Profile Image')}
+              >
+                <View style={[sheetStyles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+                  <Ionicons name="camera-outline" size={22} color="#4A90D9" />
+                </View>
+                <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
+                  Upload Profile Image
+                </Text>
+                <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
+              </TouchableOpacity>
+            </View>
 
             {/* Cancel */}
             <TouchableOpacity
-              style={[sheetStyles.cancelBtn, { backgroundColor: isDark ? '#2C2C2E' : '#F5F5F7' }]}
-              activeOpacity={0.7}
+              style={[sheetStyles.cancelBtn, { backgroundColor: colors.sheetCancelBg }]}
+              activeOpacity={0.65}
               onPress={closeCreateSheet}
             >
-              <Text style={[sheetStyles.cancelText, { color: isDark ? '#8E8E93' : '#6B7280' }]}>
+              <Text style={[sheetStyles.cancelText, { color: colors.sheetCancelText }]}>
                 Cancel
               </Text>
             </TouchableOpacity>
+
+            </Animated.View>
 
             {/* Safe area bottom spacer */}
             <View style={{ height: Platform.OS === 'ios' ? 34 : 16 }} />
@@ -1212,10 +1290,10 @@ export default function ClinicProfileScreen() {
                 {/* Header */}
                 <View style={hoursModalStyles.header}>
                   <Ionicons name="time-outline" size={20} color="#3D9EFF" />
-                  <Text style={[hoursModalStyles.title, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
+                  <Text style={[hoursModalStyles.title, { color: colors.textHeading }]}>
                     Working Hours
                   </Text>
-                  <Ionicons name="chevron-up" size={16} color={isDark ? '#8A96A6' : '#7A8A9C'} />
+                  <Ionicons name="chevron-up" size={16} color={colors.textTertiary} />
                 </View>
 
                 {/* Open/Closed status */}
@@ -1275,7 +1353,7 @@ export default function ClinicProfileScreen() {
                         hoursModalStyles.row,
                         !isLast && {
                           borderBottomWidth: 0.5,
-                          borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                          borderBottomColor: colors.borderSoft,
                         },
                         {
                           opacity: anim,
@@ -1316,15 +1394,6 @@ const sparkleStyles = StyleSheet.create({
     overflow: 'hidden',
     zIndex: 0,
   },
-  glow: {
-    position: 'absolute',
-    top: -20,
-    left: '30%' as any,
-    width: 160,
-    height: 80,
-    borderRadius: 80,
-    backgroundColor: 'rgba(61,158,255,0.12)',
-  },
   dotSmall: {
     position: 'absolute',
     width: 2,
@@ -1364,15 +1433,6 @@ const nameSparkleStyles = StyleSheet.create({
   orbit: {
     ...StyleSheet.absoluteFillObject,
     overflow: 'visible',
-  },
-  glowLayer: {
-    position: 'absolute',
-    top: '-20%' as any,
-    left: '-5%' as any,
-    width: '110%' as any,
-    height: '140%' as any,
-    borderRadius: 24,
-    backgroundColor: 'rgba(61,158,255,0.12)',
   },
   dotSmall: {
     position: 'absolute',
@@ -1850,48 +1910,76 @@ const sheetStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 20,
-    paddingTop: 8,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 0,
+    paddingBottom: 20,
+    overflow: 'hidden',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
+        shadowOffset: { width: 0, height: -6 },
+        shadowOpacity: 0.18,
+        shadowRadius: 20,
       },
       android: { elevation: 24 },
     }),
   },
   handleWrap: {
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingTop: 10,
+    paddingBottom: 4,
   },
   handle: {
-    width: 36,
-    height: 5,
-    borderRadius: 2.5,
+    width: 40,
+    height: 4,
+    borderRadius: 2,
   },
   title: {
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: 16,
-    marginTop: 4,
+    fontSize: 18,
+    fontWeight: '700',
+    letterSpacing: -0.2,
+    marginBottom: 12,
+    marginTop: 8,
+    paddingHorizontal: 4,
+  },
+  group: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.05,
+        shadowRadius: 10,
+      },
+      android: { elevation: 2 },
+    }),
+  },
+  groupLight: {
+    backgroundColor: '#FFFFFF',
+  },
+  groupDark: {
+    backgroundColor: '#1C1C1E',
+  },
+  groupSpacer: {
+    height: 8,
+  },
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    marginLeft: 68,
   },
   option: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: 14,
-    marginBottom: 8,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
   },
   iconCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 14,
@@ -1899,17 +1987,17 @@ const sheetStyles = StyleSheet.create({
   optionLabel: {
     flex: 1,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '500',
     letterSpacing: -0.1,
   },
   cancelBtn: {
     alignItems: 'center',
-    paddingVertical: 14,
-    borderRadius: 14,
-    marginTop: 4,
+    paddingVertical: 15,
+    borderRadius: 16,
+    marginTop: 10,
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
 });

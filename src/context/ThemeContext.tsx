@@ -59,6 +59,16 @@ export interface ThemeColors {
   statusRed: string;
   shadow: string;
   overlay: string;
+  // Extended design tokens (Phase 64)
+  textTertiary: string;
+  textInactive: string;
+  borderSoft: string;
+  sheetSurface: string;
+  sheetText: string;
+  sheetHandle: string;
+  sheetChevron: string;
+  sheetCancelBg: string;
+  sheetCancelText: string;
 }
 
 export interface ThemeContextType {
@@ -125,6 +135,16 @@ const LIGHT_COLORS: ThemeColors = {
   statusRed: '#EF4444',
   shadow: '#000000',
   overlay: 'rgba(0,0,0,0.4)',
+  // Extended design tokens (Phase 64)
+  textTertiary: '#7A8A9C',
+  textInactive: '#B0BAC5',
+  borderSoft: 'rgba(0,0,0,0.06)',
+  sheetSurface: '#FFFFFF',
+  sheetText: '#1C1C1E',
+  sheetHandle: '#D1D1D6',
+  sheetChevron: '#C7C7CC',
+  sheetCancelBg: '#F2F2F7',
+  sheetCancelText: '#3C3C43',
 };
 
 const DARK_COLORS: ThemeColors = {
@@ -182,6 +202,16 @@ const DARK_COLORS: ThemeColors = {
   statusRed: '#EF4444',
   shadow: '#000000',
   overlay: 'rgba(0,0,0,0.4)',
+  // Extended design tokens (Phase 64)
+  textTertiary: '#8A96A6',
+  textInactive: '#5A6878',
+  borderSoft: 'rgba(255,255,255,0.06)',
+  sheetSurface: '#1C1C1E',
+  sheetText: '#F5F5F7',
+  sheetHandle: '#48484A',
+  sheetChevron: '#48484A',
+  sheetCancelBg: '#2C2C2E',
+  sheetCancelText: '#8E8E93',
 };
 
 interface ThemeProviderProps {

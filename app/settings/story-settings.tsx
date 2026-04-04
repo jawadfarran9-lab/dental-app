@@ -56,7 +56,7 @@ export default function StorySettingsScreen() {
 
   // Content Type Selector with icons (Instagram style)
   const renderContentTypeSelector = () => (
-    <View style={[styles.contentTypeContainer, { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' }]}>
+    <View style={[styles.contentTypeContainer, { backgroundColor: colors.sheetSurface }]}>
       <TouchableOpacity
         style={[
           styles.contentTypeOption,
@@ -70,7 +70,7 @@ export default function StorySettingsScreen() {
           styles.contentTypeIconWrapper,
           { backgroundColor: contentType === 'story' 
             ? (isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(0, 122, 255, 0.1)') 
-            : (isDark ? '#2C2C2E' : '#F2F2F7') 
+            : (colors.sheetCancelBg) 
           }
         ]}>
           <Ionicons 
@@ -105,7 +105,7 @@ export default function StorySettingsScreen() {
           styles.contentTypeIconWrapper,
           { backgroundColor: contentType === 'reels' 
             ? (isDark ? 'rgba(10, 132, 255, 0.15)' : 'rgba(0, 122, 255, 0.1)') 
-            : (isDark ? '#2C2C2E' : '#F2F2F7') 
+            : (colors.sheetCancelBg) 
           }
         ]}>
           <Ionicons 
@@ -146,7 +146,7 @@ export default function StorySettingsScreen() {
   ) => (
     <View style={[
       styles.settingRow,
-      { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' },
+      { backgroundColor: colors.sheetSurface },
       !isLast && styles.settingRowWithBorder,
       !isLast && { borderBottomColor: isDark ? '#38383A' : '#E5E5EA' },
     ]}>
@@ -179,12 +179,12 @@ export default function StorySettingsScreen() {
     <View style={[
       styles.settingRow,
       styles.segmentedRow,
-      { backgroundColor: isDark ? '#1C1C1E' : '#FFFFFF' },
+      { backgroundColor: colors.sheetSurface },
       !isLast && styles.settingRowWithBorder,
       !isLast && { borderBottomColor: isDark ? '#38383A' : '#E5E5EA' },
     ]}>
       <Text style={[styles.settingLabel, { color: colors.textPrimary }]}>{label}</Text>
-      <View style={[styles.segmentedControl, { backgroundColor: isDark ? '#2C2C2E' : '#F2F2F7' }]}>
+      <View style={[styles.segmentedControl, { backgroundColor: colors.sheetCancelBg }]}>
         {options.map((option) => {
           const isSelected = selectedValue === option.value;
           return (

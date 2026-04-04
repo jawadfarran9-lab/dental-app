@@ -249,7 +249,7 @@ export default function ClinicStatusScreen() {
             {statusHeader.label}
           </Text>
         </View>
-        <Text style={[s.statusSub, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}>
+        <Text style={[s.statusSub, { color: colors.textTertiary }]}>
           {statusHeader.sub}
         </Text>
         {isAuto && autoDetail && (
@@ -269,10 +269,10 @@ export default function ClinicStatusScreen() {
         { backgroundColor: isDark ? 'rgba(30,42,60,0.97)' : 'rgba(255,255,255,0.72)', marginTop: 8 },
         { transform: [{ scale: cardScale }], opacity: cardOpacity },
       ]}>
-        <Text style={[s.heading, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
+        <Text style={[s.heading, { color: colors.textHeading }]}>
           Clinic Hours & Status
         </Text>
-        <Text style={[s.description, { color: isDark ? '#8A96A6' : '#7A8A9C' }]}>
+        <Text style={[s.description, { color: colors.textTertiary }]}>
           Control how your clinic appears to patients
         </Text>
 
@@ -306,7 +306,7 @@ export default function ClinicStatusScreen() {
                   <Ionicons name={icon} size={24} color={color} />
                 </View>
                 <View style={s.optionTextWrap}>
-                  <Text style={[s.optionTitle, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>
+                  <Text style={[s.optionTitle, { color: colors.textHeading }]}>
                     {label}
                   </Text>
                   <Text style={[s.optionSub, { color: isDark ? '#6B7A8D' : '#94A3B8' }]}>
@@ -331,7 +331,7 @@ export default function ClinicStatusScreen() {
           },
         ]}>
           <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-          <Text style={[s.toastText, { color: isDark ? '#F0F2F5' : '#1A2B3F' }]}>Status updated</Text>
+          <Text style={[s.toastText, { color: colors.textHeading }]}>Status updated</Text>
         </Animated.View>
       )}
     </View>

@@ -130,11 +130,11 @@ export default function ClinicDashboard() {
   // Render patient card - iOS style square with soft corners
   const renderPatientCard = ({ item }: { item: Patient }) => (
     <TouchableOpacity
-      style={[styles.patientCard, { backgroundColor: isDark ? '#1c1c1e' : '#ffffff' }]}
+      style={[styles.patientCard, { backgroundColor: colors.sheetSurface }]}
       onPress={() => navigateToPatient(item.id)}
       activeOpacity={0.8}
     >
-      <View style={[styles.patientImageContainer, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7' }]}>
+      <View style={[styles.patientImageContainer, { backgroundColor: colors.sheetCancelBg }]}>
         {item.imageUrl ? (
           <Image source={{ uri: item.imageUrl }} style={styles.patientImage} resizeMode="cover" />
         ) : (
@@ -173,7 +173,7 @@ export default function ClinicDashboard() {
         { 
           backgroundColor: isActive 
             ? (isDark ? 'rgba(10, 132, 255, 0.2)' : 'rgba(0, 122, 255, 0.12)') 
-            : (isDark ? '#2c2c2e' : '#f2f2f7') 
+            : (colors.sheetCancelBg) 
         }
       ]}>
         <Ionicons 
@@ -225,7 +225,7 @@ export default function ClinicDashboard() {
                   resizeMode="cover"
                 />
               ) : (
-                <View style={[styles.clinicImagePlaceholder, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7' }]}>
+                <View style={[styles.clinicImagePlaceholder, { backgroundColor: colors.sheetCancelBg }]}>
                   <Ionicons name="medical" size={56} color={isDark ? '#636366' : '#8e8e93'} />
                   <Text style={[styles.placeholderText, { color: isDark ? '#636366' : '#8e8e93' }]}>
                     {t('dashboard.noClinicImage', 'صورة العيادة')}
@@ -236,8 +236,8 @@ export default function ClinicDashboard() {
 
             {/* Search Field (conditionally shown) */}
             {showSearch && (
-              <View style={[styles.searchContainer, { backgroundColor: isDark ? '#1c1c1e' : '#ffffff' }]}>
-                <View style={[styles.searchInputWrapper, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7' }]}>
+              <View style={[styles.searchContainer, { backgroundColor: colors.sheetSurface }]}>
+                <View style={[styles.searchInputWrapper, { backgroundColor: colors.sheetCancelBg }]}>
                   <Ionicons name="search" size={18} color={isDark ? '#8e8e93' : '#636366'} />
                   <TextInput
                     style={[styles.searchInput, { color: isDark ? '#ffffff' : '#1c1c1e' }]}
@@ -265,7 +265,7 @@ export default function ClinicDashboard() {
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <View style={[styles.emptyIconCircle, { backgroundColor: isDark ? '#2c2c2e' : '#f2f2f7' }]}>
+              <View style={[styles.emptyIconCircle, { backgroundColor: colors.sheetCancelBg }]}>
                 <Ionicons name="people-outline" size={48} color={isDark ? '#636366' : '#8e8e93'} />
               </View>
               <Text style={[styles.emptyText, { color: isDark ? '#8e8e93' : '#636366' }]}>
@@ -319,11 +319,6 @@ export default function ClinicDashboard() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   listContent: {
     paddingHorizontal: 12,
