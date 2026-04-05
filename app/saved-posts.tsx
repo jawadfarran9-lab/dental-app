@@ -1,7 +1,6 @@
-// SavedScreen - Polished saved items page with beautiful design
 import { useAuth } from '@/src/context/AuthContext';
 import { useSavedItems } from '@/src/context/SavedItemsContext';
-import { useTheme } from '@/src/context/ThemeContext';
+import { type ThemeColors, useTheme } from '@/src/context/ThemeContext';
 import { getTemplatesSync } from '@/src/services/templatesService';
 import { fetchClinicMediaById } from '@/src/services/clinicMediaService';
 import { ClinicMedia } from '@/src/types/clinicMedia';
@@ -9,7 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -49,7 +48,7 @@ function mapMediaToPost(media: ClinicMedia): Post {
     author: media.clinicName || 'Clinic',
     authorIcon: '🏥',
     mediaUri: media.mediaUrl || media.thumbnailUrl,
-    likes: (media as any).likeCount || 0,
+    likes: media.likeCount || 0,
     comments: 0,
     timeAgo: getTimeAgo(media.createdAt),
   };
@@ -257,7 +256,7 @@ const AnimatedPostCard: React.FC<{
   post: Post;
   index: number;
   isDark: boolean;
-  colors: any;
+  colors: ThemeColors;
   onShare: (post: Post) => void;
   onUnsave: (postId: string) => void;
 }> = ({ post, index, isDark, colors, onShare, onUnsave }) => {
@@ -394,7 +393,10 @@ export default function SavedPostsScreen() {
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const savedTemplates = getTemplatesSync().filter((t) => savedTemplateIds.includes(t.id));
+  const savedTemplates = useMemo(
+    () => getTemplatesSync().filter((t) => savedTemplateIds.includes(t.id)),
+    [savedTemplateIds],
+  );
 
   useEffect(() => {
     loadSavedPosts();

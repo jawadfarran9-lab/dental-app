@@ -3,10 +3,6 @@ import { useRouter } from 'expo-router';
 import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-/**
- * Placeholder reel edit screen (Phase 6 shell).
- * Full black screen — real editing will be implemented later.
- */
 export default function ReelsEditScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
