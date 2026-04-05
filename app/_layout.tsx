@@ -11,6 +11,7 @@ import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { AuthProvider } from '@/src/context/AuthContext';
 import { ClinicProvider } from '@/src/context/ClinicContext';
 import { LocationSelectionProvider } from '@/src/context/LocationSelectionContext';
+import { SavedItemsProvider } from '@/src/context/SavedItemsContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
 import { ThemeProvider, useTheme } from '@/src/context/ThemeContext';
 import { useAppUsageTracker } from '@/src/hooks/useAppUsageTracker';
@@ -81,6 +82,12 @@ function RootNavigator() {
       <Stack.Screen name="algorithm" options={{ headerShown: false }} />
       <Stack.Screen name="reels-camera-settings" options={{ headerShown: false, presentation: 'modal' }} />
       <Stack.Screen name="create-reel" options={{ headerShown: false, animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="reels-media-picker" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="reels-edit" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="reels-templates" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="reels-template-preview" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="select-template-media" options={{ headerShown: false, animation: 'slide_from_right' }} />
+      <Stack.Screen name="template-slots" options={{ headerShown: false, animation: 'slide_from_right' }} />
       <Stack.Screen name="post-preview" options={{ headerShown: false, animation: 'slide_from_right' }} />
     </Stack>
     {isBlocked && <UsageBlockOverlay reason={blockReason!} />}
@@ -121,10 +128,12 @@ export default function RootLayout() {
           <ClinicProvider>
             <StorySettingsProvider>
               <LocationSelectionProvider>
-                <NavThemeProvider value={navTheme}>
-                  <RootNavigator />
-                  <StatusBar style="dark" translucent backgroundColor="transparent" />
-                </NavThemeProvider>
+                <SavedItemsProvider>
+                  <NavThemeProvider value={navTheme}>
+                    <RootNavigator />
+                    <StatusBar style="dark" translucent backgroundColor="transparent" />
+                  </NavThemeProvider>
+                </SavedItemsProvider>
               </LocationSelectionProvider>
             </StorySettingsProvider>
           </ClinicProvider>

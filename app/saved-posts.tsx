@@ -1,10 +1,12 @@
-// SavedPostsScreen.tsx - Polished saved posts page with beautiful design
+// SavedScreen - Polished saved items page with beautiful design
 import { useAuth } from '@/src/context/AuthContext';
+import { useSavedItems } from '@/src/context/SavedItemsContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { getTemplatesSync } from '@/src/services/templatesService';
 import { fetchClinicMediaById } from '@/src/services/clinicMediaService';
-import { getSavedPostIds, toggleSavePost } from '@/src/services/engagementService';
 import { ClinicMedia } from '@/src/types/clinicMedia';
 import { Ionicons } from '@expo/vector-icons';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -383,21 +385,28 @@ export default function SavedPostsScreen() {
   const { colors, isDark } = useTheme();
   const { clinicId } = useAuth();
   const router = useRouter();
+  const {
+    savedTemplateIds,
+    savedPostIds,
+    toggleSavePost,
+    refreshSavedPosts,
+  } = useSavedItems();
   const [savedPosts, setSavedPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const savedTemplates = getTemplatesSync().filter((t) => savedTemplateIds.includes(t.id));
+
   useEffect(() => {
     loadSavedPosts();
-  }, [clinicId]);
+  }, [clinicId, savedPostIds]);
 
   const loadSavedPosts = async () => {
     if (!clinicId) { setSavedPosts([]); setLoading(false); return; }
     setLoading(true);
     try {
-      const savedIds = await getSavedPostIds();
-      if (savedIds.length === 0) { setSavedPosts([]); return; }
+      if (savedPostIds.length === 0) { setSavedPosts([]); return; }
       const results = await Promise.all(
-        savedIds.map((id) => fetchClinicMediaById(clinicId, id)),
+        savedPostIds.map((id) => fetchClinicMediaById(clinicId, id)),
       );
       const posts = results
         .filter((m): m is ClinicMedia => m !== null)
@@ -455,10 +464,10 @@ export default function SavedPostsScreen() {
       </View>
       
       <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-        No saved posts yet
+        Nothing saved yet
       </Text>
       <Text style={[styles.emptySubtitle, { color: colors.textSecondary }]}>
-        When you save posts, they'll appear here{'\n'}for easy access anytime.
+        Your saved items will appear here{'\n'}for easy access anytime.
       </Text>
       
       {/* CTA Button */}
@@ -529,11 +538,11 @@ export default function SavedPostsScreen() {
         {/* Centered Title & Counter */}
         <View style={styles.headerCenter}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-            Saved Posts
+            Saved
           </Text>
           {!loading && (
             <Text style={[styles.headerCounter, { color: colors.textSecondary }]}>
-              {savedPosts.length} {savedPosts.length === 1 ? 'saved' : 'saved'}
+              {savedTemplates.length + savedPosts.length} saved
             </Text>
           )}
         </View>
@@ -547,16 +556,45 @@ export default function SavedPostsScreen() {
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#2C7BE5" />
           <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-            Loading your saved posts...
+            Loading your saved items...
           </Text>
         </View>
-      ) : savedPosts.length === 0 ? (
+      ) : savedPosts.length === 0 && savedTemplates.length === 0 ? (
         <EmptyState />
       ) : (
         <FlatList
           data={savedPosts}
           keyExtractor={(item) => item.id}
           renderItem={renderPost}
+          ListHeaderComponent={
+            savedTemplates.length > 0 ? (
+              <View style={styles.templatesSection}>
+                <Text style={[styles.templatesSectionTitle, { color: colors.textPrimary }]}>
+                  Templates
+                </Text>
+                <FlatList
+                  data={savedTemplates}
+                  keyExtractor={(t) => t.id}
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.templatesRow}
+                  renderItem={({ item: tmpl }) => (
+                    <TouchableOpacity
+                      style={[styles.templateCard, {
+                        borderColor: isDark ? 'rgba(71,85,105,0.4)' : 'rgba(180,215,245,0.7)',
+                      }]}
+                      activeOpacity={0.8}
+                      onPress={() => router.push({ pathname: '/reels-template-preview' as any, params: { id: tmpl.id } })}
+                    >
+                      <ExpoImage source={{ uri: tmpl.thumbnail }} style={styles.templateThumb} contentFit="cover" />
+                      <LinearGradient colors={['transparent', 'rgba(0,0,0,0.6)']} style={styles.templateGradient} />
+                      <Text style={styles.templateLabel}>{tmpl.title}</Text>
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            ) : null
+          }
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         />
@@ -804,6 +842,47 @@ const styles = StyleSheet.create({
   ctaText: {
     color: '#FFFFFF',
     fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Saved Templates Section
+  templatesSection: {
+    marginBottom: 20,
+  },
+  templatesSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  templatesRow: {
+    gap: 10,
+  },
+  templateCard: {
+    width: 110,
+    height: 160,
+    borderRadius: 14,
+    overflow: 'hidden',
+    borderWidth: 1.5,
+    position: 'relative',
+  },
+  templateThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  templateGradient: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 50,
+  },
+  templateLabel: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
+    color: '#fff',
+    fontSize: 12,
     fontWeight: '700',
   },
 });

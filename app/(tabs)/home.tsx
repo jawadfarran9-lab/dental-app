@@ -2003,13 +2003,13 @@ export default function HomeScreen() {
           activeOpacity={1}
         >
           <View style={[styles.menuPanel, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF' }]}>
-            {/* Saved Posts - Primary Action (PRO FEATURE) */}
+            {/* Saved - Primary Action (PRO FEATURE) */}
             <TouchableOpacity 
               style={[styles.menuItem, styles.menuItemHighlight]}
               onPress={() => {
                 if (!isProUser) {
                   setMenuModalVisible(false);
-                  showProOnlyAlert('Saved posts');
+                  showProOnlyAlert('Saved');
                   return;
                 }
                 setMenuModalVisible(false);
@@ -2024,7 +2024,7 @@ export default function HomeScreen() {
                 />
               </View>
               <Text style={[styles.menuItemText, { color: isProUser ? colors.textPrimary : colors.textSecondary }]}>
-                Saved Posts {!isProUser && '🔒'}
+                Saved {!isProUser && '🔒'}
               </Text>
             </TouchableOpacity>
 

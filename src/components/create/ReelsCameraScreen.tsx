@@ -1,10 +1,10 @@
+import { useStorySettings } from '@/src/context/StorySettingsContext';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Dimensions, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useStorySettings } from '@/src/context/StorySettingsContext';
 import BottomTabsSwitcher, { type CreateMode } from './BottomTabsSwitcher';
 import PostPickerScreen from './PostPickerScreen';
 
@@ -141,9 +141,9 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         {/* Capture row: gallery — capture — effects */}
         <View style={styles.captureRow}>
           {/* Gallery preview (circle, left) */}
-          <View style={styles.sideCircle}>
+          <Pressable style={styles.sideCircle} onPress={() => router.push('/reels-media-picker')} hitSlop={12}>
             <Ionicons name="images" size={22} color="#fff" />
-          </View>
+          </Pressable>
 
           {/* Big capture button (center) */}
           <View style={styles.captureOuter}>
