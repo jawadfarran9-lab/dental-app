@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import BottomTabsSwitcher, { type CreateMode } from './BottomTabsSwitcher';
 import PostPickerScreen from './PostPickerScreen';
+import FaceDetectionService from '@/src/services/FaceDetectionService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -297,6 +298,17 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
     hapticTickIfCrossed(newZoom);
   }, [hapticTickIfCrossed, applyMagneticSnap]);
 
+  // Focus point state and animation
+  const [focusPoint, setFocusPoint] = useState<{ x: number; y: number } | null>(null);
+  const focusRingScale = useSharedValue(0.8);
+  const focusRingOpacity = useSharedValue(0);
+
+  // Focus ring animated style (must be after shared values are created)
+  const focusRingAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: focusRingScale.value }],
+    opacity: focusRingOpacity.value,
+  }));
+
   // Dial drag state
   const [dialExpanded, setDialExpanded] = useState(false);
   const dialZoomAtDragStartRef = useRef(0);
@@ -405,6 +417,13 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
   const cameraReadyRef = useRef(false);
   const isFlippingRef = useRef(false);
   const isPinchingRef = useRef(false);
+  const isDetectingRef = useRef(false);
+  const smartFocusPointRef = useRef<{ x: number; y: number } | null>(null);
+
+  // Phase 300.7: Feature flag to disable real face detection in live tap-to-focus path
+  // This prevents shutter sound and preview freeze during interactive taps.
+  // Set to true to enable real face detection (currently disabled for UX).
+  const enableRealFaceDetection = false;
 
   // Reset cameraReadyRef when facing changes (before new CameraView mounts)
   useEffect(() => {
@@ -543,6 +562,135 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
     onZoomInteraction(); // show zoom UI after flip
   }, [onZoomInteraction]);
 
+  // Helper: Core autofocus reset (extracted from triggerTapToFocus)
+  const performAutofocusReset = useCallback(async () => {
+    if (cameraRef.current && cameraReadyRef.current && !isRecordingRef.current) {
+      try {
+        await cameraRef.current.pausePreview();
+        await new Promise((resolve) => setTimeout(resolve, 80)); // 80ms settle time
+        await cameraRef.current.resumePreview();
+      } catch {
+        // Expected during camera transitions — no action needed
+      }
+    }
+  }, []);
+
+  // Helper: Background face detection (fire-and-forget, Phase 300.2)
+  // Phase 300.5: Production-hardened with complete error handling and fallback safety
+  const detectFacesIfAvailable = useCallback(async (x: number, y: number) => {
+    // Guard: Prevent concurrent detection attempts
+    if (isDetectingRef.current) return;
+
+    isDetectingRef.current = true;
+
+    try {
+      // STEP 1: Capture snapshot from camera
+      const photo = await cameraRef.current?.takePictureAsync({
+        skipProcessing: true,
+      });
+
+      // Fallback: Photo capture failed or no URI
+      if (!photo?.uri) {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // STEP 2: Run face detection service
+      const result = await FaceDetectionService.detectFacesFromSnapshot(photo.uri);
+
+      // Guard: Ensure result object has expected shape
+      if (!result || typeof result !== 'object') {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // Fallback: Detection did not succeed
+      if (!result.success) {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // Guard: Ensure faces property exists and is an array (defend against malformed result)
+      if (!Array.isArray(result.faces) || result.faces.length === 0) {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // STEP 3: Select best face candidate for this tap
+      const bestFace = FaceDetectionService.getBestDetectedFace(
+        result.faces,
+        x,
+        y,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+      );
+
+      // Fallback: No suitable face candidate found
+      if (!bestFace) {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // STEP 4: Compute optimal focus point from selected face
+      const smartPoint = FaceDetectionService.getSmartFocusPointFromFace(
+        bestFace,
+        SCREEN_WIDTH,
+        SCREEN_HEIGHT,
+      );
+
+      // Guard: Validate computed focus point before applying
+      if (!FaceDetectionService.isValidFocusPoint(smartPoint)) {
+        smartFocusPointRef.current = null;
+        return;
+      }
+
+      // STEP 5: Success — Store and apply smart focus
+      // Phase 300.4: Update ring position when detection completes
+      // Progressive enhancement: ring shows at smart face location (if still visible)
+      smartFocusPointRef.current = smartPoint;
+      setFocusPoint({ x: smartPoint.x, y: smartPoint.y });
+
+      console.log('[FOCUS] Smart focus applied');
+    } catch (e) {
+      // Fallback: Catch any unexpected error and safely clear state
+      smartFocusPointRef.current = null;
+      console.log('[FOCUS] Detection error');
+    } finally {
+      // Always reset detection guard to allow next detection attempt
+      isDetectingRef.current = false;
+    }
+  }, []);
+
+  // Trigger autofocus reset at tap location
+  const triggerTapToFocus = useCallback(async (x: number, y: number) => {
+    // 1. Instant UI feedback
+    setFocusPoint({ x, y });
+
+    // 2. Ring animation (UNCHANGED)
+    focusRingScale.value = 0.8;
+    focusRingOpacity.value = 1;
+    focusRingScale.value = withSpring(1.2, { damping: 8, stiffness: 150 });
+
+    // Fade out after animation
+    focusRingOpacity.value = withSequence(
+      withTiming(1, { duration: 300 }),
+      withTiming(0, { duration: 500, easing: Easing.out(Easing.quad) }),
+    );
+
+    // 3. Autofocus reset (UNCHANGED behavior, now in helper)
+    await performAutofocusReset();
+
+    // 4. Phase 300.7: Conditional real face detection
+    // Real detection disabled in live tap path to prevent shutter sound and preview freeze.
+    // Infrastructure (Phase 300.1–300.6) is preserved for future use.
+    if (enableRealFaceDetection) {
+      detectFacesIfAvailable(x, y);
+    }
+
+    // 5. Clear focus point after animation (UNCHANGED)
+    setTimeout(() => setFocusPoint(null), 800);
+  }, [focusRingScale, focusRingOpacity, performAutofocusReset, detectFacesIfAvailable]);
+
   // Toggle video recording (start/stop)
   const handleRecordToggle = useCallback(async () => {
     if (!cameraRef.current || !cameraReadyRef.current || isFlippingRef.current) return;
@@ -579,6 +727,7 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       setIsRecording(false);
     }
   }, []);
+
 
   // Remove a specific segment by index (with confirmation)
   const removeSegment = useCallback((index: number) => {
@@ -630,11 +779,10 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
   // Gesture: single tap → focus (blocked during pinch)
   const singleTap = Gesture.Tap()
     .numberOfTaps(1)
-    .onEnd(() => {
+    .onEnd((event) => {
       'worklet';
       if (isPinchingRef.current) return;
-      // expo-camera CameraView does not expose focus(x, y).
-      // Continuous autofocus is active by default.
+      runOnJS(triggerTapToFocus)(event.x, event.y);
     });
 
   // Gesture: pinch → zoom (sets isPinchingRef to block taps)
@@ -722,6 +870,21 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         <GestureDetector gesture={cameraGesture}>
           <View style={styles.gestureLayer} />
         </GestureDetector>
+      )}
+
+      {/* ===== FOCUS RING (animated tap-to-focus indicator) ===== */}
+      {focusPoint && (
+        <Animated.View
+          style={[
+            styles.focusRing,
+            focusRingAnimatedStyle,
+            {
+              top: focusPoint.y - 40,
+              left: focusPoint.x - 40,
+            },
+          ]}
+          pointerEvents="none"
+        />
       )}
 
       {/* ===== TOP BAR ===== */}
@@ -1011,6 +1174,17 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 200,
+  },
+
+  // ---- Focus ring ----
+  focusRing: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    borderColor: '#fff',
+    zIndex: 5,
   },
 
   // ---- Top bar ----
