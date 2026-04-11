@@ -1,18 +1,20 @@
 import { useStorySettings } from '@/src/context/StorySettingsContext';
+import FaceDetectionService from '@/src/services/FaceDetectionService';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { Paths, File as FSFile } from 'expo-file-system';
+import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Dimensions, FlatList, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
+import { Alert, Dimensions, FlatList, Modal, PanResponder, Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { cancelAnimation, Easing, runOnJS, useAnimatedProps, useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, G, Line, Text as SvgText } from 'react-native-svg';
 import BottomTabsSwitcher, { type CreateMode } from './BottomTabsSwitcher';
 import PostPickerScreen from './PostPickerScreen';
-import FaceDetectionService from '@/src/services/FaceDetectionService';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -122,18 +124,20 @@ interface ReelsCameraScreenProps {
   initialMode?: 'reel' | 'post';
 }
 
-type Segment = { uri: string; duration: number };
+type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
 
 const formatTime = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const total = Math.floor(seconds);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 const formatDuration = (seconds: number): string => {
-  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-  const m = Math.floor(seconds / 60);
-  return m > 0 ? `${m}:${s}` : `0:${s}`;
+  const total = Math.floor(seconds);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
 };
 
 /**
@@ -386,7 +390,6 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       momentumAnimRef.current = requestAnimationFrame(tick);
     } else {
       syncPresetHighlight(zoomLevel);
-      syncPresetHighlight(zoomLevel);
       setTimeout(() => setDialExpanded(false), 1500);
     }
   }, [zoomLevel, syncPresetHighlight, hapticTickIfCrossed]);
@@ -406,10 +409,114 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       runOnJS(onDialDragEnd)(event.velocityX);
     });
 
-  // Recording state
+  // ===== RECORDING STATE =====
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [segments, setSegments] = useState<Segment[]>([]);
+
+  // ===== CLIP PREVIEW — PLAYBACK STATE =====
+  const [previewClipUri, setPreviewClipUri] = useState<string | null>(null);
+  const [previewClipIndex, setPreviewClipIndex] = useState<number>(-1);
+  const [pvPlaying, setPvPlaying] = useState(true);
+  const [pvDuration, setPvDuration] = useState(0);
+  const [pvPosition, setPvPosition] = useState(0);
+  const pvVideoRef = useRef<Video>(null);
+  const pvBarWidthRef = useRef(0);
+
+  // ===== CLIP PREVIEW — TRIM STATE =====
+  const [pvTrimming, setPvTrimming] = useState(false);
+  const [pvTrimStart, setPvTrimStart] = useState(0);
+  const [pvTrimEnd, setPvTrimEnd] = useState(0);
+
+  // ===== CLIP PREVIEW — TIMELINE ANIMATION (Reanimated) =====
+  const pvFillProgress = useSharedValue(0);
+  const pvFillGlow = useSharedValue(0); // 0 = normal, 1 = active drag glow
+  const pvLastFillRef = useRef(0); // tracks last set progress for backward-jump detection
+  const pvPositionThrottleRef = useRef(0); // throttle setPvPosition calls
+  const pvDragSeekThrottleRef = useRef(0); // throttle seeks during drag (~30fps)
+  const pvDragStartTimeRef = useRef(0); // timestamp when drag began (for smart resume)
+  const pvFillStyle = useAnimatedStyle(() => ({
+    width: `${pvFillProgress.value * 100}%`,
+    shadowOpacity: 0.4 + pvFillGlow.value * 0.5,
+    shadowRadius: 4 + pvFillGlow.value * 6,
+  }));
+
+  // ===== CLIP PREVIEW — DRAG OVERLAY + MAGNIFIER BUBBLE =====
+  const pvDragOverlayOpacity = useSharedValue(0);
+  const pvBubbleOpacity = useSharedValue(0);
+  const pvBubbleScale = useSharedValue(0.6);
+  const pvBubbleX = useSharedValue(0);
+  const pvBubbleTimeMsRef = useRef(0);
+  const [bubbleTimeMs, setBubbleTimeMs] = useState(0);
+  const pvBubbleThrottleRef = useRef(0);
+
+  const BUBBLE_W = 56;
+  const pvDragOverlayStyle = useAnimatedStyle(() => ({
+    opacity: pvDragOverlayOpacity.value,
+  }));
+  const pvBubbleAnimStyle = useAnimatedStyle(() => ({
+    opacity: pvBubbleOpacity.value,
+    transform: [
+      { translateX: pvBubbleX.value - BUBBLE_W / 2 },
+      { scale: pvBubbleScale.value },
+    ] as any,
+  }));
+
+  const clampBubbleX = (px: number) => {
+    const w = pvBarWidthRef.current;
+    return Math.max(BUBBLE_W / 2, Math.min(px, w - BUBBLE_W / 2));
+  };
+
+  const pvDragStart = useCallback((pxPos: number, timeMs: number) => {
+    pvDragOverlayOpacity.value = withTiming(0.45, { duration: 150 });
+    pvBubbleOpacity.value = withTiming(1, { duration: 120 });
+    pvBubbleScale.value = withTiming(1.15, { duration: 150 });
+    pvBubbleX.value = clampBubbleX(pxPos);
+    pvFillGlow.value = withTiming(1, { duration: 150 });
+    pvDragStartTimeRef.current = Date.now();
+    setBubbleTimeMs(timeMs);
+  }, [pvDragOverlayOpacity, pvBubbleOpacity, pvBubbleScale, pvBubbleX, pvFillGlow]);
+
+  const pvDragMove = useCallback((pxPos: number, timeMs: number) => {
+    pvBubbleX.value = clampBubbleX(pxPos);
+    pvBubbleTimeMsRef.current = timeMs;
+    const now = Date.now();
+    if (now - pvBubbleThrottleRef.current > 32) {
+      pvBubbleThrottleRef.current = now;
+      setBubbleTimeMs(timeMs);
+    }
+  }, [pvBubbleX]);
+
+  const pvDragEnd = useCallback(() => {
+    pvDragOverlayOpacity.value = withTiming(0, { duration: 200 });
+    pvBubbleOpacity.value = withTiming(0, { duration: 150 });
+    pvBubbleScale.value = withTiming(0.6, { duration: 150 });
+    pvFillGlow.value = withTiming(0, { duration: 250 });
+  }, [pvDragOverlayOpacity, pvBubbleOpacity, pvBubbleScale, pvFillGlow]);
+
+  // Stable refs for PanResponder closures
+  const pvDragStartRef = useRef(pvDragStart);
+  pvDragStartRef.current = pvDragStart;
+  const pvDragMoveRef = useRef(pvDragMove);
+  pvDragMoveRef.current = pvDragMove;
+  const pvDragEndRef = useRef(pvDragEnd);
+  pvDragEndRef.current = pvDragEnd;
+
+  // ===== CLIP PREVIEW — SAFE SEEK =====
+  const pvSeekingRef = useRef(false);
+  const pvSafeSeek = useCallback(async (positionMs: number) => {
+    if (!pvVideoRef.current || pvSeekingRef.current) return;
+    try {
+      pvSeekingRef.current = true;
+      await pvVideoRef.current.setPositionAsync(positionMs);
+    } catch {
+      // ignore "Seeking interrupted"
+    } finally {
+      pvSeekingRef.current = false;
+    }
+  }, []);
+
+  // ===== RECORDING / CAMERA REFS =====
   const isRecordingRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimeRef = useRef(0);
@@ -443,7 +550,12 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
 
   // Derived: total recorded time from segments (single source of truth)
   const totalRecordedTime = useMemo(
-    () => segments.reduce((sum, s) => sum + s.duration, 0),
+    () => segments.reduce((sum, s) => {
+      if (s.trimStart != null && s.trimEnd != null && s.trimEnd > s.trimStart) {
+        return sum + (s.trimEnd - s.trimStart) / 1000;
+      }
+      return sum + s.duration;
+    }, 0),
     [segments],
   );
 
@@ -650,11 +762,9 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       smartFocusPointRef.current = smartPoint;
       setFocusPoint({ x: smartPoint.x, y: smartPoint.y });
 
-      console.log('[FOCUS] Smart focus applied');
-    } catch (e) {
+    } catch {
       // Fallback: Catch any unexpected error and safely clear state
       smartFocusPointRef.current = null;
-      console.log('[FOCUS] Detection error');
     } finally {
       // Always reset detection guard to allow next detection attempt
       isDetectingRef.current = false;
@@ -697,13 +807,11 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
 
     // STOP
     if (isRecordingRef.current) {
-      console.log('[REELS-DEBUG] STOP recording');
       cameraRef.current.stopRecording();
       return;
     }
 
     // START
-    console.log('[REELS-DEBUG] START recording');
     isRecordingRef.current = true;
     setIsRecording(true);
     setRecordingTime(0);
@@ -713,21 +821,17 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       const result = await cameraRef.current.recordAsync();
 
       if (!result || !result.uri) {
-        console.log('[REELS-DEBUG] Recording failed — no URI');
         return;
       }
 
       const segmentDuration = recordingTimeRef.current;
-      console.log('[REELS-DEBUG] Segment appended:', segmentDuration, 's');
       setSegments((prev) => [...prev, { uri: result.uri, duration: segmentDuration }]);
-    } catch (error) {
-      console.log('[REELS-DEBUG] Recording error:', error);
+    } catch {
     } finally {
       isRecordingRef.current = false;
       setIsRecording(false);
     }
   }, []);
-
 
   // Remove a specific segment by index (with confirmation)
   const removeSegment = useCallback((index: number) => {
@@ -743,7 +847,435 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
     ]);
   }, []);
 
-  // Undo: remove last segment (with confirmation)
+  // ===== CLIP PREVIEW — HANDLERS =====
+  const pvFormatTime = (ms: number) => {
+    const sec = Math.max(0, Math.floor(ms / 1000));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const closePreview = useCallback(() => {
+    setPreviewClipUri(null);
+    setPreviewClipIndex(-1);
+    setPvPlaying(true);
+    setPvDuration(0);
+    setPvPosition(0);
+    setPvTrimming(false);
+    setPvTrimStart(0);
+    setPvTrimEnd(0);
+    trimHistoryRef.current = [];
+    trimHistoryIdxRef.current = -1;
+    setTrimHistoryLen(0);
+    setTrimHistoryIdx(-1);
+  }, []);
+
+  const pvTogglePlay = useCallback(async () => {
+    if (!pvVideoRef.current) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (pvPlaying) {
+      await pvVideoRef.current.pauseAsync();
+      setPvPlaying(false);
+    } else {
+      const st = await pvVideoRef.current.getStatusAsync();
+      if (st.isLoaded && st.didJustFinish) {
+        await pvSafeSeek(pvTrimming ? pvTrimStart : 0);
+      }
+      await pvVideoRef.current.playAsync();
+      setPvPlaying(true);
+    }
+  }, [pvPlaying, pvTrimming, pvTrimStart]);
+
+  const pvToggleTrim = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    if (pvTrimming) {
+      // "Done" — save virtual trim range to segment
+      if (previewClipIndex >= 0) {
+        setSegments((prev) =>
+          prev.map((seg, i) =>
+            i === previewClipIndex
+              ? { ...seg, trimStart: pvTrimStart, trimEnd: pvTrimEnd }
+              : seg
+          )
+        );
+      }
+      setPvTrimming(false);
+    } else {
+      setPvTrimStart(0);
+      setPvTrimEnd(pvDuration);
+      setPvTrimming(true);
+      // Initialize history with full range
+      trimHistoryRef.current = [{ start: 0, end: pvDuration }];
+      trimHistoryIdxRef.current = 0;
+      setTrimHistoryLen(1);
+      setTrimHistoryIdx(0);
+    }
+  }, [pvTrimming, pvDuration, previewClipIndex, pvTrimStart, pvTrimEnd]);
+
+  // ── Seek by delta (for double-tap) ──────────────────────────────
+  const pvDurationRefSeek = useRef(pvDuration);
+  pvDurationRefSeek.current = pvDuration;
+  const pvSeekBy = useCallback(async (deltaMs: number) => {
+    if (!pvVideoRef.current) return;
+    const st = await pvVideoRef.current.getStatusAsync();
+    if (!st.isLoaded) return;
+    const target = Math.max(0, Math.min(pvDurationRefSeek.current, st.positionMillis + deltaMs));
+    await pvSafeSeek(target);
+    setPvPosition(target);
+  }, [pvSafeSeek]);
+
+  // Double-tap detection refs
+  const pvLastTapRef = useRef(0);
+  const pvTapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Handle drag scale state
+  const pvDraggingHandleRef = useRef<'left' | 'right' | null>(null);
+
+  // ── Trim undo/redo history ─────────────────────────────────────
+  const trimHistoryRef = useRef<{ start: number; end: number }[]>([]);
+  const trimHistoryIdxRef = useRef(-1);
+  const [trimHistoryLen, setTrimHistoryLen] = useState(0);
+  const [trimHistoryIdx, setTrimHistoryIdx] = useState(-1);
+
+  const pushTrimHistory = useCallback((start: number, end: number) => {
+    const h = trimHistoryRef.current;
+    const idx = trimHistoryIdxRef.current;
+    // Slice future entries if user edited after undo
+    const updated = [...h.slice(0, idx + 1), { start, end }];
+    trimHistoryRef.current = updated;
+    trimHistoryIdxRef.current = updated.length - 1;
+    setTrimHistoryLen(updated.length);
+    setTrimHistoryIdx(updated.length - 1);
+  }, []);
+
+  const handleTrimUndo = useCallback(() => {
+    if (trimHistoryIdxRef.current <= 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newIdx = trimHistoryIdxRef.current - 1;
+    const prev = trimHistoryRef.current[newIdx];
+    trimHistoryIdxRef.current = newIdx;
+    setTrimHistoryIdx(newIdx);
+    setPvTrimStart(prev.start);
+    setPvTrimEnd(prev.end);
+  }, []);
+
+  const handleTrimRedo = useCallback(() => {
+    if (trimHistoryIdxRef.current >= trimHistoryRef.current.length - 1) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    const newIdx = trimHistoryIdxRef.current + 1;
+    const next = trimHistoryRef.current[newIdx];
+    trimHistoryIdxRef.current = newIdx;
+    setTrimHistoryIdx(newIdx);
+    setPvTrimStart(next.start);
+    setPvTrimEnd(next.end);
+  }, []);
+
+  const pushTrimHistoryRef = useRef(pushTrimHistory);
+  pushTrimHistoryRef.current = pushTrimHistory;
+
+  // ── Scrub / live preview refs ──────────────────────────────────
+  const pvSafeSeekRef = useRef(pvSafeSeek);
+  pvSafeSeekRef.current = pvSafeSeek;
+  const scrubActivePxRef = useRef<number | null>(null); // null = not scrubbing
+  const pvWasPlayingRef = useRef(false);
+  const pvPlayingRef = useRef(pvPlaying);
+  pvPlayingRef.current = pvPlaying;
+
+  // ── Export handler ──────────────────────────────────────────────
+  const [pvExporting, setPvExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    if (!previewClipUri || pvExporting) return;
+    try {
+      setPvExporting(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow photo library access to save videos.');
+        setPvExporting(false);
+        return;
+      }
+
+      const start = pvTrimStartRef.current;
+      const end = pvTrimEndRef.current;
+      const hasTrim = pvTrimming && end > start && (start > 0 || end < pvDurationRefSeek.current);
+
+      if (!hasTrim) {
+        // No trim — save original directly
+        await MediaLibrary.saveToLibraryAsync(previewClipUri);
+      } else {
+        // Trim active — copy to cache then save (real trim deferred to backend)
+        const srcFile = new FSFile(previewClipUri);
+        const destFile = new FSFile(Paths.cache, `trimmed_${Date.now()}.mp4`);
+        srcFile.copy(destFile);
+        await MediaLibrary.saveToLibraryAsync(destFile.uri);
+      }
+
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Saved', 'Video saved to gallery.');
+    } catch {
+      Alert.alert('Export failed', 'Could not save video.');
+    } finally {
+      setPvExporting(false);
+    }
+  }, [previewClipUri, pvExporting, pvTrimming]);
+
+  // ── Trim Handle Dragging ───────────────────────────────────────
+  const HANDLE_WIDTH = 20;
+  const MIN_TRIM_GAP_PX = 12;
+
+  // Stable refs — avoids PanResponder recreation
+  const pvDurationRef = useRef(pvDuration);
+  pvDurationRef.current = pvDuration;
+  const [, setDragTick] = useState(0);
+
+  // Pixel-based refs — source of truth during drag
+  const trimStartPxRef = useRef(0);
+  const trimEndPxRef = useRef(0);
+
+  const pvMsToX = useCallback((ms: number) => {
+    const w = pvBarWidthRef.current;
+    const d = pvDurationRef.current;
+    if (w <= 0 || d <= 0) return 0;
+    return (ms / d) * w;
+  }, []);
+
+  const pvXToMs = useCallback((x: number) => {
+    const w = pvBarWidthRef.current;
+    const d = pvDurationRef.current;
+    if (w <= 0 || d <= 0) return 0;
+    return Math.round(Math.max(0, Math.min(d, (x / w) * d)));
+  }, []);
+  const pvXToMsRef = useRef(pvXToMs);
+  pvXToMsRef.current = pvXToMs;
+
+  // Sync px refs when state changes (e.g. entering trim mode)
+  const pvTrimStartRef = useRef(pvTrimStart);
+  if (pvTrimStart !== pvTrimStartRef.current) {
+    pvTrimStartRef.current = pvTrimStart;
+    trimStartPxRef.current = pvMsToX(pvTrimStart);
+  }
+  const pvTrimEndRef = useRef(pvTrimEnd);
+  if (pvTrimEnd !== pvTrimEndRef.current) {
+    pvTrimEndRef.current = pvTrimEnd;
+    trimEndPxRef.current = pvMsToX(pvTrimEnd);
+  }
+  const pvTrimmingRef = useRef(pvTrimming);
+  pvTrimmingRef.current = pvTrimming;
+
+  // ===== TIMELINE FEEL HELPERS =====
+  const SNAP_THRESHOLD_PX = 10;
+  const EDGE_ZONE_PX = 20;
+
+  /** Magnetic snap: if x is within threshold of a key point, snap to it */
+  const snapToPx = (x: number): number => {
+    const w = pvBarWidthRef.current;
+    const points = [0, w];
+    if (pvTrimmingRef.current) {
+      points.push(trimStartPxRef.current, trimEndPxRef.current);
+    }
+    for (const p of points) {
+      if (Math.abs(x - p) < SNAP_THRESHOLD_PX) return p;
+    }
+    return x;
+  };
+
+  /** Velocity-based inertia factor: faster drag = slightly amplified movement */
+  const velocityFactor = (vx: number): number => Math.min(1.2, 0.7 + Math.abs(vx) * 0.15);
+
+  /** Edge resistance: dampen movement near boundaries */
+  const applyEdgeResistance = (x: number, w: number): number => {
+    if (x < EDGE_ZONE_PX) return x * 0.4;
+    if (x > w - EDGE_ZONE_PX) return w - (w - x) * 0.4;
+    return x;
+  };
+
+  /** Throttled seek during drag (~30fps) */
+  const throttledDragSeek = (ms: number) => {
+    const now = Date.now();
+    if (now - pvDragSeekThrottleRef.current > 33) {
+      pvDragSeekThrottleRef.current = now;
+      pvSafeSeekRef.current(ms);
+    }
+  };
+
+  /** Smart resume: only auto-resume if drag was short (<800ms) */
+  const smartResume = () => {
+    if (pvWasPlayingRef.current && Date.now() - pvDragStartTimeRef.current < 800) {
+      pvVideoRef.current?.playAsync();
+      setPvPlaying(true);
+    }
+  };
+
+  const leftGrabPxRef = useRef(0);
+  const leftPanResponder = useMemo(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        leftGrabPxRef.current = trimStartPxRef.current;
+        pvDraggingHandleRef.current = 'left';
+        scrubActivePxRef.current = trimStartPxRef.current;
+        pvWasPlayingRef.current = pvPlayingRef.current;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (pvPlayingRef.current) {
+          pvVideoRef.current?.pauseAsync();
+          setPvPlaying(false);
+        }
+        pvSafeSeekRef.current(pvXToMs(trimStartPxRef.current));
+        const w1 = pvBarWidthRef.current;
+        if (w1 > 0) {
+          cancelAnimation(pvFillProgress);
+          pvFillProgress.value = trimStartPxRef.current / w1;
+          pvLastFillRef.current = pvFillProgress.value;
+        }
+        pvDragStartRef.current(trimStartPxRef.current, pvXToMsRef.current(trimStartPxRef.current));
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const maxPx = trimEndPxRef.current - MIN_TRIM_GAP_PX;
+        const factor = velocityFactor(gesture.vx);
+        let raw = leftGrabPxRef.current + gesture.dx * factor;
+        if (raw < 8) raw = raw * 0.4; // edge resistance near 0
+        const snapped = snapToPx(Math.max(0, Math.min(raw, maxPx)));
+        trimStartPxRef.current = snapped;
+        scrubActivePxRef.current = snapped;
+        throttledDragSeek(pvXToMs(snapped));
+        const wL = pvBarWidthRef.current;
+        if (wL > 0) {
+          cancelAnimation(pvFillProgress);
+          pvFillProgress.value = snapped / wL;
+          pvLastFillRef.current = pvFillProgress.value;
+        }
+        pvDragMoveRef.current(snapped, pvXToMsRef.current(snapped));
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderRelease: () => {
+        pvDraggingHandleRef.current = null;
+        scrubActivePxRef.current = null;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const startMs = pvXToMs(trimStartPxRef.current);
+        setPvTrimStart(startMs);
+        pushTrimHistoryRef.current(startMs, pvTrimEndRef.current);
+        smartResume();
+        pvDragEndRef.current();
+        setDragTick((t) => t + 1);
+      },
+    }),
+  [pvXToMs]);
+
+  const rightGrabPxRef = useRef(0);
+  const rightPanResponder = useMemo(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        rightGrabPxRef.current = trimEndPxRef.current;
+        pvDraggingHandleRef.current = 'right';
+        scrubActivePxRef.current = trimEndPxRef.current;
+        pvWasPlayingRef.current = pvPlayingRef.current;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        if (pvPlayingRef.current) {
+          pvVideoRef.current?.pauseAsync();
+          setPvPlaying(false);
+        }
+        pvSafeSeekRef.current(pvXToMs(trimEndPxRef.current));
+        const w2 = pvBarWidthRef.current;
+        if (w2 > 0) {
+          cancelAnimation(pvFillProgress);
+          pvFillProgress.value = trimEndPxRef.current / w2;
+          pvLastFillRef.current = pvFillProgress.value;
+        }
+        pvDragStartRef.current(trimEndPxRef.current, pvXToMsRef.current(trimEndPxRef.current));
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const w = pvBarWidthRef.current;
+        const minPx = trimStartPxRef.current + MIN_TRIM_GAP_PX;
+        const factor = velocityFactor(gesture.vx);
+        let raw = rightGrabPxRef.current + gesture.dx * factor;
+        if (raw > w - 8) raw = w - (w - raw) * 0.4; // edge resistance near end
+        const snapped = snapToPx(Math.min(w, Math.max(raw, minPx)));
+        trimEndPxRef.current = snapped;
+        scrubActivePxRef.current = snapped;
+        throttledDragSeek(pvXToMs(snapped));
+        if (w > 0) {
+          cancelAnimation(pvFillProgress);
+          pvFillProgress.value = snapped / w;
+          pvLastFillRef.current = pvFillProgress.value;
+        }
+        pvDragMoveRef.current(snapped, pvXToMsRef.current(snapped));
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderRelease: () => {
+        pvDraggingHandleRef.current = null;
+        scrubActivePxRef.current = null;
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const endMs = pvXToMs(trimEndPxRef.current);
+        setPvTrimEnd(endMs);
+        pushTrimHistoryRef.current(pvTrimStartRef.current, endMs);
+        smartResume();
+        pvDragEndRef.current();
+        setDragTick((t) => t + 1);
+      },
+    }),
+  [pvXToMs]);
+
+  // ── Main timeline scrub PanResponder ───────────────────────────
+  const scrubGrabXRef = useRef(0);
+  const scrubPanResponder = useMemo(() =>
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (e) => {
+        const x = e.nativeEvent.locationX;
+        scrubGrabXRef.current = x;
+        scrubActivePxRef.current = Math.max(0, Math.min(x, pvBarWidthRef.current));
+        pvWasPlayingRef.current = pvPlayingRef.current;
+        if (pvPlayingRef.current) {
+          pvVideoRef.current?.pauseAsync();
+          setPvPlaying(false);
+        }
+        const w = pvBarWidthRef.current;
+        if (w > 0) {
+          cancelAnimation(pvFillProgress);
+          pvFillProgress.value = scrubActivePxRef.current / w;
+          pvLastFillRef.current = pvFillProgress.value;
+        }
+        const ms = pvXToMs(scrubActivePxRef.current);
+        pvSafeSeekRef.current(ms);
+        pvDragStartRef.current(scrubActivePxRef.current!, ms);
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderMove: (_, gesture) => {
+        const w = pvBarWidthRef.current;
+        if (w <= 0) return;
+        const factor = velocityFactor(gesture.vx);
+        let rawX = Math.max(0, Math.min(scrubGrabXRef.current + gesture.dx * factor, w));
+        rawX = applyEdgeResistance(rawX, w);
+        const x = snapToPx(Math.max(0, Math.min(rawX, w)));
+        scrubActivePxRef.current = x;
+        cancelAnimation(pvFillProgress);
+        pvFillProgress.value = x / w;
+        pvLastFillRef.current = pvFillProgress.value;
+        throttledDragSeek(pvXToMs(x));
+        pvDragMoveRef.current(x, pvXToMsRef.current(x));
+        setDragTick((t) => t + 1);
+      },
+      onPanResponderRelease: () => {
+        const px = scrubActivePxRef.current;
+        scrubActivePxRef.current = null;
+        if (px != null) {
+          pvSafeSeekRef.current(pvXToMs(px));
+        }
+        smartResume();
+        pvDragEndRef.current();
+        setDragTick((t) => t + 1);
+      },
+    }),
+  [pvXToMs]);
+
+  // ── Undo: remove last segment (with confirmation)
   const undoLastSegment = useCallback(() => {
     Alert.alert('Remove last clip?', 'The most recent clip will be deleted.', [
       { text: 'Cancel', style: 'cancel' },
@@ -760,7 +1292,6 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
   // Navigate to edit reel with all segments
   const handleNext = useCallback(() => {
     if (segments.length === 0) return;
-    console.log('[REELS-DEBUG] NAVIGATING with segments:', segments.length);
     router.push({
       pathname: '/reels-edit' as any,
       params: { segments: JSON.stringify(segments) },
@@ -817,7 +1348,7 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
   // Stable FlatList helpers for clips preview
   const renderClipItem = useCallback(
     ({ item, index }: { item: Segment; index: number }) => (
-      <ClipThumbnail uri={item.uri} duration={item.duration} index={index + 1} onRemove={() => removeSegment(index)} />
+      <ClipThumbnail uri={item.uri} duration={item.trimStart != null && item.trimEnd != null && item.trimEnd > item.trimStart ? (item.trimEnd - item.trimStart) / 1000 : item.duration} index={index + 1} onRemove={() => removeSegment(index)} onPreview={() => { setPreviewClipUri(item.uri); setPreviewClipIndex(index); }} />
     ),
     [removeSegment],
   );
@@ -845,6 +1376,7 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
 
   // ===== REEL MODE (default) =====
   return (
+    <>
     <GestureHandlerRootView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" translucent />
 
@@ -1120,6 +1652,262 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
         </View>
       </View>
     </GestureHandlerRootView>
+
+    {/* ===== CLIP PREVIEW MODAL ===== */}
+    {previewClipUri && (
+      <Modal
+        visible={true}
+        transparent
+        animationType="fade"
+        onRequestClose={closePreview}
+      >
+        <Pressable style={styles.previewBackdrop} onPress={closePreview} />
+        <View style={styles.previewContainer} pointerEvents="box-none">
+
+          {/* Top bar: X + time + undo/redo */}
+          <View style={[styles.pvTopBar, { paddingTop: insets.top + 8 }]}>
+            <Pressable style={({ pressed }) => [styles.previewCloseButton, { opacity: pressed ? 0.6 : 1 }]} onPress={closePreview} hitSlop={12}>
+              <Ionicons name="close" size={24} color="#fff" />
+            </Pressable>
+            <Text style={styles.pvTimeText}>{pvFormatTime(pvPosition)}</Text>
+            {pvTrimming ? (
+              <View style={styles.pvUndoRedoPill}>
+                <Pressable
+                  onPress={handleTrimUndo}
+                  disabled={trimHistoryIdx <= 0}
+                  hitSlop={8}
+                  style={({ pressed }) => ({ opacity: trimHistoryIdx <= 0 ? 0.3 : pressed ? 0.6 : 1 })}
+                >
+                  <Ionicons name="arrow-undo" size={20} color="#fff" />
+                </Pressable>
+                <View style={styles.pvUndoRedoDivider} />
+                <Pressable
+                  onPress={handleTrimRedo}
+                  disabled={trimHistoryIdx >= trimHistoryLen - 1}
+                  hitSlop={8}
+                  style={({ pressed }) => ({ opacity: trimHistoryIdx >= trimHistoryLen - 1 ? 0.3 : pressed ? 0.6 : 1 })}
+                >
+                  <Ionicons name="arrow-redo" size={20} color="#fff" />
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{ width: 38 }} />
+            )}
+          </View>
+
+          {/* Video */}
+          <View style={styles.previewVideoWrapper}>
+            <Pressable
+              style={StyleSheet.absoluteFill}
+              onPress={() => {
+                const now = Date.now();
+                const gap = now - pvLastTapRef.current;
+                pvLastTapRef.current = now;
+                if (pvTapTimerRef.current) {
+                  clearTimeout(pvTapTimerRef.current);
+                  pvTapTimerRef.current = null;
+                }
+                if (gap < 250) {
+                  // Double tap — handled by left/right overlays below
+                  return;
+                }
+                // Single tap — delay to distinguish from double tap
+                pvTapTimerRef.current = setTimeout(() => {
+                  pvTapTimerRef.current = null;
+                  pvTogglePlay();
+                }, 260);
+              }}
+            >
+              <Video
+                ref={pvVideoRef}
+                source={{ uri: previewClipUri }}
+                style={styles.previewVideo}
+                shouldPlay={pvPlaying}
+                isLooping={!pvTrimming}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls={false}
+                onLoad={() => {
+                  if (pvTrimmingRef.current && pvTrimStartRef.current > 0) {
+                    pvSafeSeek(pvTrimStartRef.current);
+                  }
+                }}
+                onPlaybackStatusUpdate={(status) => {
+                  if (!status.isLoaded) return;
+                  const pos = status.positionMillis;
+                  const dur = status.durationMillis ?? pvDurationRef.current;
+
+                  // Throttle state updates for time labels (~300ms)
+                  const now = Date.now();
+                  if (now - pvPositionThrottleRef.current > 300) {
+                    setPvPosition(pos);
+                    pvPositionThrottleRef.current = now;
+                  }
+
+                  if (status.durationMillis && status.durationMillis > 0) {
+                    setPvDuration(status.durationMillis);
+                  }
+
+                  // Smooth fill progress (skip if user is scrubbing/dragging)
+                  if (dur > 0 && scrubActivePxRef.current == null) {
+                    const trimming = pvTrimmingRef.current;
+                    const clamped = trimming
+                      ? Math.max(pvTrimStartRef.current, Math.min(pos, pvTrimEndRef.current))
+                      : pos;
+                    const progress = Math.max(0, Math.min(1, clamped / dur));
+                    if (progress < pvLastFillRef.current - 0.02) {
+                      // Backward jump (trim loop) — snap instantly
+                      cancelAnimation(pvFillProgress);
+                      pvFillProgress.value = progress;
+                    } else {
+                      pvFillProgress.value = withTiming(progress, { duration: 300, easing: Easing.linear });
+                    }
+                    pvLastFillRef.current = progress;
+                  }
+
+                  // Trim-bounded looping
+                  if (pvTrimmingRef.current && pvTrimEndRef.current > pvTrimStartRef.current) {
+                    if (pos >= pvTrimEndRef.current && !pvSeekingRef.current) {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      pvSafeSeek(pvTrimStartRef.current);
+                      return;
+                    }
+                  }
+                  if (status.didJustFinish) setPvPlaying(false);
+                }}
+              />
+            </Pressable>
+            {/* Double-tap seek overlays */}
+            <Pressable
+              style={styles.pvDoubleTapLeft}
+              onPress={() => {
+                const now = Date.now();
+                const gap = now - pvLastTapRef.current;
+                pvLastTapRef.current = now;
+                if (pvTapTimerRef.current) {
+                  clearTimeout(pvTapTimerRef.current);
+                  pvTapTimerRef.current = null;
+                }
+                if (gap < 250) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  pvSeekBy(-2000);
+                } else {
+                  pvTapTimerRef.current = setTimeout(() => {
+                    pvTapTimerRef.current = null;
+                    pvTogglePlay();
+                  }, 260);
+                }
+              }}
+            />
+            <Pressable
+              style={styles.pvDoubleTapRight}
+              onPress={() => {
+                const now = Date.now();
+                const gap = now - pvLastTapRef.current;
+                pvLastTapRef.current = now;
+                if (pvTapTimerRef.current) {
+                  clearTimeout(pvTapTimerRef.current);
+                  pvTapTimerRef.current = null;
+                }
+                if (gap < 250) {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  pvSeekBy(2000);
+                } else {
+                  pvTapTimerRef.current = setTimeout(() => {
+                    pvTapTimerRef.current = null;
+                    pvTogglePlay();
+                  }, 260);
+                }
+              }}
+            />
+            {/* Play/Pause indicator */}
+            {!pvPlaying && (
+              <View style={styles.pvPlayIndicator} pointerEvents="none">
+                <Ionicons name="play" size={48} color="rgba(255,255,255,0.8)" />
+              </View>
+            )}
+            {/* Drag dim overlay */}
+            <Animated.View style={[styles.pvDragOverlay, pvDragOverlayStyle]} pointerEvents="none" />
+          </View>
+
+          {/* Bottom controls */}
+          <View style={[styles.pvControlPanel, { paddingBottom: insets.bottom + 12 }]}>
+            {/* Progress bar */}
+            <View style={styles.pvTimeRow}>
+              <Text style={styles.pvTimeLbl}>{pvFormatTime(pvPosition)}</Text>
+              <View
+                style={styles.pvTrack}
+                onLayout={(e) => { pvBarWidthRef.current = e.nativeEvent.layout.width; }}
+              >
+                <Animated.View style={[styles.pvFill, pvFillStyle]} />
+                {/* Trim handles + range overlay */}
+                {pvTrimming && pvDuration > 0 && (
+                  <>
+                    {/* Dimmed areas */}
+                    <View style={[styles.pvTrimDim, { left: 0, width: trimStartPxRef.current }]} />
+                    <View style={[styles.pvTrimDim, { right: 0, width: pvBarWidthRef.current - trimEndPxRef.current }]} />
+                    {/* Active range */}
+                    <View style={[styles.pvTrimRange, { left: trimStartPxRef.current, width: trimEndPxRef.current - trimStartPxRef.current }]} />
+                    {/* Left handle */}
+                    <View
+                      style={[styles.pvHandle, styles.pvHandleLeft, { left: trimStartPxRef.current - HANDLE_WIDTH / 2, transform: [{ scale: pvDraggingHandleRef.current === 'left' ? 1.3 : 1 }] }]}
+                      {...leftPanResponder.panHandlers}
+                    >
+                      <View style={[styles.pvHandleBar, pvDraggingHandleRef.current === 'left' && styles.pvHandleBarActive]} />
+                    </View>
+                    {/* Right handle */}
+                    <View
+                      style={[styles.pvHandle, styles.pvHandleRight, { left: trimEndPxRef.current - HANDLE_WIDTH / 2, transform: [{ scale: pvDraggingHandleRef.current === 'right' ? 1.3 : 1 }] }]}
+                      {...rightPanResponder.panHandlers}
+                    >
+                      <View style={[styles.pvHandleBar, pvDraggingHandleRef.current === 'right' && styles.pvHandleBarActive]} />
+                    </View>
+                  </>
+                )}
+                {/* Scrub touch layer (replaces simple tap Pressable) */}
+                <View style={styles.pvSeekLayer} {...scrubPanResponder.panHandlers} />
+                {/* Scrub indicator line */}
+                {scrubActivePxRef.current != null && (
+                  <View style={[styles.pvScrubLine, { left: scrubActivePxRef.current }]} pointerEvents="none" />
+                )}
+                {/* Magnifier time bubble — Reanimated-driven, works for scrub + trim handles */}
+                <Animated.View style={[styles.pvMagnifierBubble as any, pvBubbleAnimStyle]} pointerEvents="none">
+                  <Text style={styles.pvMagnifierText}>{pvFormatTime(bubbleTimeMs)}</Text>
+                  <View style={styles.pvMagnifierCaret} />
+                </Animated.View>
+              </View>
+              <Text style={styles.pvTimeLbl}>{pvFormatTime(pvDuration)}</Text>
+            </View>
+
+            {/* Buttons row */}
+            <View style={styles.pvBtnRow}>
+              <Pressable style={({ pressed }) => [styles.pvBtn, { transform: [{ scale: pressed ? 0.9 : 1 }] }]} onPress={pvTogglePlay} hitSlop={8}>
+                <Ionicons name={pvPlaying ? 'pause' : 'play'} size={24} color="#fff" />
+              </Pressable>
+              <Pressable style={({ pressed }) => [styles.pvPill, pvTrimming && styles.pvPillActive, { transform: [{ scale: pressed ? 0.92 : 1 }] }]} onPress={pvToggleTrim} hitSlop={6}>
+                <Ionicons name={pvTrimming ? 'checkmark' : 'cut-outline'} size={16} color="#fff" />
+                <Text style={styles.pvPillText}>{pvTrimming ? 'Done' : 'Cut'}</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [styles.pvExportBtn, { opacity: pvExporting ? 0.5 : 1, transform: [{ scale: pressed ? 0.92 : 1 }] }]}
+                onPress={handleExport}
+                disabled={pvExporting}
+                hitSlop={6}
+              >
+                <Ionicons name="download-outline" size={16} color="#fff" />
+                <Text style={styles.pvExportText}>{pvExporting ? 'Saving...' : 'Export'}</Text>
+              </Pressable>
+            </View>
+
+            {/* Trim info */}
+            {pvTrimming && (
+              <Text style={styles.pvTrimInfo}>Trim: {pvFormatTime(pvTrimStartRef.current)} — {pvFormatTime(pvTrimEndRef.current)}</Text>
+            )}
+          </View>
+
+        </View>
+      </Modal>
+    )}
+    </>
   );
 };
 
@@ -1136,18 +1924,26 @@ const SideIcon: React.FC<{
 
 // ===== Memoized clip thumbnail — prevents re-render on timer ticks =====
 
-const ClipThumbnail = React.memo(({ uri, duration, index, onRemove }: { uri: string; duration: number; index: number; onRemove: () => void }) => (
+const ClipThumbnail = React.memo(({ uri, duration, index, onRemove, onPreview }: { uri: string; duration: number; index: number; onRemove: () => void; onPreview: () => void }) => (
   <View style={styles.clipWrapper}>
     <View style={styles.clipRow}>
       <View style={styles.clipThumbCol}>
-        <View style={styles.clipThumbnail}>
-          <Video
-            source={{ uri }}
-            style={styles.clipVideo}
-            resizeMode={ResizeMode.COVER}
-            shouldPlay={false}
-            isMuted
-          />
+        <View style={styles.clipThumbnailOuter}>
+          {/* Video area — long press triggers preview */}
+          <Pressable
+            style={styles.clipThumbnail}
+            onLongPress={onPreview}
+            delayLongPress={250}
+          >
+            <Video
+              source={{ uri }}
+              style={styles.clipVideo}
+              resizeMode={ResizeMode.COVER}
+              shouldPlay={false}
+              isMuted
+            />
+          </Pressable>
+          {/* X button OUTSIDE Pressable — no touch conflict */}
           <Pressable style={styles.clipRemoveButton} onPress={onRemove} hitSlop={6}>
             <Ionicons name="close" size={10} color="#fff" />
           </Pressable>
@@ -1385,6 +2181,11 @@ const styles = StyleSheet.create({
   clipThumbCol: {
     alignItems: 'center',
   },
+  clipThumbnailOuter: {
+    width: 44,
+    height: 44,
+    position: 'relative',
+  },
   clipThumbnail: {
     width: 44,
     height: 44,
@@ -1497,5 +2298,289 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.25)',
+  },
+
+  // ---- Clip Preview Modal ----
+  previewBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.92)',
+  },
+  previewContainer: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'space-between',
+  },
+  pvTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    zIndex: 10,
+  },
+  pvTimeText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 14,
+    fontWeight: '600',
+    fontVariant: ['tabular-nums' as const],
+  },
+  previewCloseButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pvUndoRedoPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    gap: 0,
+  },
+  pvUndoRedoDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginHorizontal: 8,
+  },
+  previewVideoWrapper: {
+    alignSelf: 'center',
+    width: '90%',
+    aspectRatio: 9 / 16,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+  },
+  previewVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  pvControlPanel: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    zIndex: 10,
+  },
+  pvTimeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 14,
+  },
+  pvTimeLbl: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 11,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums' as const],
+    width: 34,
+    textAlign: 'center',
+  },
+  pvTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    overflow: 'visible',
+    position: 'relative',
+  },
+  pvFill: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: '#0095F6',
+    borderRadius: 3,
+    shadowColor: '#0095F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  pvSeekLayer: {
+    ...StyleSheet.absoluteFillObject,
+    top: -12,
+    bottom: -12,
+    zIndex: 5,
+  },
+  pvScrubLine: {
+    position: 'absolute',
+    top: -16,
+    bottom: -16,
+    width: 2,
+    marginLeft: -1,
+    backgroundColor: '#fff',
+    borderRadius: 1,
+    zIndex: 25,
+    shadowColor: '#fff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  pvMagnifierBubble: {
+    position: 'absolute',
+    top: -48,
+    left: 0,
+    width: 56,
+    paddingVertical: 5,
+    paddingHorizontal: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(10,10,10,0.92)',
+    alignItems: 'center',
+    zIndex: 35,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  pvMagnifierText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums' as const],
+    letterSpacing: 0.3,
+  },
+  pvMagnifierCaret: {
+    position: 'absolute',
+    bottom: -5,
+    width: 10,
+    height: 10,
+    backgroundColor: 'rgba(10,10,10,0.92)',
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    transform: [{ rotate: '45deg' }],
+  },
+  pvTrimDim: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    borderRadius: 3,
+  },
+  pvTrimRange: {
+    position: 'absolute',
+    top: -3,
+    bottom: -3,
+    backgroundColor: 'rgba(0,149,246,0.25)',
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: 'rgba(0,149,246,0.8)',
+    shadowColor: '#0095F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  pvHandle: {
+    position: 'absolute',
+    top: -14,
+    width: 20,
+    height: 34,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 20,
+  },
+  pvHandleLeft: {},
+  pvHandleRight: {},
+  pvHandleBar: {
+    width: 4,
+    height: 22,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+  },
+  pvHandleBarActive: {
+    backgroundColor: '#0095F6',
+    width: 5,
+    shadowColor: '#0095F6',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  pvBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  pvBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pvPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+  },
+  pvPillActive: {
+    backgroundColor: '#0095F6',
+  },
+  pvPillText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pvExportBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#22c55e',
+    marginLeft: 'auto',
+  },
+  pvExportText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  pvTrimInfo: {
+    marginTop: 10,
+    textAlign: 'center',
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontWeight: '500',
+    fontVariant: ['tabular-nums' as const],
+  },
+  pvDoubleTapLeft: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: '40%',
+    zIndex: 2,
+  },
+  pvDoubleTapRight: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: '40%',
+    zIndex: 2,
+  },
+  pvPlayIndicator: {
+    ...StyleSheet.absoluteFillObject,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  pvDragOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#000',
+    zIndex: 6,
   },
 });

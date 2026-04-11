@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Platform, Pressable, StatusBar, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Segment = { uri: string; duration: number };
+type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
 
 export default function ReelsEditScreen() {
   const router = useRouter();
@@ -21,11 +21,14 @@ export default function ReelsEditScreen() {
   }, [params.segments]);
 
   const totalDuration = useMemo(
-    () => segments.reduce((sum, s) => sum + s.duration, 0),
+    () => segments.reduce((sum, s) => {
+      if (s.trimStart != null && s.trimEnd != null && s.trimEnd > s.trimStart) {
+        return sum + (s.trimEnd - s.trimStart) / 1000;
+      }
+      return sum + s.duration;
+    }, 0),
     [segments],
   );
-
-  console.log('[REELS-EDIT] Received segments:', segments.length, 'totalDuration:', totalDuration);
 
   return (
     <View style={styles.container}>

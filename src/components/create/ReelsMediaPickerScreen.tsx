@@ -83,7 +83,10 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
     const selIndex = selectedItems.findIndex((i) => i.id === item.id);
     const selected = isSelecting && selIndex !== -1;
     return (
-      <Pressable style={styles.gridItem} onPress={() => handleSelect(item)}>
+      <Pressable
+        style={styles.gridItem}
+        onPress={() => handleSelect(item)}
+      >
         <ExpoImage source={{ uri: item.uri }} style={styles.gridImage} contentFit="cover" />
         {item.mediaType === 'video' && (
           <View style={styles.videoBadge}>
