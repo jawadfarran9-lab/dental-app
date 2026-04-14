@@ -1,4 +1,5 @@
 import { type MediaAsset, useDeviceMedia } from '@/src/hooks/useDeviceMedia';
+import { resolveMediaToOwnedFile } from '@/src/utils/mediaCopy';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -36,9 +37,17 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<MediaAsset[]>([]);
 
-  const handleSelect = useCallback((item: MediaAsset) => {
+  const handleSelect = useCallback(async (item: MediaAsset) => {
     if (!isSelecting) {
-      router.push('/reels-edit' as any);
+      let playableUri = item.uri;
+      if (item.mediaType === 'video') {
+        playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+      }
+      console.log('[gallery] Resolved URI:', playableUri);
+      router.push({
+        pathname: '/reels-edit' as any,
+        params: { segments: JSON.stringify([{ uri: playableUri, duration: item.duration ?? 0 }]) },
+      });
       return;
     }
     setSelectedItems((prev) => {
@@ -56,8 +65,20 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
     }
   };
 
-  const handleNext = () => {
-    router.push('/reels-edit' as any);
+  const handleNext = async () => {
+    const segments: { uri: string; duration: number }[] = [];
+    for (const item of selectedItems) {
+      let playableUri = item.uri;
+      if (item.mediaType === 'video') {
+        playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+      }
+      console.log('[gallery] Resolved URI:', playableUri);
+      segments.push({ uri: playableUri, duration: item.duration ?? 0 });
+    }
+    router.push({
+      pathname: '/reels-edit' as any,
+      params: { segments: JSON.stringify(segments) },
+    });
   };
 
   const handleRemoveItem = useCallback((id: string) => {

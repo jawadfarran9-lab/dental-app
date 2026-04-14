@@ -1,5 +1,6 @@
 import { type MediaAsset } from '@/src/hooks/useDeviceMedia';
 import { getTemplateByIdSync } from '@/src/services/templatesService';
+import { resolveMediaToOwnedFile } from '@/src/utils/mediaCopy';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -43,12 +44,22 @@ const TemplateSlotsScreen: React.FC<TemplateSlotsScreenProps> = ({ templateId, s
     else router.back();
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
+    const segments: { uri: string; duration: number }[] = [];
+    for (const item of mediaItems) {
+      let playableUri = item.uri;
+      if (item.mediaType === 'video') {
+        playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+      }
+      segments.push({ uri: playableUri, duration: item.duration ?? 0 });
+    }
+    console.log('[template] Resolved segments count:', segments.length);
+    if (segments.length > 0) console.log('[template] First segment URI:', segments[0].uri);
     router.push({
       pathname: '/reels-edit' as any,
       params: {
+        segments: JSON.stringify(segments),
         templateId,
-        selectedMedia,
       },
     });
   };
