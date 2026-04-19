@@ -1,11 +1,183 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
+type TextOverlayItem = {
+  id: string; text: string; x: number; y: number;
+  color: string; fontSize: number;
+  startTime: number; endTime: number;
+  scale: number; rotation: number;
+};
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const CARD_W = Math.floor((SCREEN_W - 32 - 10) / 2);  // grid padding 16*2, gap 10
+const TEP_COLLAPSED = SCREEN_H * 0.73;  // ~27% visible
+const TEP_EXPANDED = SCREEN_H * 0.20;   // ~80% visible
+
+const TEXT_EDITOR_TABS = ['Templates', 'Fonts', 'Styles', 'Effects', 'Animations', 'Bubbles', 'Presets'];
+
+const TEMPLATE_CATEGORIES = [
+  'Trending', 'Classic', 'NEW', 'Free Fire 🔥', 'Travel', 'Autumn', 'Life',
+  'Makeup', 'Spark', 'Music', 'Sports', 'Festival', 'Caption', 'Message',
+  'Game', 'News', 'Time', 'Technology', 'Summer', 'Food', '3D', 'Kaomoji',
+  'Campus', 'Pet', 'Outro', 'Advertisement', 'Social media', 'Vlog', 'Tag',
+  'Chapter', 'Daily life', 'Hits', 'Icons', 'Title', 'Retro',
+];
+
+const TEXT_TEMPLATES: { id: string; label: string; bg: string; color: string; bold?: boolean; italic?: boolean; premium?: boolean; fontSize?: number }[] = [
+  { id: '1', label: 'Default', bg: '#2a2a2a', color: '#fff' },
+  { id: '2', label: 'Highlight', bg: '#2a2a2a', color: '#FFD700' },
+  { id: '3', label: 'SUBSCRIBE', bg: '#D32F2F', color: '#fff', bold: true, premium: true },
+  { id: '4', label: 'My Story', bg: '#2a2a2a', color: '#E0E0E0', italic: true },
+  { id: '5', label: 'SHOW', bg: '#1a1a3e', color: '#4FC3F7', bold: true, premium: true },
+  { id: '6', label: '"Stay\npositive"', bg: '#2a2a2a', color: '#999', italic: true, fontSize: 9 },
+  { id: '7', label: 'KEEP\nGOING', bg: '#2a2a2a', color: '#fff', bold: true },
+  { id: '8', label: 'WELCOME\nSUMMER', bg: '#1a3a1a', color: '#81C784', bold: true, fontSize: 9 },
+  { id: '9', label: 'Abc', bg: '#2a2a2a', color: '#fff' },
+  { id: '10', label: '✦', bg: '#2a1a0a', color: '#FF6D00', premium: true, fontSize: 26 },
+  { id: '11', label: 'WOW', bg: '#2a1a3a', color: '#CE93D8', bold: true },
+  { id: '12', label: 'Keep\nshining', bg: '#2a2a1a', color: '#FFD54F', italic: true, fontSize: 9 },
+  { id: '13', label: '☎ Call', bg: '#0a2a0a', color: '#69F0AE', premium: true },
+  { id: '14', label: 'BAM!', bg: '#3a1a0a', color: '#FF8A65', bold: true },
+  { id: '15', label: 'Daily\nlife', bg: '#2a2a2a', color: '#90A4AE' },
+  { id: '16', label: '📍 HERE', bg: '#2a2a2a', color: '#FF8A65', bold: true },
+];
+
+type TabItem = { id: string; label: string; bg: string; color: string };
+
+const TAB_FONTS: TabItem[] = [
+  { id: 'f1', label: 'Roboto', bg: '#2a2a2a', color: '#fff' },
+  { id: 'f2', label: 'Montserrat', bg: '#2a2a2a', color: '#E0E0E0' },
+  { id: 'f3', label: 'Bold Sans', bg: '#2a2a2a', color: '#fff' },
+  { id: 'f4', label: 'Mono', bg: '#1a1a2e', color: '#4FC3F7' },
+  { id: 'f5', label: 'Serif', bg: '#2a2a2a', color: '#CE93D8' },
+  { id: 'f6', label: 'Handwriting', bg: '#2a2a2a', color: '#FFD54F' },
+  { id: 'f7', label: 'Condensed', bg: '#2a2a2a', color: '#90A4AE' },
+  { id: 'f8', label: 'Display', bg: '#2a2a1a', color: '#81C784' },
+  { id: 'f9', label: 'Rounded', bg: '#2a2a2a', color: '#FF8A65' },
+  { id: 'f10', label: 'Slab', bg: '#2a2a2a', color: '#999' },
+];
+
+const TAB_STYLES: TabItem[] = [
+  { id: 's1', label: 'Shadow', bg: '#2a2a2a', color: '#fff' },
+  { id: 's2', label: 'Outline', bg: '#2a2a2a', color: '#4FC3F7' },
+  { id: 's3', label: 'Neon', bg: '#1a1a2e', color: '#69F0AE' },
+  { id: 's4', label: 'Gradient', bg: '#2a1a3a', color: '#CE93D8' },
+  { id: 's5', label: '3D', bg: '#2a2a2a', color: '#FF8A65' },
+  { id: 's6', label: 'Retro', bg: '#2a2a1a', color: '#FFD54F' },
+  { id: 's7', label: 'Glitch', bg: '#2a2a2a', color: '#E040FB' },
+  { id: 's8', label: 'Emboss', bg: '#2a2a2a', color: '#90A4AE' },
+];
+
+const TAB_EFFECTS: TabItem[] = [
+  { id: 'e1', label: 'Glow', bg: '#2a2a1a', color: '#FFD700' },
+  { id: 'e2', label: 'Blur', bg: '#2a2a2a', color: '#90A4AE' },
+  { id: 'e3', label: 'Sparkle', bg: '#1a1a2e', color: '#4FC3F7' },
+  { id: 'e4', label: 'Fire', bg: '#2a1a0a', color: '#FF6D00' },
+  { id: 'e5', label: 'Flicker', bg: '#2a2a2a', color: '#fff' },
+  { id: 'e6', label: 'Rainbow', bg: '#2a1a3a', color: '#CE93D8' },
+  { id: 'e7', label: 'Noise', bg: '#2a2a2a', color: '#999' },
+  { id: 'e8', label: 'Pixelate', bg: '#2a2a2a', color: '#81C784' },
+];
+
+const TAB_ANIMATIONS: TabItem[] = [
+  { id: 'a1', label: 'Fade In', bg: '#2a2a2a', color: '#fff' },
+  { id: 'a2', label: 'Slide Up', bg: '#2a2a2a', color: '#4FC3F7' },
+  { id: 'a3', label: 'Typewriter', bg: '#1a1a2e', color: '#69F0AE' },
+  { id: 'a4', label: 'Bounce', bg: '#2a2a2a', color: '#FFD54F' },
+  { id: 'a5', label: 'Scale', bg: '#2a1a3a', color: '#CE93D8' },
+  { id: 'a6', label: 'Rotate', bg: '#2a2a2a', color: '#FF8A65' },
+  { id: 'a7', label: 'Pop', bg: '#2a2a2a', color: '#E040FB' },
+  { id: 'a8', label: 'Wave', bg: '#2a2a1a', color: '#81C784' },
+];
+
+const TAB_BUBBLES: TabItem[] = [
+  { id: 'b1', label: 'Speech', bg: '#2a2a2a', color: '#fff' },
+  { id: 'b2', label: 'Thought', bg: '#2a2a2a', color: '#E0E0E0' },
+  { id: 'b3', label: 'Shout', bg: '#D32F2F', color: '#fff' },
+  { id: 'b4', label: 'Whisper', bg: '#1a1a2e', color: '#4FC3F7' },
+  { id: 'b5', label: 'Comic', bg: '#2a2a1a', color: '#FFD54F' },
+  { id: 'b6', label: 'Cloud', bg: '#2a2a2a', color: '#90A4AE' },
+  { id: 'b7', label: 'Arrow', bg: '#2a2a2a', color: '#69F0AE' },
+  { id: 'b8', label: 'Label', bg: '#2a2a2a', color: '#FF8A65' },
+];
+
+const TAB_PRESETS: TabItem[] = [
+  { id: 'p1', label: 'Minimal', bg: '#2a2a2a', color: '#fff' },
+  { id: 'p2', label: 'Bold', bg: '#2a2a2a', color: '#FFD700' },
+  { id: 'p3', label: 'Cinematic', bg: '#1a1a2e', color: '#4FC3F7' },
+  { id: 'p4', label: 'Vlog', bg: '#2a2a2a', color: '#81C784' },
+  { id: 'p5', label: 'Social', bg: '#2a1a3a', color: '#CE93D8' },
+  { id: 'p6', label: 'News', bg: '#2a2a2a', color: '#FF8A65' },
+  { id: 'p7', label: 'Gaming', bg: '#2a1a0a', color: '#FF6D00' },
+  { id: 'p8', label: 'Clean', bg: '#2a2a2a', color: '#90A4AE' },
+];
+
+const TAB_DATA: TabItem[][] = [TEXT_TEMPLATES, TAB_FONTS, TAB_STYLES, TAB_EFFECTS, TAB_ANIMATIONS, TAB_BUBBLES, TAB_PRESETS];
+
+const FONT_CARD_W = Math.floor((SCREEN_W - 32 - 16) / 3); // 3-col: 16px padding each side, 8px gap × 2
+const FONT_CATEGORIES = ['Brand fonts', 'Trending', 'Classic', 'NEW', 'Retro', 'Hits', 'Headings', 'Elegant'];
+const STYLES_SUB_TABS = ['Text', 'Brand colors', 'Stroke', 'Glow', 'Background', 'Shadow', 'Curve', 'Spacing', 'Bold italic', 'Case'];
+const STYLE_PRESETS = [
+  { id: 's1', label: 'Aa', color: '#ffffff', fontWeight: '400' as const },
+  { id: 's2', label: 'Aa', color: '#FFD700', fontWeight: '700' as const },
+  { id: 's3', label: 'Aa', color: '#00FFAA', fontWeight: '600' as const },
+  { id: 's4', label: 'Aa', color: '#FF4D4D', fontWeight: '800' as const },
+  { id: 's5', label: 'Aa', color: '#4FC3F7', fontWeight: '700' as const },
+  { id: 's6', label: 'Aa', color: '#CE93D8', fontWeight: '600' as const },
+  { id: 's7', label: 'Aa', color: '#FF8A65', fontWeight: '800' as const },
+  { id: 's8', label: 'Aa', color: '#69F0AE', fontWeight: '400' as const },
+];
+const BRAND_COLORS = ['#FFFFFF', '#000000', '#FF3B30', '#FF9500', '#FFCC00', '#34C759', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55', '#A2845E', '#8E8E93'];
+const COLOR_NEUTRALS = ['transparent', '#FFFFFF', '#E0E0E0', '#BDBDBD', '#9E9E9E', '#616161', '#424242', '#212121', '#000000'];
+const COLOR_VIBRANT = ['#FF3B30', '#FF6B00', '#FF9500', '#FFCC00', '#34C759', '#00C7BE', '#007AFF', '#5856D6', '#AF52DE', '#FF2D55'];
+const COLOR_SOFT = ['#FFB6C1', '#FFDAB9', '#FFF9C4', '#C8E6C9', '#B3E5FC', '#D1C4E9', '#F8BBD0', '#FFCCBC', '#E0F7FA', '#F3E5F5'];
+const FONT_CATEGORY_DATA: Record<string, { id: string; label: string }[]> = {
+  'Brand fonts': [
+    { id: 'bf1', label: 'SYSTEM' }, { id: 'bf2', label: 'Studio Sans' },
+    { id: 'bf3', label: 'Clean Brand' }, { id: 'bf4', label: 'Modern Pro' },
+    { id: 'bf5', label: 'Identity' },
+  ],
+  'Trending': [
+    { id: 'tr1', label: 'Mellow' }, { id: 'tr2', label: 'Kak' },
+    { id: 'tr3', label: 'Starry' }, { id: 'tr4', label: 'Bungee' },
+    { id: 'tr5', label: 'Flourishing' },
+  ],
+  'Classic': [
+    { id: 'cl1', label: 'Serif' }, { id: 'cl2', label: 'Garamond' },
+    { id: 'cl3', label: 'Playfair' }, { id: 'cl4', label: 'Rubik' },
+    { id: 'cl5', label: 'Modern' },
+  ],
+  'NEW': [
+    { id: 'nw1', label: 'Ribbon' }, { id: 'nw2', label: 'WearDot' },
+    { id: 'nw3', label: 'Stranger' }, { id: 'nw4', label: 'Glossy' },
+    { id: 'nw5', label: 'Block' },
+  ],
+  'Retro': [
+    { id: 'rt1', label: 'Eveleth' }, { id: 'rt2', label: 'Typewriter' },
+    { id: 'rt3', label: 'Stories' }, { id: 'rt4', label: 'Flowmatic' },
+    { id: 'rt5', label: 'Stone' },
+  ],
+  'Hits': [
+    { id: 'ht1', label: 'Mono' }, { id: 'ht2', label: 'Bold Sans' },
+    { id: 'ht3', label: 'Condensed' }, { id: 'ht4', label: 'Rounded' },
+    { id: 'ht5', label: 'Display' },
+  ],
+  'Headings': [
+    { id: 'hd1', label: 'Headline One' }, { id: 'hd2', label: 'Poster' },
+    { id: 'hd3', label: 'Impact' }, { id: 'hd4', label: 'Heavy Title' },
+    { id: 'hd5', label: 'Tall Sans' },
+  ],
+  'Elegant': [
+    { id: 'el1', label: 'Awelier' }, { id: 'el2', label: 'Lucette' },
+    { id: 'el3', label: 'Neato' }, { id: 'el4', label: 'Cormorant' },
+    { id: 'el5', label: 'Slender' },
+  ],
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -57,7 +229,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 10,
     borderRadius: 16,
-    overflow: 'hidden',
     backgroundColor: '#111',
   },
   controlsRow: {
@@ -79,9 +250,11 @@ const styles = StyleSheet.create({
   timelineWrapper: {
     width: '90%',
     marginTop: 8,
+    position: 'relative',
+  },
+  timelineSegmentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    position: 'relative',
   },
   timelineLine: {
     width: 2,
@@ -120,9 +293,9 @@ const styles = StyleSheet.create({
   playhead: {
     position: 'absolute',
     width: 2,
-    height: 70,
+    top: 0,
+    bottom: 0,
     backgroundColor: '#fff',
-    top: -5,
     zIndex: 10,
   },
   segmentEmpty: {
@@ -139,18 +312,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    width: '85%',
-    height: 40,
+    width: '100%',
+    height: 36,
     backgroundColor: '#1a1a1a',
     borderWidth: 1,
     borderColor: '#2a2a2a',
-    borderRadius: 10,
+    borderRadius: 8,
     paddingHorizontal: 12,
-    marginTop: 8,
+    marginTop: 4,
   },
   trackText: {
     color: '#aaa',
     fontSize: 13,
+  },
+  /* ── Text track lane ── */
+  textTrackLane: {
+    minHeight: 36,
+    marginTop: 4,
+    position: 'relative',
+  },
+  textTrackBg: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    width: '100%',
+    height: 36,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  textTrackClips: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  textClipBlock: {
+    position: 'absolute',
+    top: 4,
+    height: 28,
+    backgroundColor: '#ff8c00',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  textClipLabel: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '600',
   },
   /* ── Shared toolbar ── */
   bottomDock: {
@@ -179,6 +393,34 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '500',
     marginTop: 4,
+  },
+  ctxToolItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 76,
+    paddingVertical: 4,
+    paddingHorizontal: 2,
+  },
+  ctxToolLabel: {
+    color: '#ccc',
+    fontSize: 10,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  ctxBackBtn: {
+    width: 40,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+    marginRight: 4,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  ctxScrollContent: {
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    gap: 12,
   },
   /* ── Transition bottom sheet ── */
   sheet: {
@@ -248,6 +490,255 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 12,
   },
+  /* ── Overlay layer ── */
+  videoInner: {
+    ...StyleSheet.absoluteFillObject,
+    overflow: 'hidden',
+    borderRadius: 16,
+  },
+  overlayLayer: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+    elevation: 10,
+  },
+  overlayLayerRounded: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  overlayItem: {
+    position: 'absolute' as const,
+    alignItems: 'center',
+  },
+  overlayText: {
+    fontWeight: '700' as const,
+    textShadowColor: 'rgba(0,0,0,0.75)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
+  },
+  textFrame: {
+    borderWidth: 1,
+    borderStyle: 'dashed' as const,
+    borderColor: 'rgba(255, 255, 255, 0.7)',
+    borderRadius: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  overlayHandle: {
+    position: 'absolute' as const,
+    right: -14,
+    bottom: -14,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  overlayHandleIcon: {
+    color: '#111',
+  },
+  cornerBtnTopLeft: {
+    position: 'absolute' as const,
+    top: -14,
+    left: -14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  cornerBtnTopRight: {
+    position: 'absolute' as const,
+    top: -14,
+    right: -14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  cornerBtnBottomLeft: {
+    position: 'absolute' as const,
+    bottom: -14,
+    left: -14,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center' as const,
+    justifyContent: 'center' as const,
+  },
+  /* ── Text editor panel ── */
+  tepPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: SCREEN_H,
+    backgroundColor: '#111',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    zIndex: 20,
+    justifyContent: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 24,
+  },
+  /* — Drag handle zone — */
+  tepDragZone: {
+    paddingTop: 10,
+    paddingBottom: 8,
+    alignItems: 'center',
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tepHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#555',
+    borderRadius: 2,
+  },
+  /* — Section 1: Input bar — */
+  tepInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    gap: 8,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tepInput: {
+    flex: 1,
+    backgroundColor: '#1c1c1e',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    color: '#fff',
+    fontSize: 14,
+  },
+  tepInputBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tepCheckBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#2979FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  /* — Section 2: Primary tabs — */
+  tepTabRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 10,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tepTabContent: {
+    gap: 2,
+    paddingHorizontal: 4,
+  },
+  tepTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  tepTabActive: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 2,
+    borderBottomColor: '#fff',
+  },
+  tepTabText: {
+    color: 'rgba(255,255,255,0.35)',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tepTabTextActive: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  /* — Section 3: Category chips — */
+  tepCatRow: {
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    flexGrow: 0,
+    flexShrink: 0,
+  },
+  tepCatContent: {
+    gap: 6,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  tepSearchChip: {
+    width: 30,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#1c1c1e',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tepCatChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 13,
+    backgroundColor: '#1c1c1e',
+  },
+  tepCatText: {
+    color: '#777',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  /* — Section 4: Template grid — */
+  tepGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
+    gap: 10,
+    paddingBottom: 60,
+  },
+  tepCard: {
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tepCardSelected: {
+    borderWidth: 2,
+    borderColor: '#4FC3F7',
+  },
+  tepCardLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+  tepPremium: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });
 
 export default function ReelsEditScreen() {
@@ -257,10 +748,163 @@ export default function ReelsEditScreen() {
   const params = useLocalSearchParams<{ segments?: string }>();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [globalTime, setGlobalTime] = useState(0);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [selectedSeparatorIndex, setSelectedSeparatorIndex] = useState<number | null>(null);
   const segmentIndexRef = useRef(0);
+  const isScrubbingRef = useRef(false);
+  const timelineWidthRef = useRef(0);
+
+  // ── Text overlay state ──
+  const [textOverlays, setTextOverlays] = useState<TextOverlayItem[]>([]);
+  const [selectedOverlayId, setSelectedOverlayId] = useState<string | null>(null);
+  const [textModeActive, setTextModeActive] = useState(false);
+  const [addTextPanelOpen, setAddTextPanelOpen] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [activeTextTab, setActiveTextTab] = useState(0);
+  const [activeFontCategory, setActiveFontCategory] = useState(0);
+  const [activeStyleTab, setActiveStyleTab] = useState(0);
+  const [selectedStyleId, setSelectedStyleId] = useState<string | null>('s1');
+  const [selectedBrandColor, setSelectedBrandColor] = useState(0);
+  const [fakeSizeVal, setFakeSizeVal] = useState(24);
+  const [fakeOpacityVal, setFakeOpacityVal] = useState(100);
+
+  // ── Text editor panel sheet animation ──
+  const tepSheetY = useRef(new Animated.Value(SCREEN_H)).current;
+  const tepSnapRef = useRef(SCREEN_H);
+
+  const tepSnapTo = (target: number) => {
+    tepSnapRef.current = target;
+    Animated.spring(tepSheetY, {
+      toValue: target,
+      useNativeDriver: true,
+      tension: 65,
+      friction: 11,
+    }).start();
+  };
+
+  const tepPan = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 6,
+      onPanResponderMove: (_, g) => {
+        const next = tepSnapRef.current + g.dy;
+        if (next >= TEP_EXPANDED) {
+          tepSheetY.setValue(next);
+        }
+      },
+      onPanResponderRelease: (_, g) => {
+        const current = tepSnapRef.current + g.dy;
+        let target: number;
+        if (g.vy > 0.5 || g.dy > 80) {
+          // fast swipe down or big drag down → collapse (or close if already collapsed)
+          target = tepSnapRef.current <= TEP_COLLAPSED ? SCREEN_H : TEP_COLLAPSED;
+        } else if (g.vy < -0.5 || g.dy < -80) {
+          // fast swipe up or big drag up → expand
+          target = TEP_EXPANDED;
+        } else {
+          // snap to nearest
+          const mid = (TEP_COLLAPSED + TEP_EXPANDED) / 2;
+          target = current < mid ? TEP_EXPANDED : TEP_COLLAPSED;
+        }
+        if (target >= SCREEN_H) {
+          setAddTextPanelOpen(false);
+        }
+        tepSnapTo(target);
+      },
+    }),
+  ).current;
+
+  // Animate in when panel opens, reset when it closes
+  useEffect(() => {
+    if (addTextPanelOpen) {
+      tepSheetY.setValue(SCREEN_H);
+      tepSnapTo(TEP_COLLAPSED);
+    } else {
+      tepSnapRef.current = SCREEN_H;
+      tepSheetY.setValue(SCREEN_H);
+    }
+  }, [addTextPanelOpen]);
+
+  const addTextOverlay = () => {
+    const label = draftText.trim() || 'New Text';
+    const start = globalTime;
+    const end = Math.min(start + 3, totalDuration > 0 ? totalDuration : 3);
+    const newId = Date.now().toString();
+    setTextOverlays(prev => [...prev, {
+      id: newId,
+      text: label,
+      x: 50,
+      y: 50,
+      color: '#FFFFFF',
+      fontSize: 24,
+      startTime: start,
+      endTime: end,
+      scale: 1,
+      rotation: 0,
+    }]);
+    setSelectedOverlayId(newId);
+    setDraftText('');
+  };
+
+  const [editingOverlayId, setEditingOverlayId] = useState<string | null>(null);
+
+  const deleteOverlay = (id: string) => {
+    setTextOverlays(prev => prev.filter(o => o.id !== id));
+    delete dragResponderCacheRef.current[id];
+    delete dragStartRef.current[id];
+  };
+
+  const duplicateOverlay = (id: string) => {
+    const src = textOverlays.find(o => o.id === id);
+    if (!src) return;
+    const dur = src.endTime - src.startTime;
+    const start = globalTime;
+    const end = Math.min(start + dur, totalDuration > 0 ? totalDuration : start + dur);
+    setTextOverlays(prev => [...prev, {
+      ...src,
+      id: Date.now().toString(),
+      startTime: start,
+      endTime: end,
+    }]);
+  };
+
+  const editOverlay = (id: string) => {
+    const item = textOverlays.find(o => o.id === id);
+    if (!item) return;
+    setEditingOverlayId(id);
+    setDraftText(item.text);
+    setAddTextPanelOpen(true);
+  };
+
+  const transformOverlay = (id: string, nextRotation: number, nextScale: number) => {
+    setTextOverlays(prev => prev.map(o =>
+      o.id === id ? { ...o, rotation: nextRotation, scale: nextScale } : o
+    ));
+  };
+
+  const moveOverlay = (id: string, nextX: number, nextY: number) => {
+    setTextOverlays(prev => prev.map(o =>
+      o.id === id ? { ...o, x: nextX, y: nextY } : o
+    ));
+  };
+
+  const selectOverlayFromTimeline = (id: string) => {
+    const target = textOverlaysRef.current.find(o => o.id === id);
+    if (!target) return;
+    isScrubbingRef.current = true;
+    player.pause();
+    setIsPlaying(false);
+    setGlobalTime(target.startTime);
+    setSelectedOverlayId(id);
+    setTimeout(() => {
+      isScrubbingRef.current = false;
+    }, 100);
+  };
+
+  // Text-mode toolbar item styles (inline to avoid separate StyleSheet entries for temporary toolbar)
+  const tmtItem = { width: 64, alignItems: 'center' as const, justifyContent: 'flex-start' as const, paddingVertical: 6, paddingHorizontal: 2 };
+  const tmtIcon = { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 6 };
+  const tmtLabel = { color: '#999', fontSize: 10, fontWeight: '500' as const, textAlign: 'center' as const, lineHeight: 13 };
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
@@ -283,6 +927,39 @@ export default function ReelsEditScreen() {
     }),
   ).current;
 
+  // Timeline scrub gesture
+  const timelinePan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
+      onPanResponderGrant: (evt) => {
+        isScrubbingRef.current = true;
+        player.pause();
+        setIsPlaying(false);
+        // Compute time from initial touch
+        const x = evt.nativeEvent.locationX;
+        const w = timelineWidthRef.current;
+        if (w > 0 && totalDuration > 0) {
+          const ratio = Math.max(0, Math.min(1, x / w));
+          setGlobalTime(ratio * totalDuration);
+        }
+      },
+      onPanResponderMove: (evt) => {
+        const x = evt.nativeEvent.locationX;
+        const w = timelineWidthRef.current;
+        if (w > 0 && totalDuration > 0) {
+          const ratio = Math.max(0, Math.min(1, x / w));
+          setGlobalTime(ratio * totalDuration);
+        }
+      },
+      onPanResponderRelease: () => {
+        isScrubbingRef.current = false;
+        setIsPlaying(true);
+        player.play();
+      },
+    }),
+  ).current;
+
   const segments: Segment[] = useMemo(() => {
     try {
       return params.segments ? JSON.parse(params.segments) : [];
@@ -297,28 +974,12 @@ export default function ReelsEditScreen() {
     if (!segments.length) return;
     const uri = segments[segmentIndexRef.current]?.uri;
     if (!uri) return;
-    console.log('[reels-edit] initial load start');
-    console.log('[reels-edit] initial uri:', uri);
     player.replaceAsync(uri).then(() => {
-      console.log('[reels-edit] replaceAsync resolved');
       if (isPlaying) {
-        console.log('[reels-edit] calling play after replaceAsync');
         player.play();
       }
-    }).catch((err: any) => {
-      console.log('[reels-edit] initial load failed:', err);
-      console.log('[reels-edit] error message:', err?.message);
-      console.log('[reels-edit] error details:', JSON.stringify(err, null, 2));
-    });
+    }).catch(() => {});
   }, [player, segments]);
-
-  // Time update listener
-  useEffect(() => {
-    const sub = player.addListener('timeUpdate', (payload) => {
-      setCurrentTime(payload.currentTime);
-    });
-    return () => sub.remove();
-  }, [player]);
 
   // Segment end listener — advance to next or loop back
   useEffect(() => {
@@ -327,21 +988,12 @@ export default function ReelsEditScreen() {
       if (nextIndex < segments.length) {
         segmentIndexRef.current = nextIndex;
         setCurrentSegmentIndex(nextIndex);
-        console.log('[reels-edit] segment advance start');
-        console.log('[reels-edit] next uri:', segments[nextIndex].uri);
         player.replaceAsync(segments[nextIndex].uri).then(() => {
-          console.log('[reels-edit] segment replaceAsync resolved');
-          console.log('[reels-edit] segment play called');
           player.play();
-        }).catch((err: any) => {
-          console.log('[reels-edit] segment advance failed:', err);
-          console.log('[reels-edit] segment error message:', err?.message);
-          console.log('[reels-edit] segment error details:', JSON.stringify(err, null, 2));
-        });
+        }).catch(() => {});
       } else {
         segmentIndexRef.current = 0;
         setCurrentSegmentIndex(0);
-        setCurrentTime(0);
         setIsPlaying(false);
         player.replace(segments[0].uri);
       }
@@ -349,48 +1001,56 @@ export default function ReelsEditScreen() {
     return () => sub.remove();
   }, [player, segments]);
 
-  // Diagnostic: player status changes (loading, ready, error)
-  useEffect(() => {
-    const sub = player.addListener('statusChange', (payload) => {
-      console.log('[reels-edit][statusChange] status:', payload.status, 'oldStatus:', payload.oldStatus);
-      if (payload.error) {
-        console.log('[reels-edit][statusChange] ERROR:', payload.error);
-        console.log('[reels-edit][statusChange] error details:', JSON.stringify(payload.error, null, 2));
-      }
-    });
-    return () => sub.remove();
-  }, [player]);
-
-  // Diagnostic: source loaded confirmation
-  useEffect(() => {
-    const sub = player.addListener('sourceLoad', (payload) => {
-      console.log('[reels-edit][sourceLoad] duration:', payload.duration);
-      console.log('[reels-edit][sourceLoad] videoTracks:', payload.availableVideoTracks?.length);
-      console.log('[reels-edit][sourceLoad] audioTracks:', payload.availableAudioTracks?.length);
-      console.log('[reels-edit][sourceLoad] source:', JSON.stringify(payload.videoSource));
-    });
-    return () => sub.remove();
-  }, [player]);
-
-  // Diagnostic: playback state changes
-  useEffect(() => {
-    const sub = player.addListener('playingChange', (payload) => {
-      console.log('[reels-edit][playing] isPlaying:', payload.isPlaying, 'old:', payload.oldIsPlaying);
-    });
-    return () => sub.remove();
-  }, [player]);
 
   const totalDuration = useMemo(
     () => segments.reduce((sum, s) => sum + (s.duration || 0), 0),
     [segments],
   );
 
+  // Map globalTime → segment index + local offset
+  const getSegmentFromGlobalTime = (time: number) => {
+    let acc = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const segDuration = segments[i].duration || 0;
+      if (time >= acc && time < acc + segDuration) {
+        return { index: i, localTime: time - acc };
+      }
+      acc += segDuration;
+    }
+    return { index: 0, localTime: 0 };
+  };
+
   const elapsedBefore = useMemo(
     () => segments.slice(0, currentSegmentIndex).reduce((sum, s) => sum + (s.duration || 0), 0),
     [segments, currentSegmentIndex],
   );
 
-  const displayTime = elapsedBefore + currentTime;
+  // Time update listener
+  useEffect(() => {
+    const sub = player.addListener('timeUpdate', (payload) => {
+      if (isScrubbingRef.current) return;
+      const localTime = payload.currentTime;
+      const newGlobal = elapsedBefore + localTime;
+      setGlobalTime(newGlobal);
+    });
+    return () => sub.remove();
+  }, [player, elapsedBefore]);
+
+  // Seek video when scrubbing
+  useEffect(() => {
+    if (!isScrubbingRef.current) return;
+    if (!segments.length) return;
+    const { index, localTime } = getSegmentFromGlobalTime(globalTime);
+    if (index !== segmentIndexRef.current) {
+      segmentIndexRef.current = index;
+      setCurrentSegmentIndex(index);
+      player.replaceAsync(segments[index].uri).then(() => {
+        player.currentTime = localTime;
+      }).catch(() => {});
+    } else {
+      player.currentTime = localTime;
+    }
+  }, [globalTime]);
 
   const onSeparatorPress = (index: number) => {
     setSelectedSeparatorIndex(index);
@@ -406,16 +1066,165 @@ export default function ReelsEditScreen() {
     />
   ) : null;
 
+  const activeStyle = STYLE_PRESETS.find(s => s.id === selectedStyleId);
+  const activeSegmentIndex = getSegmentFromGlobalTime(globalTime).index;
+
+  const gestureStartRef = useRef<{
+    [id: string]: {
+      startScale: number;
+      startRotation: number;
+      centerX: number;
+      centerY: number;
+      startDistance: number;
+      startAngle: number;
+    } | undefined;
+  }>({});
+  const overlayRefs = useRef<{ [id: string]: View | null }>({});
+  const canvasSizeRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const dragStartRef = useRef<{
+    [id: string]: { startX: number; startY: number } | undefined;
+  }>({});
+  const dragResponderCacheRef = useRef<{ [id: string]: any }>({});
+  const textOverlaysRef = useRef(textOverlays);
+  textOverlaysRef.current = textOverlays;
+  const selectedOverlayIdRef = useRef<string | null>(null);
+  selectedOverlayIdRef.current = selectedOverlayId;
+  const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
+
+  const overlayItems = textOverlays
+    .filter(item => globalTime >= item.startTime && globalTime <= item.endTime)
+    .map(item => {
+      const handleResponder = PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onMoveShouldSetPanResponder: () => true,
+        onPanResponderGrant: (_e, g) => {
+          overlayRefs.current[item.id]?.measureInWindow((x: number, y: number, w: number, h: number) => {
+            const centerX = x + w / 2;
+            const centerY = y + h / 2;
+            const dx = g.x0 - centerX;
+            const dy = g.y0 - centerY;
+            gestureStartRef.current[item.id] = {
+              startScale: item.scale,
+              startRotation: item.rotation,
+              centerX,
+              centerY,
+              startDistance: Math.max(Math.hypot(dx, dy), 1),
+              startAngle: Math.atan2(dy, dx),
+            };
+          });
+        },
+        onPanResponderMove: (_e, g) => {
+          const start = gestureStartRef.current[item.id];
+          if (!start) return;
+          const dx = g.moveX - start.centerX;
+          const dy = g.moveY - start.centerY;
+          const currentDistance = Math.max(Math.hypot(dx, dy), 1);
+          const currentAngle = Math.atan2(dy, dx);
+          const angleDeltaDeg = (currentAngle - start.startAngle) * (180 / Math.PI);
+          const nextRotation = start.startRotation + angleDeltaDeg;
+          const rawScale = start.startScale * (currentDistance / start.startDistance);
+          const nextScale = Math.max(0.3, Math.min(rawScale, 4));
+          transformOverlay(item.id, nextRotation, nextScale);
+        },
+        onPanResponderRelease: () => {
+          delete gestureStartRef.current[item.id];
+        },
+        onPanResponderTerminate: () => {
+          delete gestureStartRef.current[item.id];
+        },
+      });
+
+      if (!dragResponderCacheRef.current[item.id]) {
+        dragResponderCacheRef.current[item.id] = PanResponder.create({
+          onStartShouldSetPanResponder: () => selectedOverlayIdRef.current === item.id,
+          onMoveShouldSetPanResponder: () => selectedOverlayIdRef.current === item.id,
+          onPanResponderGrant: () => {
+            const latest = textOverlaysRef.current.find(o => o.id === item.id);
+            if (!latest) return;
+            dragStartRef.current[item.id] = { startX: latest.x, startY: latest.y };
+          },
+          onPanResponderMove: (_e, g) => {
+            const start = dragStartRef.current[item.id];
+            const { w, h } = canvasSizeRef.current;
+            if (!start || w <= 0 || h <= 0) return;
+            const dxPct = (g.dx / w) * 100;
+            const dyPct = (g.dy / h) * 100;
+            const nextX = Math.max(5, Math.min(95, start.startX + dxPct));
+            const nextY = Math.max(5, Math.min(95, start.startY + dyPct));
+            moveOverlay(item.id, nextX, nextY);
+          },
+          onPanResponderRelease: () => { delete dragStartRef.current[item.id]; },
+          onPanResponderTerminate: () => { delete dragStartRef.current[item.id]; },
+        });
+      }
+      const dragResponder = dragResponderCacheRef.current[item.id];
+      const isSelected = selectedOverlayId === item.id;
+
+      return (
+        <View
+          key={item.id}
+          ref={(r) => { overlayRefs.current[item.id] = r; }}
+          style={[styles.overlayItem, {
+            top: `${item.y}%`,
+            left: `${item.x}%`,
+            transform: [
+              { translateX: -50 },
+              { translateY: -50 },
+              { scale: item.scale },
+              { rotate: `${item.rotation}deg` },
+            ],
+          } as any]}
+        >
+          {/* Text */}
+          <View style={[styles.textFrame, !isSelected && { borderWidth: 0 }]} {...dragResponder.panHandlers}>
+            <Text style={[styles.overlayText, {
+              color: activeStyle?.color || item.color,
+              fontSize: item.fontSize,
+              fontWeight: (activeStyle?.fontWeight || '400') as any,
+            }]}>
+              {item.text}
+            </Text>
+          </View>
+          {/* Corner buttons */}
+          {isSelected && (
+            <Pressable style={styles.cornerBtnTopLeft} onPress={() => deleteOverlay(item.id)} hitSlop={8}>
+              <Ionicons name="close" size={14} color="#fff" />
+            </Pressable>
+          )}
+          {isSelected && (
+            <Pressable style={styles.cornerBtnTopRight} onPress={() => editOverlay(item.id)} hitSlop={8}>
+              <Ionicons name="pencil" size={14} color="#fff" />
+            </Pressable>
+          )}
+          {isSelected && (
+            <Pressable style={styles.cornerBtnBottomLeft} onPress={() => duplicateOverlay(item.id)} hitSlop={8}>
+              <Ionicons name="copy-outline" size={14} color="#fff" />
+            </Pressable>
+          )}
+          {/* Rotate + Scale handle */}
+          {isSelected && (
+            <View
+              style={styles.overlayHandle}
+              {...handleResponder.panHandlers}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Ionicons name="sync" size={14} style={styles.overlayHandleIcon} />
+            </View>
+          )}
+        </View>
+      );
+    });
+
   const toolbar = (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.toolRowContent}
     >
-      <View style={styles.toolItem}>
+      <Pressable style={styles.toolItem} onPress={() => setTextModeActive(true)}>
         <Ionicons name="text" size={20} color="#ccc" />
         <Text style={styles.toolLabel}>Text</Text>
-      </View>
+      </Pressable>
       <View style={styles.toolItem}>
         <Ionicons name="happy-outline" size={20} color="#ccc" />
         <Text style={styles.toolLabel}>Sticker</Text>
@@ -463,6 +1272,484 @@ export default function ReelsEditScreen() {
     </ScrollView>
   );
 
+  const textModeToolbar = (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable
+        style={{ width: 44, height: 52, alignItems: 'center', justifyContent: 'center', marginLeft: 4 }}
+        onPress={() => { setTextModeActive(false); setAddTextPanelOpen(false); }}
+        hitSlop={8}
+      >
+        <Ionicons name="chevron-back" size={24} color="#fff" />
+      </Pressable>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8, paddingRight: 20, gap: 6, alignItems: 'flex-start' as const }}>
+        <Pressable style={tmtItem} onPress={() => setAddTextPanelOpen(true)}>
+          <View style={tmtIcon}><Ionicons name="add" size={22} color="#fff" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Add text</Text>
+        </Pressable>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="chatbox-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Captions</Text>
+        </View>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="happy-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Stickers</Text>
+        </View>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="brush-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Draw</Text>
+        </View>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="document-text-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Templates</Text>
+        </View>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="volume-high-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>TTS</Text>
+        </View>
+        <View style={tmtItem}>
+          <View style={tmtIcon}><Ionicons name="musical-notes-outline" size={20} color="#ccc" /></View>
+          <Text style={tmtLabel} numberOfLines={1}>Lyrics</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+
+  const contextualToolbar = (
+    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+      <Pressable
+        style={styles.ctxBackBtn}
+        onPress={() => setSelectedOverlayId(null)}
+        hitSlop={8}
+      >
+        <Ionicons name="chevron-back" size={24} color="#fff" />
+      </Pressable>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.ctxScrollContent}
+      >
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="cut-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Split</Text>
+        </View>
+        <Pressable
+          style={styles.ctxToolItem}
+          onPress={() => {
+            if (!selectedOverlayId) return;
+            const item = textOverlays.find(o => o.id === selectedOverlayId);
+            if (!item) return;
+            setEditingOverlayId(selectedOverlayId);
+            setDraftText(item.text);
+            setActiveTextTab(2);
+            setAddTextPanelOpen(true);
+          }}
+        >
+          <Ionicons name="color-palette-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Style</Text>
+        </Pressable>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="create-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Captions</Text>
+        </View>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="copy-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Duplicate</Text>
+        </View>
+        <Pressable
+          style={styles.ctxToolItem}
+          onPress={() => {
+            if (selectedOverlayId) {
+              deleteOverlay(selectedOverlayId);
+              setSelectedOverlayId(null);
+            }
+          }}
+        >
+          <Ionicons name="trash-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Delete</Text>
+        </Pressable>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="remove-circle-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Remove filler</Text>
+        </View>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="volume-high-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>TTS</Text>
+        </View>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="person-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>AI avatars</Text>
+        </View>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="square-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Basic</Text>
+        </View>
+        <View style={styles.ctxToolItem}>
+          <Ionicons name="layers-outline" size={22} color="#ccc" />
+          <Text style={styles.ctxToolLabel} numberOfLines={1}>Layers</Text>
+        </View>
+      </ScrollView>
+    </View>
+  );
+
+  const textEditor = (
+    <Animated.View style={[styles.tepPanel, { paddingBottom: insets.bottom || 16, transform: [{ translateY: tepSheetY }] }]}>
+      {/* Drag handle zone */}
+      <View style={styles.tepDragZone} {...tepPan.panHandlers}>
+        <View style={styles.tepHandle} />
+      </View>
+
+      {/* Input row */}
+      <View style={styles.tepInputRow}>
+        <TextInput
+          style={styles.tepInput}
+          placeholder="Enter text"
+          placeholderTextColor="#555"
+          value={draftText}
+          onChangeText={setDraftText}
+        />
+        <Pressable style={styles.tepInputBtn} onPress={() => tepSnapTo(tepSnapRef.current <= TEP_COLLAPSED ? TEP_EXPANDED : TEP_COLLAPSED)} hitSlop={6}>
+          <Ionicons name="expand-outline" size={18} color="#999" />
+        </Pressable>
+        <Pressable style={styles.tepCheckBtn} onPress={() => {
+          if (editingOverlayId) {
+            setTextOverlays(prev => prev.map(o => o.id === editingOverlayId ? { ...o, text: draftText.trim() || o.text } : o));
+            setEditingOverlayId(null);
+          } else if (draftText.trim()) {
+            addTextOverlay();
+          }
+          setAddTextPanelOpen(false);
+        }} hitSlop={6}>
+          <Ionicons name="checkmark" size={20} color="#fff" />
+        </Pressable>
+      </View>
+
+      {/* Primary tabs */}
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tepTabRow} contentContainerStyle={styles.tepTabContent}>
+        {TEXT_EDITOR_TABS.map((tab, i) => (
+          <Pressable key={tab} style={i === activeTextTab ? styles.tepTabActive : styles.tepTab} onPress={() => setActiveTextTab(i)}>
+            <Text style={i === activeTextTab ? styles.tepTabTextActive : styles.tepTabText}>{tab}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+
+      {/* ── Templates tab: category strip + template grid ── */}
+      {activeTextTab === 0 && (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tepCatRow} contentContainerStyle={styles.tepCatContent}>
+            <View style={styles.tepSearchChip}>
+              <Ionicons name="search" size={14} color="#777" />
+            </View>
+            {TEMPLATE_CATEGORIES.map(cat => (
+              <View key={cat} style={styles.tepCatChip}>
+                <Text style={styles.tepCatText} numberOfLines={1}>{cat}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <View style={styles.tepGrid}>
+              {(TAB_DATA[0] ?? []).map((t: any, i: number) => (
+                <View
+                  key={t.id}
+                  style={[
+                    styles.tepCard,
+                    { backgroundColor: t.bg, width: CARD_W, height: 90 },
+                    i === 0 && styles.tepCardSelected,
+                  ]}
+                >
+                  {t.premium && (
+                    <View style={styles.tepPremium}>
+                      <Ionicons name="star" size={9} color="#FFD700" />
+                    </View>
+                  )}
+                  <Text
+                    style={[
+                      styles.tepCardLabel,
+                      { color: t.color },
+                      t.bold ? { fontWeight: '800' } : undefined,
+                      t.italic ? { fontStyle: 'italic' } : undefined,
+                      t.fontSize ? { fontSize: t.fontSize } : undefined,
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {t.label}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </>
+      )}
+
+      {/* ── Fonts tab: font category row + per-category font grid ── */}
+      {activeTextTab === 1 && (
+        <>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tepCatRow} contentContainerStyle={styles.tepCatContent}>
+            {FONT_CATEGORIES.map((cat, i) => (
+              <Pressable
+                key={cat}
+                style={[styles.tepCatChip, i === activeFontCategory && { backgroundColor: '#333' }]}
+                onPress={() => setActiveFontCategory(i)}
+              >
+                <Text style={[styles.tepCatText, i === activeFontCategory && { color: '#fff' }]} numberOfLines={1}>{cat}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, gap: 8, paddingBottom: 60 }}>
+              {(FONT_CATEGORY_DATA[FONT_CATEGORIES[activeFontCategory]] ?? []).map((f) => (
+                <View
+                  key={f.id}
+                  style={{
+                    width: FONT_CARD_W,
+                    height: 68,
+                    backgroundColor: '#1e1e1e',
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: '#2a2a2a',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Text style={{ color: '#ccc', fontSize: 12, fontWeight: '500', textAlign: 'center' }} numberOfLines={1}>{f.label}</Text>
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        </>
+      )}
+
+      {/* ── Styles tab: preview row → control chips → dynamic content ── */}
+      {activeTextTab === 2 && (
+        <>
+          {/* 1. Preview row (style presets) */}
+          <View style={{ flexShrink: 0, marginTop: 8, marginBottom: 12 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 10 }}>
+              {STYLE_PRESETS.map((preset) => (
+                <Pressable
+                  key={preset.id}
+                  onPress={() => setSelectedStyleId(preset.id)}
+                  style={{
+                    width: 52,
+                    height: 48,
+                    borderRadius: 10,
+                    backgroundColor: '#1e1e1e',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderWidth: 1.5,
+                    borderColor: selectedStyleId === preset.id ? '#4FC3F7' : '#2a2a2a',
+                  }}
+                >
+                  <Text style={{ color: preset.color, fontSize: 15, fontWeight: preset.fontWeight }}>{preset.label}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* 2. Control chips (secondary tabs) */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tepCatRow} contentContainerStyle={styles.tepCatContent}>
+            {STYLES_SUB_TABS.map((tab, i) => (
+              <Pressable
+                key={tab}
+                style={[styles.tepCatChip, i === activeStyleTab && { backgroundColor: '#333' }]}
+                onPress={() => setActiveStyleTab(i)}
+              >
+                <Text style={[styles.tepCatText, i === activeStyleTab && { color: '#fff' }]} numberOfLines={1}>{tab}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          {/* 3. Dynamic content per control tab */}
+          <View style={{ marginTop: 16 }}>
+            {/* Text sub-tab */}
+            {activeStyleTab === 0 && (
+              <View style={{ paddingHorizontal: 16 }}>
+                {/* Color palette — Row 1: Neutrals */}
+                <View style={{ marginTop: 12 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                    {COLOR_NEUTRALS.map((color, i) => (
+                      <Pressable
+                        key={'n' + i}
+                        onPress={() => setSelectedBrandColor(i)}
+                        style={{
+                          width: 30,
+                          height: 30,
+                          borderRadius: 15,
+                          backgroundColor: color === 'transparent' ? '#1e1e1e' : color,
+                          borderWidth: selectedBrandColor === i ? 2.5 : 1,
+                          borderColor: selectedBrandColor === i ? '#4FC3F7' : '#333',
+                          transform: [{ scale: selectedBrandColor === i ? 1.1 : 1 }],
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        {color === 'transparent' && <Text style={{ color: '#999', fontSize: 14 }}>⊘</Text>}
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+                {/* Row 2: Vibrant */}
+                <View style={{ marginTop: 10 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                    {COLOR_VIBRANT.map((color, i) => {
+                      const idx = COLOR_NEUTRALS.length + i;
+                      return (
+                        <Pressable
+                          key={'v' + i}
+                          onPress={() => setSelectedBrandColor(idx)}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 15,
+                            backgroundColor: color,
+                            borderWidth: selectedBrandColor === idx ? 2.5 : 1,
+                            borderColor: selectedBrandColor === idx ? '#4FC3F7' : '#333',
+                            transform: [{ scale: selectedBrandColor === idx ? 1.1 : 1 }],
+                          }}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                {/* Row 3: Soft / aesthetic */}
+                <View style={{ marginTop: 10, marginBottom: 16 }}>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                    {COLOR_SOFT.map((color, i) => {
+                      const idx = COLOR_NEUTRALS.length + COLOR_VIBRANT.length + i;
+                      return (
+                        <Pressable
+                          key={'s' + i}
+                          onPress={() => setSelectedBrandColor(idx)}
+                          style={{
+                            width: 30,
+                            height: 30,
+                            borderRadius: 15,
+                            backgroundColor: color,
+                            borderWidth: selectedBrandColor === idx ? 2.5 : 1,
+                            borderColor: selectedBrandColor === idx ? '#4FC3F7' : '#333',
+                            transform: [{ scale: selectedBrandColor === idx ? 1.1 : 1 }],
+                          }}
+                        />
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                {/* Size control */}
+                <View style={{ marginBottom: 20 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <Text style={{ color: '#aaa', fontSize: 13, fontWeight: '500' }}>Size</Text>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{fakeSizeVal}</Text>
+                  </View>
+                  <View style={{ height: 32, justifyContent: 'center' }}>
+                    <View style={{ height: 4, backgroundColor: '#2a2a2a', borderRadius: 2 }} />
+                    <View style={{ position: 'absolute', left: 0, height: 4, width: `${((fakeSizeVal - 8) / (72 - 8)) * 100}%` as any, backgroundColor: '#4FC3F7', borderRadius: 2 }} />
+                    <Pressable
+                      onPress={() => {}}
+                      style={{
+                        position: 'absolute',
+                        left: `${((fakeSizeVal - 8) / (72 - 8)) * 100}%` as any,
+                        width: 20,
+                        height: 20,
+                        borderRadius: 10,
+                        backgroundColor: '#fff',
+                        marginLeft: -10,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 2,
+                        elevation: 3,
+                      }}
+                    />
+                  </View>
+                </View>
+                {/* Opacity control */}
+                <View style={{ marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <Text style={{ color: '#aaa', fontSize: 13, fontWeight: '500' }}>Opacity</Text>
+                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{fakeOpacityVal}%</Text>
+                  </View>
+                  <View style={{ height: 32, justifyContent: 'center' }}>
+                    <View style={{ height: 4, backgroundColor: '#2a2a2a', borderRadius: 2 }} />
+                    <View style={{ position: 'absolute', left: 0, height: 4, width: `${fakeOpacityVal}%` as any, backgroundColor: '#4FC3F7', borderRadius: 2 }} />
+                    <Pressable
+                      onPress={() => {}}
+                      style={{
+                        position: 'absolute',
+                        left: `${fakeOpacityVal}%` as any,
+                        width: 20,
+                        height: 20,
+                        borderRadius: 10,
+                        backgroundColor: '#fff',
+                        marginLeft: -10,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 1 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 2,
+                        elevation: 3,
+                      }}
+                    />
+                  </View>
+                </View>
+              </View>
+            )}
+
+            {/* Brand colors sub-tab */}
+            {activeStyleTab === 1 && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, gap: 12, alignItems: 'center' }}>
+                {BRAND_COLORS.map((color, i) => (
+                  <Pressable
+                    key={color}
+                    onPress={() => setSelectedBrandColor(i)}
+                    style={{
+                      width: 34,
+                      height: 34,
+                      borderRadius: 17,
+                      backgroundColor: color,
+                      borderWidth: i === selectedBrandColor ? 2.5 : 1,
+                      borderColor: i === selectedBrandColor ? '#fff' : '#333',
+                    }}
+                  />
+                ))}
+              </ScrollView>
+            )}
+
+            {/* Other sub-tabs: placeholder */}
+            {activeStyleTab >= 2 && (
+              <Text style={{ color: '#444', fontSize: 13, textAlign: 'center', marginTop: 40 }}>Coming soon</Text>
+            )}
+          </View>
+        </>
+      )}
+
+      {/* ── Other tabs: generic grid ── */}
+      {activeTextTab >= 3 && (
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false}>
+          <View style={styles.tepGrid}>
+            {(TAB_DATA[activeTextTab] ?? []).map((t: any, i: number) => (
+              <View
+                key={t.id}
+                style={[
+                  styles.tepCard,
+                  { backgroundColor: t.bg, width: CARD_W, height: 90 },
+                  i === 0 && styles.tepCardSelected,
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.tepCardLabel,
+                    { color: t.color },
+                  ]}
+                  numberOfLines={2}
+                >
+                  {t.label}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </ScrollView>
+      )}
+    </Animated.View>
+  );
+
   const screenHeight = Dimensions.get('window').height;
   const sheetHidden = screenHeight;
   const sheetMid = screenHeight * 0.6;
@@ -473,12 +1760,6 @@ export default function ReelsEditScreen() {
   const openSheet = () => {
     sheetSnapRef.current = sheetMid;
     Animated.spring(sheetTranslateY, { toValue: sheetMid, useNativeDriver: true }).start();
-  };
-
-  const closeSheet = () => {
-    sheetSnapRef.current = sheetHidden;
-    Animated.spring(sheetTranslateY, { toValue: sheetHidden, useNativeDriver: true }).start();
-    setSelectedSeparatorIndex(null);
   };
 
   const sheetPan = useRef(
@@ -557,7 +1838,39 @@ export default function ReelsEditScreen() {
         <View style={styles.content}>
           {/* Preview */}
           <View style={styles.previewWrapper}>
-            {videoElement}
+            <View style={styles.videoInner}>
+              {videoElement}
+            </View>
+            {textOverlays.length > 0 && (
+              <View style={[styles.overlayLayer, styles.overlayLayerRounded]} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; canvasSizeRef.current = { w: width, h: height }; }}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => false}
+                onResponderGrant={(e) => {
+                  deselectTouchRef.current = {
+                    startTime: Date.now(),
+                    startX: e.nativeEvent.pageX,
+                    startY: e.nativeEvent.pageY,
+                  };
+                }}
+                onResponderRelease={(e) => {
+                  const start = deselectTouchRef.current;
+                  deselectTouchRef.current = null;
+                  if (!start) return;
+                  const dt = Date.now() - start.startTime;
+                  const dx = e.nativeEvent.pageX - start.startX;
+                  const dy = e.nativeEvent.pageY - start.startY;
+                  const moved = Math.hypot(dx, dy);
+                  if (dt < 300 && moved < 10) {
+                    setSelectedOverlayId(null);
+                  }
+                }}
+                onResponderTerminate={() => {
+                  deselectTouchRef.current = null;
+                }}
+              >
+                {overlayItems}
+              </View>
+            )}
           </View>
 
           {/* Controls row */}
@@ -568,7 +1881,7 @@ export default function ReelsEditScreen() {
             }} hitSlop={8}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
             </Pressable>
-            <Text style={styles.timeText}>{formatTime(displayTime)} / {formatTime(totalDuration)}</Text>
+            <Text style={styles.timeText}>{formatTime(globalTime)} / {formatTime(totalDuration)}</Text>
             <View style={styles.controlsRight}>
               <Ionicons name="arrow-undo-outline" size={18} color="#fff" />
               <Ionicons name="arrow-redo-outline" size={18} color="#fff" />
@@ -576,71 +1889,135 @@ export default function ReelsEditScreen() {
           </View>
 
           {/* Video track — proportional segment strip */}
-          <View style={styles.timelineWrapper}>
-            {/* Start line */}
-            <View style={styles.timelineLine} />
-
-            {/* Segments */}
-            <View style={styles.videoTrack}>
-              {segments.length > 0 ? (
-                segments.map((seg, index) => {
-                  const pct = totalDuration > 0 ? ((seg.duration || 1) / totalDuration) * 100 : 100;
-                  return (
-                    <React.Fragment key={index}>
-                      <View
-                        style={[
-                          styles.segmentBar,
-                          { width: `${pct}%` } as any,
-                          index === 0 && styles.segmentFirst,
-                          index === segments.length - 1 && styles.segmentLast,
-                        ]}
-                      />
-                      {index < segments.length - 1 && (
-                        <Pressable onPress={() => onSeparatorPress(index)} style={styles.separatorHitbox} hitSlop={10}>
-                          <View style={styles.segmentSeparator} />
-                        </Pressable>
-                      )}
-                    </React.Fragment>
-                  );
-                })
-              ) : (
-                <View style={styles.segmentEmpty}>
-                  <Text style={styles.segmentEmptyText}>No segments</Text>
-                </View>
-              )}
+          <View
+            style={styles.timelineWrapper}
+            onLayout={(e) => { timelineWidthRef.current = e.nativeEvent.layout.width; }}
+            {...timelinePan.panHandlers}
+          >
+            {/* Segment row */}
+            <View style={styles.timelineSegmentRow}>
+              <View style={styles.timelineLine} />
+              <View style={styles.videoTrack}>
+                {segments.length > 0 ? (
+                  segments.map((seg, index) => {
+                    const pct = totalDuration > 0 ? ((seg.duration || 1) / totalDuration) * 100 : 100;
+                    return (
+                      <React.Fragment key={index}>
+                        <View
+                          style={[
+                            styles.segmentBar,
+                            { width: `${pct}%` } as any,
+                            index === 0 && styles.segmentFirst,
+                            index === segments.length - 1 && styles.segmentLast,
+                            index === activeSegmentIndex && { backgroundColor: '#666' },
+                          ]}
+                        />
+                        {index < segments.length - 1 && (
+                          <Pressable onPress={() => onSeparatorPress(index)} style={styles.separatorHitbox} hitSlop={10}>
+                            <View style={styles.segmentSeparator} />
+                          </Pressable>
+                        )}
+                      </React.Fragment>
+                    );
+                  })
+                ) : (
+                  <View style={styles.segmentEmpty}>
+                    <Text style={styles.segmentEmptyText}>No segments</Text>
+                  </View>
+                )}
+              </View>
+              <View style={styles.timelineLine} />
             </View>
 
-            {/* End line */}
-            <View style={styles.timelineLine} />
+            {/* Audio track */}
+            <View style={styles.track}>
+              <Ionicons name="musical-notes" size={14} color="rgba(255,255,255,0.4)" />
+              <Text style={styles.trackText}>Tap to add audio</Text>
+            </View>
 
-            {/* Playhead */}
+            {/* Text track — timeline clips */}
+            {(() => {
+              // Greedy lane assignment: sort by startTime, place each overlay in first non-conflicting lane
+              const sortedOverlays = [...textOverlays].sort((a, b) => a.startTime - b.startTime);
+              const laneEndTimes: number[] = [];
+              const overlayLane: { [id: string]: number } = {};
+              for (const ov of sortedOverlays) {
+                let assigned = -1;
+                for (let i = 0; i < laneEndTimes.length; i++) {
+                  if (ov.startTime >= laneEndTimes[i]) {
+                    assigned = i;
+                    laneEndTimes[i] = ov.endTime;
+                    break;
+                  }
+                }
+                if (assigned === -1) {
+                  assigned = laneEndTimes.length;
+                  laneEndTimes.push(ov.endTime);
+                }
+                overlayLane[ov.id] = assigned;
+              }
+              const laneCount = Math.max(laneEndTimes.length, 1);
+              const LANE_HEIGHT = 28;
+              const LANE_GAP = 4;
+              const LANE_TOP_PADDING = 4;
+              const trackDynamicHeight = LANE_TOP_PADDING * 2 + laneCount * LANE_HEIGHT + Math.max(0, laneCount - 1) * LANE_GAP;
+
+              return (
+                <View style={[styles.textTrackLane, { minHeight: trackDynamicHeight }]}>
+                  {/* Background / placeholder layer */}
+                  <View style={[styles.textTrackBg, { height: trackDynamicHeight }]}>
+                    {textOverlays.length === 0 && (
+                      <>
+                        <Ionicons name="text" size={14} color="rgba(255,255,255,0.4)" />
+                        <Text style={styles.trackText}>Tap to add text</Text>
+                      </>
+                    )}
+                  </View>
+                  {/* Clips layer — same coordinate system as segments/playhead */}
+                  <View style={styles.textTrackClips} pointerEvents="box-none">
+                    {textOverlays.map((item) => {
+                      const leftPct = totalDuration > 0 ? (item.startTime / totalDuration) * 100 : 0;
+                      const widthPct = totalDuration > 0 ? ((item.endTime - item.startTime) / totalDuration) * 100 : 0;
+                      const laneIndex = overlayLane[item.id] ?? 0;
+                      const topPx = LANE_TOP_PADDING + laneIndex * (LANE_HEIGHT + LANE_GAP);
+                      return (
+                        <Pressable
+                          key={item.id}
+                          onPress={() => selectOverlayFromTimeline(item.id)}
+                          style={[
+                            styles.textClipBlock,
+                            { left: `${leftPct}%`, width: `${Math.max(widthPct, 2)}%`, top: topPx } as any,
+                            selectedOverlayId === item.id && { borderColor: '#fff' },
+                          ]}
+                          hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
+                        >
+                          <Text style={styles.textClipLabel} numberOfLines={1}>{item.text}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })()}
+
+            {/* Playhead — spans all layers */}
             {totalDuration > 0 && (
               <View
                 style={[
                   styles.playhead,
-                  { left: `${(displayTime / totalDuration) * 100}%` } as any,
+                  { left: `${(globalTime / totalDuration) * 100}%` } as any,
                 ]}
               />
             )}
           </View>
-
-          {/* Audio track */}
-          <View style={styles.track}>
-            <Ionicons name="musical-notes" size={16} color="rgba(255,255,255,0.4)" />
-            <Text style={styles.trackText}>Tap to add audio</Text>
-          </View>
-
-          {/* Text track */}
-          <View style={styles.track}>
-            <Ionicons name="text" size={16} color="rgba(255,255,255,0.4)" />
-            <Text style={styles.trackText}>Tap to add text</Text>
-          </View>
         </View>
 
         {/* Toolbar — absolute bottom */}
-        <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
-          {toolbar}
-        </View>
+        {addTextPanelOpen ? textEditor : (
+          <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
+            {selectedOverlayId !== null ? contextualToolbar : textModeActive ? textModeToolbar : toolbar}
+          </View>
+        )}
         {transitionPanel}
       </View>
     );
@@ -663,14 +2040,48 @@ export default function ReelsEditScreen() {
       </View>
 
       {/* Full preview */}
-      <View style={styles.normalPreview} {...previewPan.panHandlers}>
-        {videoElement}
+      <View style={{ flex: 1 }}>
+        <View style={styles.normalPreview} {...previewPan.panHandlers}>
+          {videoElement}
+        </View>
+        {textOverlays.length > 0 && (
+          <View style={styles.overlayLayer} onLayout={(e) => { const { width, height } = e.nativeEvent.layout; canvasSizeRef.current = { w: width, h: height }; }}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => false}
+            onResponderGrant={(e) => {
+              deselectTouchRef.current = {
+                startTime: Date.now(),
+                startX: e.nativeEvent.pageX,
+                startY: e.nativeEvent.pageY,
+              };
+            }}
+            onResponderRelease={(e) => {
+              const start = deselectTouchRef.current;
+              deselectTouchRef.current = null;
+              if (!start) return;
+              const dt = Date.now() - start.startTime;
+              const dx = e.nativeEvent.pageX - start.startX;
+              const dy = e.nativeEvent.pageY - start.startY;
+              const moved = Math.hypot(dx, dy);
+              if (dt < 300 && moved < 10) {
+                setSelectedOverlayId(null);
+              }
+            }}
+            onResponderTerminate={() => {
+              deselectTouchRef.current = null;
+            }}
+          >
+            {overlayItems}
+          </View>
+        )}
       </View>
 
       {/* Toolbar */}
-      <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
-        {toolbar}
-      </View>
+      {addTextPanelOpen ? textEditor : (
+        <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
+          {selectedOverlayId !== null ? contextualToolbar : textModeActive ? textModeToolbar : toolbar}
+        </View>
+      )}
       {transitionPanel}
     </View>
   );
