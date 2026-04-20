@@ -360,11 +360,35 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 2,
     borderColor: 'transparent',
+    overflow: 'visible',
   },
   textClipLabel: {
     color: '#fff',
     fontSize: 10,
     fontWeight: '600',
+  },
+  timelineTrimHandle: {
+    position: 'absolute',
+    top: -2,
+    bottom: -2,
+    width: 12,
+    backgroundColor: '#fff',
+    borderRadius: 3,
+    zIndex: 5,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  timelineTrimHandleLeft: {
+    left: -6,
+  },
+  timelineTrimHandleRight: {
+    right: -6,
+  },
+  timelineTrimHandleGrip: {
+    width: 2,
+    height: 12,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 1,
   },
   /* ── Shared toolbar ── */
   bottomDock: {
@@ -747,12 +771,13 @@ export default function ReelsEditScreen() {
   const topPadding = insets.top + (Platform.OS === 'android' ? 8 : 4);
   const params = useLocalSearchParams<{ segments?: string }>();
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(true);
+  const [isPlaying, setIsPlaying] = useState(false);
   const [globalTime, setGlobalTime] = useState(0);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [selectedSeparatorIndex, setSelectedSeparatorIndex] = useState<number | null>(null);
   const segmentIndexRef = useRef(0);
   const isScrubbingRef = useRef(false);
+  const wasPlayingBeforeScrubRef = useRef<boolean>(false);
   const timelineWidthRef = useRef(0);
 
   // ── Text overlay state ──
@@ -888,6 +913,13 @@ export default function ReelsEditScreen() {
     ));
   };
 
+  const trimOverlay = (id: string, newStart: number, newEnd: number) => {
+    if (newStart >= newEnd) return;
+    setTextOverlays(prev => prev.map(o =>
+      o.id === id ? { ...o, startTime: newStart, endTime: newEnd } : o
+    ));
+  };
+
   const selectOverlayFromTimeline = (id: string) => {
     const target = textOverlaysRef.current.find(o => o.id === id);
     if (!target) return;
@@ -927,35 +959,35 @@ export default function ReelsEditScreen() {
     }),
   ).current;
 
-  // Timeline scrub gesture
-  const timelinePan = useRef(
+  // Phase 8.2c-3: Dedicated playhead scrub PanResponder
+  const playheadPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 5,
-      onPanResponderGrant: (evt) => {
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        wasPlayingBeforeScrubRef.current = isPlaying;
         isScrubbingRef.current = true;
+        scrubStartTimeRef.current = globalTimeRef.current;
         player.pause();
         setIsPlaying(false);
-        // Compute time from initial touch
-        const x = evt.nativeEvent.locationX;
-        const w = timelineWidthRef.current;
-        if (w > 0 && totalDuration > 0) {
-          const ratio = Math.max(0, Math.min(1, x / w));
-          setGlobalTime(ratio * totalDuration);
-        }
       },
-      onPanResponderMove: (evt) => {
-        const x = evt.nativeEvent.locationX;
+      onPanResponderMove: (_, gestureState) => {
         const w = timelineWidthRef.current;
-        if (w > 0 && totalDuration > 0) {
-          const ratio = Math.max(0, Math.min(1, x / w));
-          setGlobalTime(ratio * totalDuration);
-        }
+        if (w <= 0 || totalDuration <= 0) return;
+        const deltaRatio = gestureState.dx / w;
+        const deltaTime = deltaRatio * totalDuration;
+        const nextTime = Math.max(0, Math.min(totalDuration, scrubStartTimeRef.current + deltaTime));
+        setGlobalTime(nextTime);
       },
       onPanResponderRelease: () => {
         isScrubbingRef.current = false;
-        setIsPlaying(true);
-        player.play();
+        if (wasPlayingBeforeScrubRef.current) {
+          setIsPlaying(true);
+          player.play();
+        }
+      },
+      onPanResponderTerminate: () => {
+        isScrubbingRef.current = false;
       },
     }),
   ).current;
@@ -1085,10 +1117,15 @@ export default function ReelsEditScreen() {
     [id: string]: { startX: number; startY: number } | undefined;
   }>({});
   const dragResponderCacheRef = useRef<{ [id: string]: any }>({});
+  const trimHandleCacheRef = useRef<{ [key: string]: any }>({});
+  const trimStartRef = useRef<{ [key: string]: { startTime: number; endTime: number } }>({});
   const textOverlaysRef = useRef(textOverlays);
   textOverlaysRef.current = textOverlays;
   const selectedOverlayIdRef = useRef<string | null>(null);
   selectedOverlayIdRef.current = selectedOverlayId;
+  const globalTimeRef = useRef<number>(0);
+  globalTimeRef.current = globalTime;
+  const scrubStartTimeRef = useRef<number>(0);
   const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
 
   const overlayItems = textOverlays
@@ -1643,7 +1680,6 @@ export default function ReelsEditScreen() {
                     <View style={{ height: 4, backgroundColor: '#2a2a2a', borderRadius: 2 }} />
                     <View style={{ position: 'absolute', left: 0, height: 4, width: `${((fakeSizeVal - 8) / (72 - 8)) * 100}%` as any, backgroundColor: '#4FC3F7', borderRadius: 2 }} />
                     <Pressable
-                      onPress={() => {}}
                       style={{
                         position: 'absolute',
                         left: `${((fakeSizeVal - 8) / (72 - 8)) * 100}%` as any,
@@ -1671,7 +1707,6 @@ export default function ReelsEditScreen() {
                     <View style={{ height: 4, backgroundColor: '#2a2a2a', borderRadius: 2 }} />
                     <View style={{ position: 'absolute', left: 0, height: 4, width: `${fakeOpacityVal}%` as any, backgroundColor: '#4FC3F7', borderRadius: 2 }} />
                     <Pressable
-                      onPress={() => {}}
                       style={{
                         position: 'absolute',
                         left: `${fakeOpacityVal}%` as any,
@@ -1892,7 +1927,6 @@ export default function ReelsEditScreen() {
           <View
             style={styles.timelineWrapper}
             onLayout={(e) => { timelineWidthRef.current = e.nativeEvent.layout.width; }}
-            {...timelinePan.panHandlers}
           >
             {/* Segment row */}
             <View style={styles.timelineSegmentRow}>
@@ -1960,10 +1994,19 @@ export default function ReelsEditScreen() {
               const LANE_HEIGHT = 28;
               const LANE_GAP = 4;
               const LANE_TOP_PADDING = 4;
+              const LANE_MAX_VISIBLE = 3;
+              const LANE_VIEWPORT_HEIGHT = LANE_TOP_PADDING * 2 + LANE_MAX_VISIBLE * LANE_HEIGHT + Math.max(0, LANE_MAX_VISIBLE - 1) * LANE_GAP;
               const trackDynamicHeight = LANE_TOP_PADDING * 2 + laneCount * LANE_HEIGHT + Math.max(0, laneCount - 1) * LANE_GAP;
 
               return (
-                <View style={[styles.textTrackLane, { minHeight: trackDynamicHeight }]}>
+                <View style={[styles.textTrackLane, { height: LANE_VIEWPORT_HEIGHT }]}>
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ height: trackDynamicHeight }}
+                    showsVerticalScrollIndicator={true}
+                    nestedScrollEnabled={true}
+                    scrollEnabled={trackDynamicHeight > LANE_VIEWPORT_HEIGHT}
+                  >
                   {/* Background / placeholder layer */}
                   <View style={[styles.textTrackBg, { height: trackDynamicHeight }]}>
                     {textOverlays.length === 0 && (
@@ -1980,6 +2023,84 @@ export default function ReelsEditScreen() {
                       const widthPct = totalDuration > 0 ? ((item.endTime - item.startTime) / totalDuration) * 100 : 0;
                       const laneIndex = overlayLane[item.id] ?? 0;
                       const topPx = LANE_TOP_PADDING + laneIndex * (LANE_HEIGHT + LANE_GAP);
+                      const rightHandleKey = `${item.id}-right`;
+                      if (!trimHandleCacheRef.current[rightHandleKey]) {
+                        trimHandleCacheRef.current[rightHandleKey] = PanResponder.create({
+                          onStartShouldSetPanResponder: () => true,
+                          onMoveShouldSetPanResponder: () => true,
+                          onPanResponderGrant: () => {
+                            const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            if (!latest) return;
+                            isScrubbingRef.current = true;
+                            trimStartRef.current[rightHandleKey] = {
+                              startTime: latest.startTime,
+                              endTime: latest.endTime,
+                            };
+                          },
+                          onPanResponderMove: (_, gesture) => {
+                            const startData = trimStartRef.current[rightHandleKey];
+                            if (!startData) return;
+                            const width = timelineWidthRef.current;
+                            if (width <= 0 || totalDuration <= 0) return;
+                            const pxPerSecond = width / totalDuration;
+                            const timeDelta = gesture.dx / pxPerSecond;
+                            const newEnd = startData.endTime + timeDelta;
+                            trimOverlay(item.id, startData.startTime, newEnd);
+                          },
+                          onPanResponderRelease: () => {
+                            const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            isScrubbingRef.current = false;
+                            if (latest) {
+                              setGlobalTime(latest.endTime);
+                            }
+                            delete trimStartRef.current[rightHandleKey];
+                          },
+                          onPanResponderTerminate: () => {
+                            isScrubbingRef.current = false;
+                            delete trimStartRef.current[rightHandleKey];
+                          },
+                        });
+                      }
+                      const rightHandleResponder = trimHandleCacheRef.current[rightHandleKey];
+                      const leftHandleKey = `${item.id}-left`;
+                      if (!trimHandleCacheRef.current[leftHandleKey]) {
+                        trimHandleCacheRef.current[leftHandleKey] = PanResponder.create({
+                          onStartShouldSetPanResponder: () => true,
+                          onMoveShouldSetPanResponder: () => true,
+                          onPanResponderGrant: () => {
+                            const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            if (!latest) return;
+                            isScrubbingRef.current = true;
+                            trimStartRef.current[leftHandleKey] = {
+                              startTime: latest.startTime,
+                              endTime: latest.endTime,
+                            };
+                          },
+                          onPanResponderMove: (_, gesture) => {
+                            const startData = trimStartRef.current[leftHandleKey];
+                            if (!startData) return;
+                            const width = timelineWidthRef.current;
+                            if (width <= 0 || totalDuration <= 0) return;
+                            const pxPerSecond = width / totalDuration;
+                            const timeDelta = gesture.dx / pxPerSecond;
+                            const newStart = startData.startTime + timeDelta;
+                            trimOverlay(item.id, newStart, startData.endTime);
+                          },
+                          onPanResponderRelease: () => {
+                            const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            isScrubbingRef.current = false;
+                            if (latest) {
+                              setGlobalTime(latest.startTime);
+                            }
+                            delete trimStartRef.current[leftHandleKey];
+                          },
+                          onPanResponderTerminate: () => {
+                            isScrubbingRef.current = false;
+                            delete trimStartRef.current[leftHandleKey];
+                          },
+                        });
+                      }
+                      const leftHandleResponder = trimHandleCacheRef.current[leftHandleKey];
                       return (
                         <Pressable
                           key={item.id}
@@ -1992,21 +2113,42 @@ export default function ReelsEditScreen() {
                           hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
                         >
                           <Text style={styles.textClipLabel} numberOfLines={1}>{item.text}</Text>
+                          {selectedOverlayId === item.id && (
+                            <>
+                              <View
+                                style={[styles.timelineTrimHandle, styles.timelineTrimHandleLeft]}
+                                hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                                {...leftHandleResponder.panHandlers}
+                              >
+                                <View style={styles.timelineTrimHandleGrip} pointerEvents="none" />
+                              </View>
+                              <View
+                                style={[styles.timelineTrimHandle, styles.timelineTrimHandleRight]}
+                                hitSlop={{ top: 6, bottom: 6, left: 8, right: 8 }}
+                                {...rightHandleResponder.panHandlers}
+                              >
+                                <View style={styles.timelineTrimHandleGrip} pointerEvents="none" />
+                              </View>
+                            </>
+                          )}
                         </Pressable>
                       );
                     })}
                   </View>
+                  </ScrollView>
                 </View>
               );
             })()}
 
-            {/* Playhead — spans all layers */}
+            {/* Playhead — spans all layers. Phase 8.2c-3: draggable to scrub. */}
             {totalDuration > 0 && (
               <View
                 style={[
                   styles.playhead,
                   { left: `${(globalTime / totalDuration) * 100}%` } as any,
                 ]}
+                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
+                {...playheadPan.panHandlers}
               />
             )}
           </View>
