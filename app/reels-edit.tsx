@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -1094,6 +1095,10 @@ export default function ReelsEditScreen() {
   const isScrubbingRef = useRef(false);
   const wasPlayingBeforeScrubRef = useRef<boolean>(false);
   const timelineWidthRef = useRef(0);
+  // Phase 16.b — Photo clock interval ID, used to advance
+  // globalTime during photo clip playback (expo-video's
+  // timeUpdate event never fires for photo segments).
+  const photoClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Text overlay state ──
   const [textOverlays, setTextOverlays] = useState<TextOverlayItem[]>([]);
@@ -1293,7 +1298,14 @@ export default function ReelsEditScreen() {
         isScrubbingRef.current = false;
         if (wasPlayingBeforeScrubRef.current) {
           setIsPlaying(true);
-          player.play();
+          // Phase 16.b — Only resume the native player for
+          // video segments. Photo segments resume via the
+          // photo clock useEffect, which re-runs because
+          // isPlaying toggled to true.
+          const current = segments[segmentIndexRef.current];
+          if (current && current.mediaType !== 'photo') {
+            player.play();
+          }
         }
       },
       onPanResponderTerminate: () => {
@@ -1309,6 +1321,34 @@ export default function ReelsEditScreen() {
       return [];
     }
   }, [params.segments]);
+
+  // Phase 16.b — Shared segment-advancement logic, reused by
+  // both the video playToEnd listener and the photo clock.
+  // Advances segmentIndexRef + currentSegmentIndex, then:
+  //   • If next is a video → player.replaceAsync + play
+  //   • If next is a photo → return (photo clock useEffect
+  //     will auto-start on the segment change)
+  //   • If past end → loop back to index 0, stop playback
+  const advanceToNextSegment = () => {
+    const nextIndex = segmentIndexRef.current + 1;
+    if (nextIndex < segments.length) {
+      segmentIndexRef.current = nextIndex;
+      setCurrentSegmentIndex(nextIndex);
+      const next = segments[nextIndex];
+      if (next.mediaType === 'photo') return;
+      player.replaceAsync(next.uri).then(() => {
+        player.play();
+      }).catch(() => {});
+    } else {
+      segmentIndexRef.current = 0;
+      setCurrentSegmentIndex(0);
+      setIsPlaying(false);
+      const first = segments[0];
+      if (first.mediaType !== 'photo') {
+        player.replace(first.uri);
+      }
+    }
+  };
 
   // Load source and autoplay on mount
   useEffect(() => {
@@ -1331,26 +1371,13 @@ export default function ReelsEditScreen() {
   // Segment end listener — advance to next or loop back
   useEffect(() => {
     const sub = player.addListener('playToEnd', () => {
-      const nextIndex = segmentIndexRef.current + 1;
-      if (nextIndex < segments.length) {
-        segmentIndexRef.current = nextIndex;
-        setCurrentSegmentIndex(nextIndex);
-        const next = segments[nextIndex];
-        // Phase 16.a — Skip replaceAsync for photo segments.
-        // Full photo clip playback wiring comes in Phase 16.b.
-        if (next.mediaType === 'photo') return;
-        player.replaceAsync(next.uri).then(() => {
-          player.play();
-        }).catch(() => {});
-      } else {
-        segmentIndexRef.current = 0;
-        setCurrentSegmentIndex(0);
-        setIsPlaying(false);
-        const first = segments[0];
-        if (first.mediaType !== 'photo') {
-          player.replace(first.uri);
-        }
-      }
+      // Phase 16.b.1 — Empty/photo-mode native player emits
+      // a spurious playToEnd on .play(). Guard against
+      // advancing segments from this event when the current
+      // segment is a photo — the photo clock useEffect owns
+      // advancement for photos via its setInterval tick.
+      if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
+      advanceToNextSegment();
     });
     return () => sub.remove();
   }, [player, segments]);
@@ -1383,25 +1410,84 @@ export default function ReelsEditScreen() {
   useEffect(() => {
     const sub = player.addListener('timeUpdate', (payload) => {
       if (isScrubbingRef.current) return;
+      // Phase 16.b.1 — Ignore stale native-player timeUpdate
+      // events while a photo segment is active. The native
+      // player may still emit events from a previously loaded
+      // video source (e.g., after a loop-back), which would
+      // corrupt globalTime. The photo clock useEffect is the
+      // sole authority for globalTime during photo segments.
+      if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
       const localTime = payload.currentTime;
       const newGlobal = elapsedBefore + localTime;
       setGlobalTime(newGlobal);
     });
     return () => sub.remove();
-  }, [player, elapsedBefore]);
+  }, [player, elapsedBefore, segments]);
+
+  // Phase 16.b — Photo clock: drives globalTime for photo
+  // segments. expo-video's timeUpdate event only fires for
+  // video sources, so photos need an independent clock.
+  // Runs only when the current segment is a photo AND
+  // isPlaying is true. Ticks at 100ms (matches
+  // player.timeUpdateEventInterval = 0.1 for consistent
+  // granularity). Fires clip-ended via the shared
+  // advanceToNextSegment helper when localTime reaches the
+  // segment's effective duration.
+  useEffect(() => {
+    // Clear any stale interval on every dep change
+    if (photoClockRef.current) {
+      clearInterval(photoClockRef.current);
+      photoClockRef.current = null;
+    }
+    if (!isPlaying) return;
+    const current = segments[currentSegmentIndex];
+    if (!current || current.mediaType !== 'photo') return;
+    const effectiveDuration =
+      (current.trimEnd ?? current.duration ?? 5) - (current.trimStart ?? 0);
+    let localTime = 0;
+    const TICK_MS = 100;
+    photoClockRef.current = setInterval(() => {
+      // Defer to user scrubbing — don't fight the pan gesture
+      if (isScrubbingRef.current) return;
+      localTime += TICK_MS / 1000;
+      if (localTime >= effectiveDuration) {
+        if (photoClockRef.current) {
+          clearInterval(photoClockRef.current);
+          photoClockRef.current = null;
+        }
+        advanceToNextSegment();
+        return;
+      }
+      setGlobalTime(elapsedBefore + localTime);
+    }, TICK_MS);
+    return () => {
+      if (photoClockRef.current) {
+        clearInterval(photoClockRef.current);
+        photoClockRef.current = null;
+      }
+    };
+  }, [isPlaying, currentSegmentIndex, segments, elapsedBefore]);
 
   // Seek video when scrubbing
   useEffect(() => {
     if (!isScrubbingRef.current) return;
     if (!segments.length) return;
     const { index, localTime } = getSegmentFromGlobalTime(globalTime);
+    const targetSegment = segments[index];
+    if (!targetSegment) return;
     if (index !== segmentIndexRef.current) {
       segmentIndexRef.current = index;
       setCurrentSegmentIndex(index);
-      player.replaceAsync(segments[index].uri).then(() => {
-        player.currentTime = localTime;
-      }).catch(() => {});
-    } else {
+      // Phase 16.b — Only touch the native video player when
+      // the target segment is a video. Photo segments are
+      // handled by the photo clock useEffect, which reads
+      // currentSegmentIndex and restarts automatically.
+      if (targetSegment.mediaType !== 'photo') {
+        player.replaceAsync(targetSegment.uri).then(() => {
+          player.currentTime = localTime;
+        }).catch(() => {});
+      }
+    } else if (targetSegment.mediaType !== 'photo') {
       player.currentTime = localTime;
     }
   }, [globalTime]);
@@ -1411,14 +1497,31 @@ export default function ReelsEditScreen() {
     openSheet();
   };
 
-  const videoElement = segments.length > 0 && segments[currentSegmentIndex]?.uri ? (
-    <VideoView
-      player={player}
-      style={{ width: '100%', height: '100%' }}
-      contentFit="cover"
-      nativeControls={false}
-    />
-  ) : null;
+  // Phase 16.b — Render <ExpoImage> for photo segments and
+  // <VideoView> for video segments. The preview container is
+  // agnostic; both render at 100% width/height with cover fit.
+  const videoElement = (() => {
+    if (!segments.length) return null;
+    const current = segments[currentSegmentIndex];
+    if (!current?.uri) return null;
+    if (current.mediaType === 'photo') {
+      return (
+        <ExpoImage
+          source={{ uri: current.uri }}
+          style={{ width: '100%', height: '100%' }}
+          contentFit="cover"
+        />
+      );
+    }
+    return (
+      <VideoView
+        player={player}
+        style={{ width: '100%', height: '100%' }}
+        contentFit="cover"
+        nativeControls={false}
+      />
+    );
+  })();
 
   const activeStyle = STYLE_PRESETS.find(s => s.id === selectedStyleId);
   const activeSegmentIndex = getSegmentFromGlobalTime(globalTime).index;
@@ -2151,7 +2254,15 @@ export default function ReelsEditScreen() {
           {/* Controls row */}
           <View style={styles.controlsRow}>
             <Pressable onPress={() => {
-              if (isPlaying) { player.pause(); } else { player.play(); }
+              if (isPlaying) { player.pause(); } else {
+                // Phase 16.b.1 — Do not call player.play() on a
+                // photo segment: the native player has no source
+                // loaded and emits a spurious playToEnd that
+                // resets isPlaying. The photo clock picks up
+                // playback via the isPlaying state change below.
+                const current = segments[segmentIndexRef.current];
+                if (current && current.mediaType !== 'photo') player.play();
+              }
               setIsPlaying(prev => !prev);
             }} hitSlop={8}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
