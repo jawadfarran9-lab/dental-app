@@ -13,6 +13,77 @@ type TextOverlayItem = {
   scale: number; rotation: number;
 };
 
+// ─────────────────────────────────────────────────────────────
+// Phase 11 — Overlap group computation (pure, module-scope)
+// ─────────────────────────────────────────────────────────────
+type OverlapGroup = {
+  key: string;
+  memberIds: string[];
+  start: number;
+  end: number;
+};
+
+function computeOverlapGroups(
+  overlays: TextOverlayItem[],
+): { [id: string]: OverlapGroup } {
+  if (overlays.length === 0) return {};
+
+  const sorted = [...overlays].sort((a, b) => a.startTime - b.startTime);
+  const groups: { memberIds: string[]; start: number; end: number }[] = [];
+
+  for (const ov of sorted) {
+    const overlapping: number[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      const g = groups[i];
+      if (ov.startTime < g.end && ov.endTime > g.start) {
+        overlapping.push(i);
+      }
+    }
+
+    if (overlapping.length === 0) {
+      groups.push({
+        memberIds: [ov.id],
+        start: ov.startTime,
+        end: ov.endTime,
+      });
+    } else {
+      const merged = {
+        memberIds: [
+          ...overlapping.flatMap((i) => groups[i].memberIds),
+          ov.id,
+        ],
+        start: Math.min(
+          ov.startTime,
+          ...overlapping.map((i) => groups[i].start),
+        ),
+        end: Math.max(
+          ov.endTime,
+          ...overlapping.map((i) => groups[i].end),
+        ),
+      };
+      for (let j = overlapping.length - 1; j >= 0; j--) {
+        groups.splice(overlapping[j], 1);
+      }
+      groups.push(merged);
+    }
+  }
+
+  const result: { [id: string]: OverlapGroup } = {};
+  for (const g of groups) {
+    const sortedIds = [...g.memberIds].sort();
+    const finalGroup: OverlapGroup = {
+      key: sortedIds.join(':'),
+      memberIds: sortedIds,
+      start: g.start,
+      end: g.end,
+    };
+    for (const id of sortedIds) {
+      result[id] = finalGroup;
+    }
+  }
+  return result;
+}
+
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CARD_W = Math.floor((SCREEN_W - 32 - 10) / 2);  // grid padding 16*2, gap 10
 const TEP_COLLAPSED = SCREEN_H * 0.73;  // ~27% visible
@@ -1971,24 +2042,56 @@ export default function ReelsEditScreen() {
 
             {/* Text track — timeline clips */}
             {(() => {
-              // Greedy lane assignment: sort by startTime, place each overlay in first non-conflicting lane
+              // ─────────────────────────────────────────────────────────────
+              // Phase 11 — Greedy lane assignment with collapsible groups.
+              // Multi-member groups collapse to one lane by default.
+              // The group containing selectedOverlayId expands: each member
+              // receives its own lane via the normal greedy pass.
+              // ─────────────────────────────────────────────────────────────
+              const groupByOverlayId = computeOverlapGroups(textOverlays);
+              const expandedGroupKey: string | null = (() => {
+                if (!selectedOverlayId) return null;
+                const g = groupByOverlayId[selectedOverlayId];
+                return g && g.memberIds.length >= 2 ? g.key : null;
+              })();
+
               const sortedOverlays = [...textOverlays].sort((a, b) => a.startTime - b.startTime);
               const laneEndTimes: number[] = [];
               const overlayLane: { [id: string]: number } = {};
+              const groupLaneAssignment: { [groupKey: string]: number } = {};
+
               for (const ov of sortedOverlays) {
+                const group = groupByOverlayId[ov.id];
+                const isCollapsedGroup =
+                  group.memberIds.length >= 2 && group.key !== expandedGroupKey;
+
+                // Collapsed multi-member group: reuse its single pre-assigned lane
+                if (isCollapsedGroup && groupLaneAssignment[group.key] !== undefined) {
+                  overlayLane[ov.id] = groupLaneAssignment[group.key];
+                  continue;
+                }
+
+                // Time range driving lane pick: group span if collapsed, else own
+                const useStart = isCollapsedGroup ? group.start : ov.startTime;
+                const useEnd = isCollapsedGroup ? group.end : ov.endTime;
+
                 let assigned = -1;
                 for (let i = 0; i < laneEndTimes.length; i++) {
-                  if (ov.startTime >= laneEndTimes[i]) {
+                  if (useStart >= laneEndTimes[i]) {
                     assigned = i;
-                    laneEndTimes[i] = ov.endTime;
+                    laneEndTimes[i] = useEnd;
                     break;
                   }
                 }
                 if (assigned === -1) {
                   assigned = laneEndTimes.length;
-                  laneEndTimes.push(ov.endTime);
+                  laneEndTimes.push(useEnd);
                 }
                 overlayLane[ov.id] = assigned;
+
+                if (isCollapsedGroup) {
+                  groupLaneAssignment[group.key] = assigned;
+                }
               }
               const laneCount = Math.max(laneEndTimes.length, 1);
               const LANE_HEIGHT = 28;
