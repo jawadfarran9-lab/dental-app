@@ -262,11 +262,25 @@ const PILL_BG_ACTIVE_FROM = '#00E5FF';
 const PILL_BG_ACTIVE_TO = '#00B8D4';
 const PILL_LABEL_ACTIVE = '#000';
 const PILL_GLOW_COLOR = '#00E5FF';
+const PILL_BG_AI_FROM = '#9B59B6';
+const PILL_BG_AI_TO = '#E040FB';
+const PILL_GLOW_AI = '#E040FB';
+
+// Phase 13.d — Danger variant (red for destructive actions)
+const PILL_BG_DANGER_FROM = '#EF4444';
+const PILL_BG_DANGER_TO = '#DC2626';
+const PILL_GLOW_DANGER = '#EF4444';
+
+// Phase 13.e — Brand variant (warm orange→magenta, from BeSmile logo)
+const PILL_BG_BRAND_FROM = '#FF6B35';
+const PILL_BG_BRAND_TO = '#F7258C';
+const PILL_GLOW_BRAND = '#FF4D6D';
 
 type ToolbarPillProps = {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   active?: boolean;
+  variant?: 'default' | 'ai' | 'danger' | 'brand';
   onPress?: () => void;
   iconSize?: number;
 };
@@ -275,6 +289,7 @@ function ToolbarPill({
   icon,
   label,
   active = false,
+  variant = 'default',
   onPress,
   iconSize = 20,
 }: ToolbarPillProps) {
@@ -302,14 +317,28 @@ function ToolbarPill({
     onPress();
   };
 
-  const iconColor = active ? PILL_LABEL_ACTIVE : '#ccc';
-  const labelColor = active ? PILL_LABEL_ACTIVE : PILL_LABEL_DEFAULT;
+  const isAi = variant === 'ai';
+  const isDanger = variant === 'danger';
+  const isBrand = variant === 'brand';
+  const showFeatured = active || isAi || isDanger || isBrand;
+  const gradientColors: [string, string] = isDanger
+    ? [PILL_BG_DANGER_FROM, PILL_BG_DANGER_TO]
+    : isBrand
+    ? [PILL_BG_BRAND_FROM, PILL_BG_BRAND_TO]
+    : active
+    ? [PILL_BG_ACTIVE_FROM, PILL_BG_ACTIVE_TO]
+    : [PILL_BG_AI_FROM, PILL_BG_AI_TO];
+  const iconColor = showFeatured ? PILL_LABEL_ACTIVE : '#ccc';
+  const labelColor = showFeatured ? PILL_LABEL_ACTIVE : PILL_LABEL_DEFAULT;
 
   return (
     <Animated.View
       style={[
         pillStyles.pillShadow,
         active && pillStyles.pillShadowActive,
+        isAi && !active && pillStyles.pillShadowAi,
+        isDanger && !active && pillStyles.pillShadowDanger,
+        isBrand && !active && pillStyles.pillShadowBrand,
         { transform: [{ scale }] },
       ]}
     >
@@ -319,9 +348,9 @@ function ToolbarPill({
         onPressOut={handlePressOut}
         style={pillStyles.pillOuter}
       >
-        {active ? (
+        {showFeatured ? (
           <LinearGradient
-            colors={[PILL_BG_ACTIVE_FROM, PILL_BG_ACTIVE_TO]}
+            colors={gradientColors}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={pillStyles.pillInner}
@@ -358,6 +387,27 @@ const pillStyles = StyleSheet.create({
   },
   pillShadowActive: {
     shadowColor: PILL_GLOW_COLOR,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  pillShadowAi: {
+    shadowColor: PILL_GLOW_AI,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  pillShadowDanger: {
+    shadowColor: PILL_GLOW_DANGER,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  pillShadowBrand: {
+    shadowColor: PILL_GLOW_BRAND,
     shadowOpacity: 0.5,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 0 },
@@ -622,19 +672,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 16,
     alignItems: 'center',
-  },
-  ctxToolItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 76,
-    paddingVertical: 4,
-    paddingHorizontal: 2,
-  },
-  ctxToolLabel: {
-    color: '#ccc',
-    fontSize: 10,
-    marginTop: 3,
-    textAlign: 'center',
   },
   ctxBackBtn: {
     width: 40,
@@ -1138,11 +1175,6 @@ export default function ReelsEditScreen() {
     }, 100);
   };
 
-  // Text-mode toolbar item styles (inline to avoid separate StyleSheet entries for temporary toolbar)
-  const tmtItem = { width: 64, alignItems: 'center' as const, justifyContent: 'flex-start' as const, paddingVertical: 6, paddingHorizontal: 2 };
-  const tmtIcon = { width: 36, height: 36, borderRadius: 18, backgroundColor: '#1a1a1a', alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 6 };
-  const tmtLabel = { color: '#999', fontSize: 10, fontWeight: '500' as const, textAlign: 'center' as const, lineHeight: 13 };
-
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 0.1;
@@ -1487,31 +1519,13 @@ export default function ReelsEditScreen() {
       >
         <Ionicons name="chevron-back" size={24} color="#fff" />
       </Pressable>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8, paddingRight: 20, gap: 6, alignItems: 'flex-start' as const }}>
-        <Pressable style={tmtItem} onPress={() => setAddTextPanelOpen(true)}>
-          <View style={tmtIcon}><Ionicons name="add" size={22} color="#fff" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Add text</Text>
-        </Pressable>
-        <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="chatbox-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Captions</Text>
-        </View>
-        <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="happy-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Stickers</Text>
-        </View>
-        <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="brush-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Draw</Text>
-        </View>
-        <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="document-text-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Templates</Text>
-        </View>
-        <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="musical-notes-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>AutoLyrics</Text>
-        </View>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 8, paddingRight: 20, gap: 10, alignItems: 'center' }}>
+        <ToolbarPill key="addtext" icon="add" label="Add text" active={true} onPress={() => setAddTextPanelOpen(true)} />
+        <ToolbarPill key="captions" icon="chatbox-outline" label="Auto Caption" variant="ai" />
+        <ToolbarPill key="stickers" icon="happy-outline" label="Stickers" />
+        <ToolbarPill key="draw" icon="brush-outline" label="Draw" />
+        <ToolbarPill key="templates" icon="document-text-outline" label="Templates" />
+        <ToolbarPill key="autolyrics" icon="musical-notes-outline" label="AutoLyrics" />
       </ScrollView>
     </View>
   );
@@ -1530,12 +1544,12 @@ export default function ReelsEditScreen() {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.ctxScrollContent}
       >
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="cut-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Split</Text>
-        </View>
-        <Pressable
-          style={styles.ctxToolItem}
+        <ToolbarPill key="split" icon="cut-outline" label="Split" />
+        <ToolbarPill
+          key="style"
+          icon="color-palette-outline"
+          label="Style"
+          variant="brand"
           onPress={() => {
             if (!selectedOverlayId) return;
             const item = textOverlays.find(o => o.id === selectedOverlayId);
@@ -1545,50 +1559,26 @@ export default function ReelsEditScreen() {
             setActiveTextTab(2);
             setAddTextPanelOpen(true);
           }}
-        >
-          <Ionicons name="color-palette-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Style</Text>
-        </Pressable>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="create-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Captions</Text>
-        </View>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="copy-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Duplicate</Text>
-        </View>
-        <Pressable
-          style={styles.ctxToolItem}
+        />
+        <ToolbarPill key="captions" icon="create-outline" label="Captions" />
+        <ToolbarPill key="duplicate" icon="copy-outline" label="Duplicate" />
+        <ToolbarPill
+          key="delete"
+          icon="trash-outline"
+          label="Delete"
+          variant="danger"
           onPress={() => {
             if (selectedOverlayId) {
               deleteOverlay(selectedOverlayId);
               setSelectedOverlayId(null);
             }
           }}
-        >
-          <Ionicons name="trash-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Delete</Text>
-        </Pressable>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="remove-circle-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Remove filler</Text>
-        </View>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="volume-high-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>TTS</Text>
-        </View>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="person-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>AI avatars</Text>
-        </View>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="square-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Basic</Text>
-        </View>
-        <View style={styles.ctxToolItem}>
-          <Ionicons name="layers-outline" size={22} color="#ccc" />
-          <Text style={styles.ctxToolLabel} numberOfLines={1}>Layers</Text>
-        </View>
+        />
+        <ToolbarPill key="removefiller" icon="remove-circle-outline" label="Remove filler" />
+        <ToolbarPill key="tts" icon="volume-high-outline" label="TTS" />
+        <ToolbarPill key="avatars" icon="person-outline" label="AI avatars" variant="ai" />
+        <ToolbarPill key="basic" icon="square-outline" label="Basic" />
+        <ToolbarPill key="layers" icon="layers-outline" label="Layers" />
       </ScrollView>
     </View>
   );
