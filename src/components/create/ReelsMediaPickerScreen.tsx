@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_COLUMNS = 3;
 const GRID_SPACING = 3;
+const MAX_SELECTION = 20;
 const ITEM_SIZE = (SCREEN_WIDTH - GRID_SPACING * (GRID_COLUMNS + 1)) / GRID_COLUMNS;
 
 interface ReelsMediaPickerScreenProps {
@@ -57,7 +58,9 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
     }
     setSelectedItems((prev) => {
       const exists = prev.some((i) => i.id === item.id);
-      return exists ? prev.filter((i) => i.id !== item.id) : [...prev, item];
+      if (exists) return prev.filter((i) => i.id !== item.id);
+      if (prev.length >= MAX_SELECTION) return prev;
+      return [...prev, item];
     });
   }, [isSelecting, router]);
 
@@ -204,7 +207,11 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
       <View style={styles.selectRow}>
         <Pressable onPress={handleHeaderAction} hitSlop={8}>
           <Text style={isSelecting ? styles.cancelText : styles.selectText}>
-            {isSelecting ? 'Cancel' : 'Select'}
+            {isSelecting
+              ? selectedItems.length > 0
+                ? `Cancel (${selectedItems.length}/${MAX_SELECTION})`
+                : 'Cancel'
+              : 'Select'}
           </Text>
         </Pressable>
       </View>
