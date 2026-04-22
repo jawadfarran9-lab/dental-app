@@ -22,7 +22,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const GRID_COLUMNS = 3;
-const GRID_SPACING = 2;
+const GRID_SPACING = 3;
 const ITEM_SIZE = (SCREEN_WIDTH - GRID_SPACING * (GRID_COLUMNS + 1)) / GRID_COLUMNS;
 
 interface ReelsMediaPickerScreenProps {
@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
   gridItem: {
     width: ITEM_SIZE,
     height: ITEM_SIZE,
-    borderRadius: 2,
+    borderRadius: 10,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -363,14 +363,14 @@ const styles = StyleSheet.create({
   },
   videoBadge: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
+    bottom: 6,
+    right: 6,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-    borderRadius: 4,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 10,
     gap: 3,
   },
   videoDuration: {
@@ -382,8 +382,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderWidth: 2,
-    borderColor: '#0095F6',
-    borderRadius: 2,
+    borderColor: '#00E5FF',
+    borderRadius: 10,
   },
   indexBadge: {
     position: 'absolute',
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
     width: 24,
     height: 24,
     borderRadius: 12,
-    backgroundColor: '#0095F6',
+    backgroundColor: '#00E5FF',
     justifyContent: 'center',
     alignItems: 'center',
   },
