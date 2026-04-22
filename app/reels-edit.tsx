@@ -480,7 +480,7 @@ const styles = StyleSheet.create({
   toolItem: {
     alignItems: 'center',
     justifyContent: 'center',
-    width: 48,
+    width: 64,
     paddingVertical: 4,
   },
   toolLabel: {
@@ -1331,51 +1331,51 @@ export default function ReelsEditScreen() {
     >
       <Pressable style={styles.toolItem} onPress={() => setTextModeActive(true)}>
         <Ionicons name="text" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Text</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Text</Text>
       </Pressable>
       <View style={styles.toolItem}>
         <Ionicons name="happy-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Sticker</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Sticker</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="musical-notes" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Audio</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Audio</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="add-circle-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Add Clips</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Add Clips</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="sparkles-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Effects</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Effects</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="image-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Photo</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Photo</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="layers-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Overlay</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Overlay</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="text-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Captions</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Captions</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="mic-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Voice</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Voice</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="color-filter-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Filter</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Filter</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="download-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Import</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Import</Text>
       </View>
       <View style={styles.toolItem}>
         <Ionicons name="save-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel}>Save</Text>
+        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Save</Text>
       </View>
     </ScrollView>
   );
@@ -1411,12 +1411,8 @@ export default function ReelsEditScreen() {
           <Text style={tmtLabel} numberOfLines={1}>Templates</Text>
         </View>
         <View style={tmtItem}>
-          <View style={tmtIcon}><Ionicons name="volume-high-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>TTS</Text>
-        </View>
-        <View style={tmtItem}>
           <View style={tmtIcon}><Ionicons name="musical-notes-outline" size={20} color="#ccc" /></View>
-          <Text style={tmtLabel} numberOfLines={1}>Lyrics</Text>
+          <Text style={tmtLabel} numberOfLines={1}>AutoLyrics</Text>
         </View>
       </ScrollView>
     </View>
