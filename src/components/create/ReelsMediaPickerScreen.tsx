@@ -173,9 +173,13 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
     );
   }
 
-  // ===== MEDIA GRID =====
-  const listHeader = (
-    <>
+  const hasSelection = selectedItems.length > 0;
+
+  return (
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#000" translucent />
+      {headerElement}
+
       {/* Templates pill */}
       <View style={styles.templatesContainer}>
         <Pressable style={styles.templatesPill} onPress={() => router.push('/reels-templates' as any)}>
@@ -197,22 +201,12 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
         <Text style={styles.recentsTitle}>Recents</Text>
         <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.6)" />
       </View>
-    </>
-  );
-
-  const hasSelection = selectedItems.length > 0;
-
-  return (
-    <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#000" translucent />
-      {headerElement}
 
       <FlatList
         data={assets}
         renderItem={renderMediaItem}
         keyExtractor={(item) => item.id}
         numColumns={GRID_COLUMNS}
-        ListHeaderComponent={listHeader}
         contentContainerStyle={[styles.gridContainer, hasSelection && { paddingBottom: 110 }]}
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
