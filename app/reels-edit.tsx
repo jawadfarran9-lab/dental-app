@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
@@ -276,14 +276,50 @@ const PILL_BG_BRAND_FROM = '#FF6B35';
 const PILL_BG_BRAND_TO = '#F7258C';
 const PILL_GLOW_BRAND = '#FF4D6D';
 
+// Phase 14.a — Premium variant (gold with breathing shadow pulse)
+const PILL_BG_PREMIUM_FROM = '#FBBF24';
+const PILL_BG_PREMIUM_TO = '#F59E0B';
+const PILL_GLOW_PREMIUM = '#FBBF24';
+const PILL_GLOW_PREMIUM_MIN = 0.4;
+const PILL_GLOW_PREMIUM_MAX = 0.75;
+const PILL_GLOW_PREMIUM_DURATION = 2800;
+
 type ToolbarPillProps = {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   active?: boolean;
-  variant?: 'default' | 'ai' | 'danger' | 'brand';
+  variant?: 'default' | 'ai' | 'danger' | 'brand' | 'premium';
   onPress?: () => void;
   iconSize?: number;
 };
+
+// Phase 14.b — Decorative stars for premium pill interior.
+// Static (no animation). Rendered inside LinearGradient with
+// pointerEvents='none'. Premium variant only.
+function PremiumStars() {
+  return (
+    <View pointerEvents="none" style={StyleSheet.absoluteFillObject}>
+      <Ionicons
+        name="star"
+        size={6}
+        color="#FFFFFF"
+        style={{ position: 'absolute', top: 4, right: 8, opacity: 0.22 }}
+      />
+      <Ionicons
+        name="star"
+        size={8}
+        color="#FFFFFF"
+        style={{ position: 'absolute', top: '42%', left: 6, opacity: 0.22 }}
+      />
+      <Ionicons
+        name="star"
+        size={5}
+        color="#FFFFFF"
+        style={{ position: 'absolute', bottom: 5, right: 14, opacity: 0.22 }}
+      />
+    </View>
+  );
+}
 
 function ToolbarPill({
   icon,
@@ -294,6 +330,8 @@ function ToolbarPill({
   iconSize = 20,
 }: ToolbarPillProps) {
   const scale = React.useRef(new Animated.Value(1)).current;
+  const shadowPulse = React.useRef(new Animated.Value(PILL_GLOW_PREMIUM_MIN)).current;
+  const loopRef = React.useRef<Animated.CompositeAnimation | null>(null);
 
   const handlePressIn = () => {
     Animated.timing(scale, {
@@ -320,9 +358,12 @@ function ToolbarPill({
   const isAi = variant === 'ai';
   const isDanger = variant === 'danger';
   const isBrand = variant === 'brand';
-  const showFeatured = active || isAi || isDanger || isBrand;
+  const isPremium = variant === 'premium';
+  const showFeatured = active || isAi || isDanger || isBrand || isPremium;
   const gradientColors: [string, string] = isDanger
     ? [PILL_BG_DANGER_FROM, PILL_BG_DANGER_TO]
+    : isPremium
+    ? [PILL_BG_PREMIUM_FROM, PILL_BG_PREMIUM_TO]
     : isBrand
     ? [PILL_BG_BRAND_FROM, PILL_BG_BRAND_TO]
     : active
@@ -330,6 +371,30 @@ function ToolbarPill({
     : [PILL_BG_AI_FROM, PILL_BG_AI_TO];
   const iconColor = showFeatured ? PILL_LABEL_ACTIVE : '#ccc';
   const labelColor = showFeatured ? PILL_LABEL_ACTIVE : PILL_LABEL_DEFAULT;
+
+  useEffect(() => {
+    if (!isPremium) return;
+    loopRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(shadowPulse, {
+          toValue: PILL_GLOW_PREMIUM_MAX,
+          duration: PILL_GLOW_PREMIUM_DURATION / 2,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(shadowPulse, {
+          toValue: PILL_GLOW_PREMIUM_MIN,
+          duration: PILL_GLOW_PREMIUM_DURATION / 2,
+          easing: Easing.inOut(Easing.sin),
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loopRef.current.start();
+    return () => {
+      loopRef.current?.stop();
+    };
+  }, [isPremium]);
 
   return (
     <Animated.View
@@ -339,6 +404,13 @@ function ToolbarPill({
         isAi && !active && pillStyles.pillShadowAi,
         isDanger && !active && pillStyles.pillShadowDanger,
         isBrand && !active && pillStyles.pillShadowBrand,
+        isPremium && !active && {
+          shadowColor: PILL_GLOW_PREMIUM,
+          shadowOpacity: shadowPulse,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 0 },
+          elevation: 8,
+        },
         { transform: [{ scale }] },
       ]}
     >
@@ -355,6 +427,7 @@ function ToolbarPill({
             end={{ x: 1, y: 1 }}
             style={pillStyles.pillInner}
           >
+            {isPremium && <PremiumStars />}
             <Ionicons name={icon} size={iconSize} color={iconColor} />
             <Text
               style={[pillStyles.pillLabel, { color: labelColor }]}
@@ -1499,7 +1572,7 @@ export default function ReelsEditScreen() {
       <ToolbarPill key="sticker" icon="happy-outline" label="Sticker" />
       <ToolbarPill key="audio" icon="musical-notes" label="Audio" />
       <ToolbarPill key="addclips" icon="add-circle-outline" label="Add Clips" />
-      <ToolbarPill key="effects" icon="sparkles-outline" label="Effects" />
+      <ToolbarPill key="effects" icon="sparkles-outline" label="Effects" variant="premium" />
       <ToolbarPill key="photo" icon="image-outline" label="Photo" />
       <ToolbarPill key="overlay" icon="layers-outline" label="Overlay" />
       <ToolbarPill key="captions" icon="text-outline" label="Captions" />
