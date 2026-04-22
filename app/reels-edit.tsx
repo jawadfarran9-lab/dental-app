@@ -1,4 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -250,6 +252,150 @@ const FONT_CATEGORY_DATA: Record<string, { id: string; label: string }[]> = {
   ],
 };
 
+// ─────────────────────────────────────────────────────────────
+// Phase 13 — Electric Pills design tokens
+// ─────────────────────────────────────────────────────────────
+const PILL_BG_DEFAULT = 'rgba(255,255,255,0.06)';
+const PILL_BORDER_DEFAULT = 'rgba(255,255,255,0.08)';
+const PILL_LABEL_DEFAULT = '#d0d0d0';
+const PILL_BG_ACTIVE_FROM = '#00E5FF';
+const PILL_BG_ACTIVE_TO = '#00B8D4';
+const PILL_LABEL_ACTIVE = '#000';
+const PILL_GLOW_COLOR = '#00E5FF';
+
+type ToolbarPillProps = {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  active?: boolean;
+  onPress?: () => void;
+  iconSize?: number;
+};
+
+function ToolbarPill({
+  icon,
+  label,
+  active = false,
+  onPress,
+  iconSize = 20,
+}: ToolbarPillProps) {
+  const scale = React.useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.timing(scale, {
+      toValue: 0.96,
+      duration: 90,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.timing(scale, {
+      toValue: 1,
+      duration: 110,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePress = () => {
+    if (!onPress) return;
+    Haptics.selectionAsync().catch(() => {});
+    onPress();
+  };
+
+  const iconColor = active ? PILL_LABEL_ACTIVE : '#ccc';
+  const labelColor = active ? PILL_LABEL_ACTIVE : PILL_LABEL_DEFAULT;
+
+  return (
+    <Animated.View
+      style={[
+        pillStyles.pillShadow,
+        active && pillStyles.pillShadowActive,
+        { transform: [{ scale }] },
+      ]}
+    >
+      <Pressable
+        onPress={handlePress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        style={pillStyles.pillOuter}
+      >
+        {active ? (
+          <LinearGradient
+            colors={[PILL_BG_ACTIVE_FROM, PILL_BG_ACTIVE_TO]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={pillStyles.pillInner}
+          >
+            <Ionicons name={icon} size={iconSize} color={iconColor} />
+            <Text
+              style={[pillStyles.pillLabel, { color: labelColor }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {label}
+            </Text>
+          </LinearGradient>
+        ) : (
+          <View style={pillStyles.pillInnerDefault}>
+            <Ionicons name={icon} size={iconSize} color={iconColor} />
+            <Text
+              style={[pillStyles.pillLabel, { color: labelColor }]}
+              numberOfLines={1}
+              ellipsizeMode="tail"
+            >
+              {label}
+            </Text>
+          </View>
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+const pillStyles = StyleSheet.create({
+  pillShadow: {
+    borderRadius: 18,
+  },
+  pillShadowActive: {
+    shadowColor: PILL_GLOW_COLOR,
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  pillOuter: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  pillInnerDefault: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: PILL_BORDER_DEFAULT,
+    backgroundColor: PILL_BG_DEFAULT,
+    minWidth: 64,
+  },
+  pillInner: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 18,
+    minWidth: 64,
+  },
+  pillLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 0.2,
+    marginTop: 4,
+  },
+});
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -476,18 +622,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 16,
     alignItems: 'center',
-  },
-  toolItem: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 64,
-    paddingVertical: 4,
-  },
-  toolLabel: {
-    color: '#888',
-    fontSize: 11,
-    fontWeight: '500',
-    marginTop: 4,
   },
   ctxToolItem: {
     alignItems: 'center',
@@ -1329,54 +1463,18 @@ export default function ReelsEditScreen() {
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.toolRowContent}
     >
-      <Pressable style={styles.toolItem} onPress={() => setTextModeActive(true)}>
-        <Ionicons name="text" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Text</Text>
-      </Pressable>
-      <View style={styles.toolItem}>
-        <Ionicons name="happy-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Sticker</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="musical-notes" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Audio</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="add-circle-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Add Clips</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="sparkles-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Effects</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="image-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Photo</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="layers-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Overlay</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="text-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Captions</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="mic-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Voice</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="color-filter-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Filter</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="download-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Import</Text>
-      </View>
-      <View style={styles.toolItem}>
-        <Ionicons name="save-outline" size={20} color="#ccc" />
-        <Text style={styles.toolLabel} numberOfLines={1} ellipsizeMode="tail">Save</Text>
-      </View>
+      <ToolbarPill key="text" icon="text" label="Text" onPress={() => setTextModeActive(true)} />
+      <ToolbarPill key="sticker" icon="happy-outline" label="Sticker" />
+      <ToolbarPill key="audio" icon="musical-notes" label="Audio" />
+      <ToolbarPill key="addclips" icon="add-circle-outline" label="Add Clips" />
+      <ToolbarPill key="effects" icon="sparkles-outline" label="Effects" />
+      <ToolbarPill key="photo" icon="image-outline" label="Photo" />
+      <ToolbarPill key="overlay" icon="layers-outline" label="Overlay" />
+      <ToolbarPill key="captions" icon="text-outline" label="Captions" />
+      <ToolbarPill key="voice" icon="mic-outline" label="Voice" />
+      <ToolbarPill key="filter" icon="color-filter-outline" label="Filter" />
+      <ToolbarPill key="import" icon="download-outline" label="Import" />
+      <ToolbarPill key="save" icon="save-outline" label="Save" />
     </ScrollView>
   );
 
