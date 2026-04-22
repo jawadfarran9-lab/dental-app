@@ -2,6 +2,7 @@ import { type MediaAsset, useDeviceMedia } from '@/src/hooks/useDeviceMedia';
 import { resolveMediaToOwnedFile } from '@/src/utils/mediaCopy';
 import { Ionicons } from '@expo/vector-icons';
 import { Image as ExpoImage } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
 import {
@@ -182,8 +183,16 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
 
       {/* Templates pill */}
       <View style={styles.templatesContainer}>
-        <Pressable style={styles.templatesPill} onPress={() => router.push('/reels-templates' as any)}>
-          <Text style={styles.templatesPillText}>Templates</Text>
+        <Pressable onPress={() => router.push('/reels-templates' as any)} style={styles.templatesPillOuter}>
+          <LinearGradient
+            colors={['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.04)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={styles.templatesPill}
+          >
+            <Ionicons name="document-text-outline" size={16} color="#fff" style={{ marginRight: 6 }} />
+            <Text style={styles.templatesPillText}>Templates</Text>
+          </LinearGradient>
         </Pressable>
       </View>
 
@@ -199,7 +208,7 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
       {/* Recents section header */}
       <View style={styles.recentsHeader}>
         <Text style={styles.recentsTitle}>Recents</Text>
-        <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.6)" />
+        <Ionicons name="chevron-down" size={18} color="rgba(255,255,255,0.85)" />
       </View>
 
       <FlatList
@@ -268,17 +277,18 @@ const styles = StyleSheet.create({
   headerTitle: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.3,
     textAlign: 'center',
   },
   selectText: {
-    color: 'rgba(255,255,255,0.7)',
-    fontSize: 16,
-    fontWeight: '500',
+    color: '#00E5FF',
+    fontSize: 17,
+    fontWeight: '600',
   },
   cancelText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: '600',
   },
   selectRow: {
@@ -293,21 +303,26 @@ const styles = StyleSheet.create({
   templatesContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
+    alignItems: 'center',
+  },
+  templatesPillOuter: {
+    borderRadius: 22,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
   },
   templatesPill: {
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
   },
   templatesPillText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
 
   // ---- Recents Header ----
@@ -323,7 +338,7 @@ const styles = StyleSheet.create({
   recentsTitle: {
     color: '#fff',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 
   // ---- Grid ----
