@@ -7,7 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
+type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number; mediaType?: 'photo' | 'video' };
 type TextOverlayItem = {
   id: string; text: string; x: number; y: number;
   color: string; fontSize: number;
@@ -1314,9 +1314,14 @@ export default function ReelsEditScreen() {
   useEffect(() => {
     if (!player) return;
     if (!segments.length) return;
-    const uri = segments[segmentIndexRef.current]?.uri;
-    if (!uri) return;
-    player.replaceAsync(uri).then(() => {
+    const current = segments[segmentIndexRef.current];
+    if (!current?.uri) return;
+    // Phase 16.a — Do NOT feed photo URIs to the native video
+    // player. expo-video's AVFoundation/ExoPlayer backend will
+    // crash the native module on non-video sources. Photo
+    // rendering comes in Phase 16.b.
+    if (current.mediaType === 'photo') return;
+    player.replaceAsync(current.uri).then(() => {
       if (isPlaying) {
         player.play();
       }
@@ -1330,14 +1335,21 @@ export default function ReelsEditScreen() {
       if (nextIndex < segments.length) {
         segmentIndexRef.current = nextIndex;
         setCurrentSegmentIndex(nextIndex);
-        player.replaceAsync(segments[nextIndex].uri).then(() => {
+        const next = segments[nextIndex];
+        // Phase 16.a — Skip replaceAsync for photo segments.
+        // Full photo clip playback wiring comes in Phase 16.b.
+        if (next.mediaType === 'photo') return;
+        player.replaceAsync(next.uri).then(() => {
           player.play();
         }).catch(() => {});
       } else {
         segmentIndexRef.current = 0;
         setCurrentSegmentIndex(0);
         setIsPlaying(false);
-        player.replace(segments[0].uri);
+        const first = segments[0];
+        if (first.mediaType !== 'photo') {
+          player.replace(first.uri);
+        }
       }
     });
     return () => sub.remove();

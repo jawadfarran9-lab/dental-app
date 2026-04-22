@@ -47,7 +47,11 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
       console.log('[gallery] Resolved URI:', playableUri);
       router.push({
         pathname: '/reels-edit' as any,
-        params: { segments: JSON.stringify([{ uri: playableUri, duration: item.duration ?? 0 }]) },
+        params: {
+          segments: JSON.stringify([
+            { uri: playableUri, duration: item.duration ?? 0, mediaType: item.mediaType },
+          ]),
+        },
       });
       return;
     }
@@ -67,14 +71,14 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
   };
 
   const handleNext = async () => {
-    const segments: { uri: string; duration: number }[] = [];
+    const segments: { uri: string; duration: number; mediaType: 'photo' | 'video' }[] = [];
     for (const item of selectedItems) {
       let playableUri = item.uri;
       if (item.mediaType === 'video') {
         playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
       }
       console.log('[gallery] Resolved URI:', playableUri);
-      segments.push({ uri: playableUri, duration: item.duration ?? 0 });
+      segments.push({ uri: playableUri, duration: item.duration ?? 0, mediaType: item.mediaType });
     }
     router.push({
       pathname: '/reels-edit' as any,
