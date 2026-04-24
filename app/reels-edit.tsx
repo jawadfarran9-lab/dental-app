@@ -4,9 +4,12 @@ import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+// Phase 17.0: Timeline pixel scale — 1 second of media = 80px
+const PIXELS_PER_SECOND = 80;
 
 type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number; mediaType?: 'photo' | 'video' };
 type TextOverlayItem = {
@@ -597,11 +600,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  timelineLine: {
-    width: 2,
-    height: 60,
-    backgroundColor: '#fff',
-  },
   videoTrack: {
     flex: 1,
     height: 60,
@@ -610,6 +608,7 @@ const styles = StyleSheet.create({
   segmentBar: {
     height: 60,
     backgroundColor: '#444',
+    overflow: 'hidden',
   },
   segmentFirst: {
     borderTopLeftRadius: 8,
@@ -1099,6 +1098,29 @@ export default function ReelsEditScreen() {
   // globalTime during photo clip playback (expo-video's
   // timeUpdate event never fires for photo segments).
   const photoClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Phase 17.0: ScrollView ref for programmatic scroll control
+  const scrollViewRef = useRef<ScrollView>(null);
+  // Phase 17.0: Guard flag to prevent onScroll ↔ setGlobalTime feedback loop
+  const isProgrammaticScrollRef = useRef(false);
+  // Phase 17.0: Reactive viewport width for contentContainerStyle padding and playhead centering
+  const [viewportWidth, setViewportWidth] = useState(0);
+
+  // Phase 17.0: Programmatic scroll helper with feedback loop guard.
+  // Sets the guard flag before calling scrollTo, clears it after
+  // the scroll completes (via setTimeout for animated:false which
+  // may or may not fire onScroll depending on platform).
+  const programmaticScrollTo = useCallback((x: number, animated: boolean) => {
+    if (!scrollViewRef.current) return;
+    isProgrammaticScrollRef.current = true;
+    scrollViewRef.current.scrollTo({ x, animated });
+    if (!animated) {
+      // Clear the flag after the scroll event has had a chance to fire
+      setTimeout(() => { isProgrammaticScrollRef.current = false; }, 0);
+    } else {
+      // Safety net for animated:true — cleared in onMomentumScrollEnd (Batch 3)
+      setTimeout(() => { isProgrammaticScrollRef.current = false; }, 400);
+    }
+  }, []);
 
   // ── Text overlay state ──
   const [textOverlays, setTextOverlays] = useState<TextOverlayItem[]>([]);
@@ -1247,6 +1269,8 @@ export default function ReelsEditScreen() {
     player.pause();
     setIsPlaying(false);
     setGlobalTime(target.startTime);
+    // Phase 17.0: Scroll timeline to seeked position
+    programmaticScrollTo(target.startTime * PIXELS_PER_SECOND, true);
     setSelectedOverlayId(id);
     setTimeout(() => {
       isScrubbingRef.current = false;
@@ -1274,45 +1298,8 @@ export default function ReelsEditScreen() {
     }),
   ).current;
 
-  // Phase 8.2c-3: Dedicated playhead scrub PanResponder
-  const playheadPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        wasPlayingBeforeScrubRef.current = isPlaying;
-        isScrubbingRef.current = true;
-        scrubStartTimeRef.current = globalTimeRef.current;
-        player.pause();
-        setIsPlaying(false);
-      },
-      onPanResponderMove: (_, gestureState) => {
-        const w = timelineWidthRef.current;
-        if (w <= 0 || totalDuration <= 0) return;
-        const deltaRatio = gestureState.dx / w;
-        const deltaTime = deltaRatio * totalDuration;
-        const nextTime = Math.max(0, Math.min(totalDuration, scrubStartTimeRef.current + deltaTime));
-        setGlobalTime(nextTime);
-      },
-      onPanResponderRelease: () => {
-        isScrubbingRef.current = false;
-        if (wasPlayingBeforeScrubRef.current) {
-          setIsPlaying(true);
-          // Phase 16.b — Only resume the native player for
-          // video segments. Photo segments resume via the
-          // photo clock useEffect, which re-runs because
-          // isPlaying toggled to true.
-          const current = segments[segmentIndexRef.current];
-          if (current && current.mediaType !== 'photo') {
-            player.play();
-          }
-        }
-      },
-      onPanResponderTerminate: () => {
-        isScrubbingRef.current = false;
-      },
-    }),
-  ).current;
+  // Phase 17.0: playheadPan PanResponder retired — ScrollView is now the scrub surface.
+  // wasPlayingBeforeScrubRef is preserved for onScrollBeginDrag (Batch 3).
 
   const segments: Segment[] = useMemo(() => {
     try {
@@ -1343,6 +1330,8 @@ export default function ReelsEditScreen() {
       segmentIndexRef.current = 0;
       setCurrentSegmentIndex(0);
       setIsPlaying(false);
+      // Phase 17.0: Scroll back to t=0 on loop
+      programmaticScrollTo(0, false);
       const first = segments[0];
       if (first.mediaType !== 'photo') {
         player.replace(first.uri);
@@ -1420,6 +1409,8 @@ export default function ReelsEditScreen() {
       const localTime = payload.currentTime;
       const newGlobal = elapsedBefore + localTime;
       setGlobalTime(newGlobal);
+      // Phase 17.0: Auto-scroll during video playback
+      programmaticScrollTo(newGlobal * PIXELS_PER_SECOND, false);
     });
     return () => sub.remove();
   }, [player, elapsedBefore, segments]);
@@ -1459,6 +1450,8 @@ export default function ReelsEditScreen() {
         return;
       }
       setGlobalTime(elapsedBefore + localTime);
+      // Phase 17.0: Auto-scroll during photo clip playback
+      programmaticScrollTo((elapsedBefore + localTime) * PIXELS_PER_SECOND, false);
     }, TICK_MS);
     return () => {
       if (photoClockRef.current) {
@@ -1550,7 +1543,6 @@ export default function ReelsEditScreen() {
   selectedOverlayIdRef.current = selectedOverlayId;
   const globalTimeRef = useRef<number>(0);
   globalTimeRef.current = globalTime;
-  const scrubStartTimeRef = useRef<number>(0);
   const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
 
   const overlayItems = textOverlays
@@ -2277,21 +2269,98 @@ export default function ReelsEditScreen() {
           {/* Video track — proportional segment strip */}
           <View
             style={styles.timelineWrapper}
-            onLayout={(e) => { timelineWidthRef.current = e.nativeEvent.layout.width; }}
+            onLayout={(e) => {
+              const w = e.nativeEvent.layout.width;
+              timelineWidthRef.current = w;
+              // Phase 17.0: Update reactive state if viewport changed
+              if (w !== viewportWidth) setViewportWidth(w);
+            }}
           >
+            {/* Phase 17.0: Fixed centered playhead overlay */}
+            {totalDuration > 0 && (
+              <View
+                style={[
+                  styles.playhead,
+                  { left: viewportWidth ? viewportWidth / 2 - 1 : 0 },
+                ]}
+              />
+            )}
+            {/* Phase 17.0: Horizontal ScrollView — scrub surface */}
+            <ScrollView
+              ref={scrollViewRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              scrollEventThrottle={16}
+              decelerationRate="fast"
+              bounces={false}
+              alwaysBounceHorizontal={false}
+              // Phase 17.0: Half-viewport padding so t=0 and t=totalDuration can reach center
+              contentContainerStyle={{ paddingHorizontal: viewportWidth / 2 }}
+              // Phase 17.0: Start at t=0 with content centered on playhead
+              contentOffset={{ x: 0, y: 0 }}
+              // Phase 17.0: Scroll-driven scrub with dual guard (flag + 0.05s tolerance)
+              // Safety clamp prevents negative time from momentary platform over-scroll
+              onScroll={(e) => {
+                if (isProgrammaticScrollRef.current) return;
+                const offsetX = e.nativeEvent.contentOffset.x;
+                const rawTime = offsetX / PIXELS_PER_SECOND;
+                const newTime = Math.max(0, Math.min(totalDuration, rawTime));
+                if (Math.abs(newTime - globalTime) < 0.05) return;
+                setGlobalTime(newTime);
+              }}
+              // Phase 17.0: Pause playback when user begins manual scrub
+              onScrollBeginDrag={() => {
+                // Phase 17.0.1: Enable seek effect gate for user-driven scrub
+                isScrubbingRef.current = true;
+                wasPlayingBeforeScrubRef.current = isPlaying;
+                if (isPlaying) {
+                  player.pause();
+                  clearInterval(photoClockRef.current ?? undefined);
+                  photoClockRef.current = null;
+                  setIsPlaying(false);
+                }
+              }}
+              // Phase 17.0: Resume playback after scroll ends (momentum)
+              onMomentumScrollEnd={() => {
+                // Phase 17.0.1: Disable seek gate after deceleration completes
+                isScrubbingRef.current = false;
+                isProgrammaticScrollRef.current = false;
+                if (wasPlayingBeforeScrubRef.current) {
+                  wasPlayingBeforeScrubRef.current = false;
+                  // Phase 17.0.1: Native player was paused by onScrollBeginDrag;
+                  //               must be explicitly resumed, not just state-flag flipped
+                  player.play();
+                  setIsPlaying(true);
+                }
+              }}
+              // Phase 17.0: Resume playback after scroll ends (drag without momentum)
+              onScrollEndDrag={() => {
+                // Phase 17.0.1: Clear seek gate on drag release (covers slow-release
+                //               case that does not enter momentum deceleration)
+                isScrubbingRef.current = false;
+                if (wasPlayingBeforeScrubRef.current) {
+                  wasPlayingBeforeScrubRef.current = false;
+                  // Phase 17.0.1: Resume native player, not just state flag
+                  player.play();
+                  setIsPlaying(true);
+                }
+              }}
+            >
+            {/* Phase 17.0: Inner content wrapper */}
+            <View style={{ width: totalDuration * PIXELS_PER_SECOND }}>
             {/* Segment row */}
             <View style={styles.timelineSegmentRow}>
-              <View style={styles.timelineLine} />
               <View style={styles.videoTrack}>
                 {segments.length > 0 ? (
                   segments.map((seg, index) => {
-                    const pct = totalDuration > 0 ? ((seg.duration || 1) / totalDuration) * 100 : 100;
+                    // Phase 17.0: Pixel-based segment width
+                    const segmentPx = (seg.duration || 1) * PIXELS_PER_SECOND;
                     return (
                       <React.Fragment key={index}>
                         <View
                           style={[
                             styles.segmentBar,
-                            { width: `${pct}%` } as any,
+                            { width: segmentPx },
                             index === 0 && styles.segmentFirst,
                             index === segments.length - 1 && styles.segmentLast,
                             index === activeSegmentIndex && { backgroundColor: '#666' },
@@ -2311,11 +2380,11 @@ export default function ReelsEditScreen() {
                   </View>
                 )}
               </View>
-              <View style={styles.timelineLine} />
             </View>
 
             {/* Audio track */}
-            <View style={styles.track}>
+            {/* Phase 17.0: Pixel-based width matches inner content wrapper */}
+            <View style={[styles.track, { width: totalDuration * PIXELS_PER_SECOND }]}>
               <Ionicons name="musical-notes" size={14} color="rgba(255,255,255,0.4)" />
               <Text style={styles.trackText}>Tap to add audio</Text>
             </View>
@@ -2391,7 +2460,8 @@ export default function ReelsEditScreen() {
                     scrollEnabled={trackDynamicHeight > LANE_VIEWPORT_HEIGHT}
                   >
                   {/* Background / placeholder layer */}
-                  <View style={[styles.textTrackBg, { height: trackDynamicHeight }]}>
+                  {/* Phase 17.0: Pixel-based width matches inner content wrapper */}
+                  <View style={[styles.textTrackBg, { width: totalDuration * PIXELS_PER_SECOND, height: trackDynamicHeight }]}>
                     {textOverlays.length === 0 && (
                       <>
                         <Ionicons name="text" size={14} color="rgba(255,255,255,0.4)" />
@@ -2402,8 +2472,9 @@ export default function ReelsEditScreen() {
                   {/* Clips layer — same coordinate system as segments/playhead */}
                   <View style={styles.textTrackClips} pointerEvents="box-none">
                     {textOverlays.map((item) => {
-                      const leftPct = totalDuration > 0 ? (item.startTime / totalDuration) * 100 : 0;
-                      const widthPct = totalDuration > 0 ? ((item.endTime - item.startTime) / totalDuration) * 100 : 0;
+                      // Phase 17.0: Pixel-based position and width with 24px min
+                      const leftPx = item.startTime * PIXELS_PER_SECOND;
+                      const widthPx = Math.max((item.endTime - item.startTime) * PIXELS_PER_SECOND, 24);
                       const laneIndex = overlayLane[item.id] ?? 0;
                       const topPx = LANE_TOP_PADDING + laneIndex * (LANE_HEIGHT + LANE_GAP);
                       const rightHandleKey = `${item.id}-right`;
@@ -2414,6 +2485,8 @@ export default function ReelsEditScreen() {
                           onPanResponderGrant: () => {
                             const latest = textOverlaysRef.current.find(o => o.id === item.id);
                             if (!latest) return;
+                            // Phase 17.0: Lock horizontal ScrollView while trim handle is active
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: false });
                             isScrubbingRef.current = true;
                             trimStartRef.current[rightHandleKey] = {
                               startTime: latest.startTime,
@@ -2423,22 +2496,28 @@ export default function ReelsEditScreen() {
                           onPanResponderMove: (_, gesture) => {
                             const startData = trimStartRef.current[rightHandleKey];
                             if (!startData) return;
-                            const width = timelineWidthRef.current;
-                            if (width <= 0 || totalDuration <= 0) return;
-                            const pxPerSecond = width / totalDuration;
+                            // Phase 17.0: Fixed pixel scale
+                            if (totalDuration <= 0) return;
+                            const pxPerSecond = PIXELS_PER_SECOND;
                             const timeDelta = gesture.dx / pxPerSecond;
                             const newEnd = startData.endTime + timeDelta;
                             trimOverlay(item.id, startData.startTime, newEnd);
                           },
                           onPanResponderRelease: () => {
                             const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            // Phase 17.0: Re-enable horizontal ScrollView
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
                             isScrubbingRef.current = false;
                             if (latest) {
                               setGlobalTime(latest.endTime);
+                              // Phase 17.0: Sync scroll to new playhead position
+                              programmaticScrollTo(latest.endTime * PIXELS_PER_SECOND, true);
                             }
                             delete trimStartRef.current[rightHandleKey];
                           },
                           onPanResponderTerminate: () => {
+                            // Phase 17.0: Re-enable horizontal ScrollView on cancel
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
                             isScrubbingRef.current = false;
                             delete trimStartRef.current[rightHandleKey];
                           },
@@ -2453,6 +2532,8 @@ export default function ReelsEditScreen() {
                           onPanResponderGrant: () => {
                             const latest = textOverlaysRef.current.find(o => o.id === item.id);
                             if (!latest) return;
+                            // Phase 17.0: Lock horizontal ScrollView while trim handle is active
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: false });
                             isScrubbingRef.current = true;
                             trimStartRef.current[leftHandleKey] = {
                               startTime: latest.startTime,
@@ -2462,22 +2543,28 @@ export default function ReelsEditScreen() {
                           onPanResponderMove: (_, gesture) => {
                             const startData = trimStartRef.current[leftHandleKey];
                             if (!startData) return;
-                            const width = timelineWidthRef.current;
-                            if (width <= 0 || totalDuration <= 0) return;
-                            const pxPerSecond = width / totalDuration;
+                            // Phase 17.0: Fixed pixel scale
+                            if (totalDuration <= 0) return;
+                            const pxPerSecond = PIXELS_PER_SECOND;
                             const timeDelta = gesture.dx / pxPerSecond;
                             const newStart = startData.startTime + timeDelta;
                             trimOverlay(item.id, newStart, startData.endTime);
                           },
                           onPanResponderRelease: () => {
                             const latest = textOverlaysRef.current.find(o => o.id === item.id);
+                            // Phase 17.0: Re-enable horizontal ScrollView
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
                             isScrubbingRef.current = false;
                             if (latest) {
                               setGlobalTime(latest.startTime);
+                              // Phase 17.0: Sync scroll to new playhead position
+                              programmaticScrollTo(latest.startTime * PIXELS_PER_SECOND, true);
                             }
                             delete trimStartRef.current[leftHandleKey];
                           },
                           onPanResponderTerminate: () => {
+                            // Phase 17.0: Re-enable horizontal ScrollView on cancel
+                            scrollViewRef.current?.setNativeProps({ scrollEnabled: true });
                             isScrubbingRef.current = false;
                             delete trimStartRef.current[leftHandleKey];
                           },
@@ -2490,7 +2577,7 @@ export default function ReelsEditScreen() {
                           onPress={() => selectOverlayFromTimeline(item.id)}
                           style={[
                             styles.textClipBlock,
-                            { left: `${leftPct}%`, width: `${Math.max(widthPct, 2)}%`, top: topPx } as any,
+                            { left: leftPx, width: widthPx, top: topPx },
                             selectedOverlayId === item.id && { borderColor: '#fff' },
                           ]}
                           hitSlop={{ top: 4, bottom: 4, left: 2, right: 2 }}
@@ -2522,18 +2609,8 @@ export default function ReelsEditScreen() {
                 </View>
               );
             })()}
-
-            {/* Playhead — spans all layers. Phase 8.2c-3: draggable to scrub. */}
-            {totalDuration > 0 && (
-              <View
-                style={[
-                  styles.playhead,
-                  { left: `${(globalTime / totalDuration) * 100}%` } as any,
-                ]}
-                hitSlop={{ top: 8, bottom: 8, left: 12, right: 12 }}
-                {...playheadPan.panHandlers}
-              />
-            )}
+            </View>
+            </ScrollView>
           </View>
         </View>
 
