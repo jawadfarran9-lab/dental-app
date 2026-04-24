@@ -1078,6 +1078,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // Phase 17.a: Ruler styles — CapCut-grade polish
+  // Phase 17.a polish: Subtle background + hairline separator for presence
+  rulerContainer: {
+    height: 24,
+    position: 'relative',
+    overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    marginBottom: 4,
+  },
+  rulerTickWrap: {
+    position: 'absolute',
+    bottom: 0,
+    alignItems: 'center',
+    transform: [{ translateX: -0.5 }],
+  },
+  // Phase 17.a polish: Bolder, clearer, with tabular-nums for stable width
+  rulerLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.75)',
+    fontWeight: '600',
+    letterSpacing: 0.3,
+    marginBottom: 2,
+    textAlign: 'center',
+    fontVariant: ['tabular-nums'],
+  },
+  // Phase 17.a polish: Taller + more opaque for clearer hierarchy
+  rulerMajorDot: { width: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
+  // Phase 17.a polish: More visible minor ticks for density perception
+  rulerMinorDot: { width: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
 });
 
 export default function ReelsEditScreen() {
@@ -1376,6 +1407,13 @@ export default function ReelsEditScreen() {
     () => segments.reduce((sum, s) => sum + (s.duration || 0), 0),
     [segments],
   );
+
+  // Phase 17.a: Adaptive tick intervals — matches CapCut density curve
+  const rulerIntervals = useMemo(() => {
+    if (totalDuration <= 15) return { major: 1, minor: 0.5 };
+    if (totalDuration <= 60) return { major: 5, minor: 1 };
+    return { major: 10, minor: 2 };
+  }, [totalDuration]);
 
   // Map globalTime → segment index + local offset
   const getSegmentFromGlobalTime = (time: number) => {
@@ -2348,6 +2386,44 @@ export default function ReelsEditScreen() {
             >
             {/* Phase 17.0: Inner content wrapper */}
             <View style={{ width: totalDuration * PIXELS_PER_SECOND }}>
+            {/* Phase 17.a: Time ruler — CapCut-grade */}
+            <View style={styles.rulerContainer}>
+              {(() => {
+                const ticks = [];
+                const { major, minor } = rulerIntervals;
+                // Minor ticks: every `minor` seconds (excluding major positions)
+                for (let t = 0; t <= totalDuration + 0.0001; t += minor) {
+                  const tRounded = Math.round(t * 1000) / 1000;
+                  const isMajor = Math.abs(tRounded % major) < 0.0001
+                                  || Math.abs(tRounded % major - major) < 0.0001;
+                  if (isMajor) continue; // major ticks rendered in second pass
+                  ticks.push(
+                    <View
+                      key={`minor-${tRounded}`}
+                      style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+                      pointerEvents="none"
+                    >
+                      <View style={styles.rulerMinorDot} />
+                    </View>
+                  );
+                }
+                // Major ticks: every `major` seconds, with label
+                for (let t = 0; t <= totalDuration + 0.0001; t += major) {
+                  const tRounded = Math.round(t * 1000) / 1000;
+                  ticks.push(
+                    <View
+                      key={`major-${tRounded}`}
+                      style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+                      pointerEvents="none"
+                    >
+                      <Text style={styles.rulerLabel}>{formatTime(tRounded)}</Text>
+                      <View style={styles.rulerMajorDot} />
+                    </View>
+                  );
+                }
+                return ticks;
+              })()}
+            </View>
             {/* Segment row */}
             <View style={styles.timelineSegmentRow}>
               <View style={styles.videoTrack}>
