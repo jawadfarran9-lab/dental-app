@@ -1133,6 +1133,12 @@ export default function ReelsEditScreen() {
   const scrollViewRef = useRef<ScrollView>(null);
   // Phase 17.0: Guard flag to prevent onScroll ↔ setGlobalTime feedback loop
   const isProgrammaticScrollRef = useRef(false);
+  // Phase 17.b.11 (HYBRID-1): Track last known scroll target.
+  // If a new programmaticScrollTo target is BACKWARD (x < this
+  // ref), we force animated:false to avoid UIKit animation
+  // overlap that produces visible rewind jitter. Forward targets
+  // honor the caller's requested animated value.
+  const lastScrollXRef = useRef<number>(0);
   // Phase 17.0: Reactive viewport width for contentContainerStyle padding and playhead centering
   const [viewportWidth, setViewportWidth] = useState(0);
 
@@ -1142,9 +1148,16 @@ export default function ReelsEditScreen() {
   // may or may not fire onScroll depending on platform).
   const programmaticScrollTo = useCallback((x: number, animated: boolean) => {
     if (!scrollViewRef.current) return;
+    // Phase 17.b.11 (HYBRID-1): Force animated:false for backward
+    // targets to prevent UIKit animation overlap (rewind jitter).
+    // Forward targets keep caller's animated value — preserves the
+    // 60fps UIKit interpolation that makes forward playback smooth.
+    const isBackward = x < lastScrollXRef.current;
+    const useAnimated = animated && !isBackward;
+    lastScrollXRef.current = x;
     isProgrammaticScrollRef.current = true;
-    scrollViewRef.current.scrollTo({ x, animated });
-    if (!animated) {
+    scrollViewRef.current.scrollTo({ x, animated: useAnimated });
+    if (!useAnimated) {
       // Clear the flag after the scroll event has had a chance to fire
       setTimeout(() => { isProgrammaticScrollRef.current = false; }, 0);
     } else {
@@ -1310,6 +1323,10 @@ export default function ReelsEditScreen() {
 
   const player = useVideoPlayer(null, (p) => {
     p.loop = false;
+    // Phase 17.b.9: Reverted to 10Hz — animated:true delegates
+    // 60fps interpolation to UIKit native thread (smoother than
+    // 20Hz discrete updates). Reanimated UI-thread approach
+    // planned as Phase 17.d.
     p.timeUpdateEventInterval = 0.1;
   });
 
@@ -1447,8 +1464,11 @@ export default function ReelsEditScreen() {
       const localTime = payload.currentTime;
       const newGlobal = elapsedBefore + localTime;
       setGlobalTime(newGlobal);
-      // Phase 17.0: Auto-scroll during video playback
-      programmaticScrollTo(newGlobal * PIXELS_PER_SECOND, false);
+      // Phase 17.b.9: animated:true delegates interpolation to UIKit
+      // 60fps native thread. Counter desync (~250ms) is acceptable
+      // tradeoff for smooth motion. Phase 17.d will replace with
+      // Reanimated for CapCut-grade smoothness without desync.
+      programmaticScrollTo(newGlobal * PIXELS_PER_SECOND, true);
     });
     return () => sub.remove();
   }, [player, elapsedBefore, segments]);
@@ -1473,7 +1493,12 @@ export default function ReelsEditScreen() {
     if (!current || current.mediaType !== 'photo') return;
     const effectiveDuration =
       (current.trimEnd ?? current.duration ?? 5) - (current.trimStart ?? 0);
-    let localTime = 0;
+    // Phase 17.b.5 (BUG 1 fix): Resume from current globalTime offset
+    // within segment, not from segment start. Read via ref to avoid
+    // adding globalTime to deps (which would restart clock on every tick).
+    let localTime = Math.max(0, globalTimeRef.current - elapsedBefore);
+    // Phase 17.b.9: Reverted to 100ms — matches video timeUpdate
+    // 10Hz cadence. Reanimated approach in Phase 17.d.
     const TICK_MS = 100;
     photoClockRef.current = setInterval(() => {
       // Defer to user scrubbing — don't fight the pan gesture
@@ -1488,8 +1513,9 @@ export default function ReelsEditScreen() {
         return;
       }
       setGlobalTime(elapsedBefore + localTime);
-      // Phase 17.0: Auto-scroll during photo clip playback
-      programmaticScrollTo((elapsedBefore + localTime) * PIXELS_PER_SECOND, false);
+      // Phase 17.b.9: animated:true matches video path. Reanimated
+      // approach in Phase 17.d will replace this for true smoothness.
+      programmaticScrollTo((elapsedBefore + localTime) * PIXELS_PER_SECOND, true);
     }, TICK_MS);
     return () => {
       if (photoClockRef.current) {
@@ -2339,8 +2365,12 @@ export default function ReelsEditScreen() {
               // Phase 17.0: Scroll-driven scrub with dual guard (flag + 0.05s tolerance)
               // Safety clamp prevents negative time from momentary platform over-scroll
               onScroll={(e) => {
-                if (isProgrammaticScrollRef.current) return;
                 const offsetX = e.nativeEvent.contentOffset.x;
+                // Phase 17.b.11 (HYBRID-1): Track user-driven scroll position
+                // so programmaticScrollTo's backward-detection sees the latest
+                // value when the user scrubs and then plays.
+                lastScrollXRef.current = offsetX;
+                if (isProgrammaticScrollRef.current) return;
                 const rawTime = offsetX / PIXELS_PER_SECOND;
                 const newTime = Math.max(0, Math.min(totalDuration, rawTime));
                 if (Math.abs(newTime - globalTime) < 0.05) return;
@@ -2441,7 +2471,16 @@ export default function ReelsEditScreen() {
                             index === segments.length - 1 && styles.segmentLast,
                             index === activeSegmentIndex && { backgroundColor: '#666' },
                           ]}
-                        />
+                        >
+                          {/* Phase 17.b.1: Photo thumbnail — explicit % size matches working Phase 16.b preview pattern */}
+                          {seg.mediaType === 'photo' && seg.uri && (
+                            <ExpoImage
+                              source={{ uri: seg.uri }}
+                              style={{ width: '100%', height: '100%' }}
+                              contentFit="cover"
+                            />
+                          )}
+                        </View>
                         {index < segments.length - 1 && (
                           <Pressable onPress={() => onSeparatorPress(index)} style={styles.separatorHitbox} hitSlop={10}>
                             <View style={styles.segmentSeparator} />
