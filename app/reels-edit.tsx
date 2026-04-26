@@ -587,9 +587,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 16,
   },
+  // Phase 17.c.1: tabular-nums prevents container width-shift
+  // on every digit change. Ruler labels already have this from
+  // Phase 17.a polish; counter was missing it.
   timeText: {
     color: '#ccc',
     fontSize: 12,
+    fontVariant: ['tabular-nums'],
   },
   timelineWrapper: {
     width: '90%',
@@ -1139,6 +1143,20 @@ export default function ReelsEditScreen() {
   // overlap that produces visible rewind jitter. Forward targets
   // honor the caller's requested animated value.
   const lastScrollXRef = useRef<number>(0);
+  // Phase 17.c Batch 1: Track photo clock localTime via ref so
+  // Batch 2's RAF loop can read it without closure capture issues.
+  const localTimeRef = useRef<number>(0);
+  // Phase 17.c Batch 2: Mirror native player time (avoid bridge
+  // saturation from reading player.currentTime per RAF frame).
+  // Updated by timeUpdate listener at 10Hz; RAF interpolates.
+  const nativeTimeRef = useRef<number>(0);
+  // Phase 17.c Batch 2: Ref mirror of elapsedBefore for RAF closure.
+  // Updated synchronously at render time (similar to globalTimeRef).
+  const elapsedBeforeRef = useRef<number>(0);
+  // Phase 17.c Batch 2: RAF frame ID for cancelAnimationFrame cleanup.
+  const rafIdRef = useRef<number | null>(null);
+  // Phase 17.c Batch 2: Frame counter for 30Hz setGlobalTime throttle.
+  const frameCountRef = useRef<number>(0);
   // Phase 17.0: Reactive viewport width for contentContainerStyle padding and playhead centering
   const [viewportWidth, setViewportWidth] = useState(0);
 
@@ -1336,6 +1354,15 @@ export default function ReelsEditScreen() {
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
+  // Phase 17.c Batch 1: Format with one-decimal precision (e.g., "0:07.3")
+  function formatTimePrecise(t: number): string {
+    const total = Math.max(0, t);
+    const m = Math.floor(total / 60);
+    const s = Math.floor(total % 60);
+    const decisecond = Math.floor((total % 1) * 10);
+    return `${m}:${s.toString().padStart(2, '0')}.${decisecond}`;
+  }
+
   const previewPan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
@@ -1432,6 +1459,48 @@ export default function ReelsEditScreen() {
     return { major: 10, minor: 2 };
   }, [totalDuration]);
 
+  // Phase 17.c.3 Priority 2: Memoize ruler ticks. Pure function of
+  // rulerIntervals and totalDuration — both stable during playback.
+  // Eliminates ~30 element allocations per 4Hz render, reducing
+  // reconciliation cost by ~3ms per render. Frees RAF frame budget.
+  // formatTime and PIXELS_PER_SECOND are module-level constants/pure
+  // functions with no state captures — safe to omit from deps.
+  const rulerTicks = useMemo(() => {
+    const ticks: React.ReactNode[] = [];
+    const { major, minor } = rulerIntervals;
+    // Minor ticks: every `minor` seconds (excluding major positions)
+    for (let t = 0; t <= totalDuration + 0.0001; t += minor) {
+      const tRounded = Math.round(t * 1000) / 1000;
+      const isMajor = Math.abs(tRounded % major) < 0.0001
+                      || Math.abs(tRounded % major - major) < 0.0001;
+      if (isMajor) continue; // major ticks rendered in second pass
+      ticks.push(
+        <View
+          key={`minor-${tRounded}`}
+          style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+          pointerEvents="none"
+        >
+          <View style={styles.rulerMinorDot} />
+        </View>
+      );
+    }
+    // Major ticks: every `major` seconds, with label
+    for (let t = 0; t <= totalDuration + 0.0001; t += major) {
+      const tRounded = Math.round(t * 1000) / 1000;
+      ticks.push(
+        <View
+          key={`major-${tRounded}`}
+          style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+          pointerEvents="none"
+        >
+          <Text style={styles.rulerLabel}>{formatTime(tRounded)}</Text>
+          <View style={styles.rulerMajorDot} />
+        </View>
+      );
+    }
+    return ticks;
+  }, [rulerIntervals, totalDuration]);
+
   // Map globalTime → segment index + local offset
   const getSegmentFromGlobalTime = (time: number) => {
     let acc = 0;
@@ -1461,14 +1530,10 @@ export default function ReelsEditScreen() {
       // corrupt globalTime. The photo clock useEffect is the
       // sole authority for globalTime during photo segments.
       if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
-      const localTime = payload.currentTime;
-      const newGlobal = elapsedBefore + localTime;
-      setGlobalTime(newGlobal);
-      // Phase 17.b.9: animated:true delegates interpolation to UIKit
-      // 60fps native thread. Counter desync (~250ms) is acceptable
-      // tradeoff for smooth motion. Phase 17.d will replace with
-      // Reanimated for CapCut-grade smoothness without desync.
-      programmaticScrollTo(newGlobal * PIXELS_PER_SECOND, true);
+      // Phase 17.c Batch 2: Update ref only. RAF loop reads it at 60Hz
+      // and drives both setGlobalTime (30Hz) and scrollTo (60Hz).
+      // Eliminates bridge read of player.currentTime per RAF frame.
+      nativeTimeRef.current = payload.currentTime;
     });
     return () => sub.remove();
   }, [player, elapsedBefore, segments]);
@@ -1496,15 +1561,17 @@ export default function ReelsEditScreen() {
     // Phase 17.b.5 (BUG 1 fix): Resume from current globalTime offset
     // within segment, not from segment start. Read via ref to avoid
     // adding globalTime to deps (which would restart clock on every tick).
-    let localTime = Math.max(0, globalTimeRef.current - elapsedBefore);
+    // Phase 17.c Batch 1: Store in localTimeRef instead of let-variable so
+    // Batch 2's RAF loop can read current photo time without closure capture.
+    localTimeRef.current = Math.max(0, globalTimeRef.current - elapsedBefore);
     // Phase 17.b.9: Reverted to 100ms — matches video timeUpdate
     // 10Hz cadence. Reanimated approach in Phase 17.d.
     const TICK_MS = 100;
     photoClockRef.current = setInterval(() => {
       // Defer to user scrubbing — don't fight the pan gesture
       if (isScrubbingRef.current) return;
-      localTime += TICK_MS / 1000;
-      if (localTime >= effectiveDuration) {
+      localTimeRef.current += TICK_MS / 1000;
+      if (localTimeRef.current >= effectiveDuration) {
         if (photoClockRef.current) {
           clearInterval(photoClockRef.current);
           photoClockRef.current = null;
@@ -1512,10 +1579,9 @@ export default function ReelsEditScreen() {
         advanceToNextSegment();
         return;
       }
-      setGlobalTime(elapsedBefore + localTime);
-      // Phase 17.b.9: animated:true matches video path. Reanimated
-      // approach in Phase 17.d will replace this for true smoothness.
-      programmaticScrollTo((elapsedBefore + localTime) * PIXELS_PER_SECOND, true);
+      // Phase 17.c Batch 2: setGlobalTime + scrollTo are now handled
+      // by the RAF loop at 30Hz/60Hz. Photo clock only tracks localTime
+      // and detects clip-end (RAF cannot detect clip-end).
     }, TICK_MS);
     return () => {
       if (photoClockRef.current) {
@@ -1524,6 +1590,61 @@ export default function ReelsEditScreen() {
       }
     };
   }, [isPlaying, currentSegmentIndex, segments, elapsedBefore]);
+
+  // Phase 17.c Batch 2: RAF master clock loop.
+  //
+  // Drives unified time sync at display refresh rate:
+  //   - Reads master clock per frame (60Hz)
+  //       * Photo segment: elapsedBeforeRef + localTimeRef
+  //       * Video segment: elapsedBeforeRef + nativeTimeRef
+  //   - Calls scrollViewRef.scrollTo at 60Hz (smooth ruler)
+  //   - Calls setGlobalTime every 2nd frame (30Hz counter — fluid digits)
+  //   - Updates lastScrollXRef so HYBRID-1 stays accurate
+  //   - Manages isProgrammaticScrollRef across the playback session
+  //
+  // Lifecycle:
+  //   isPlaying false → true:  loop starts, flag goes high
+  //   isPlaying true → false:  loop stops, flag goes low (allows
+  //                            onScroll feedback for scrub)
+  //   Component unmount:        cancelAnimationFrame in cleanup
+  useEffect(() => {
+    if (!isPlaying) return;
+    isProgrammaticScrollRef.current = true;
+    frameCountRef.current = 0;
+    const tick = () => {
+      if (!isScrubbingRef.current) {
+        const seg = segments[segmentIndexRef.current];
+        const localT = seg?.mediaType === 'photo'
+          ? localTimeRef.current
+          : nativeTimeRef.current;
+        const masterTime = elapsedBeforeRef.current + localT;
+        const targetX = masterTime * PIXELS_PER_SECOND;
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: targetX, animated: false });
+          lastScrollXRef.current = targetX;
+        }
+        // Phase 17.c.1: Throttle to 4Hz (every 15th frame at 60fps).
+        // CapCut ≈ 1Hz visible counter; 4Hz dwells each digit value
+        // for ~250ms — matches human number-reading latency. 30Hz
+        // saturated JS thread reconciliation → starved RAF → scroll
+        // micro-jumps. 4Hz reduces reconciliation pressure ~7.5×,
+        // restoring stable 60Hz RAF for smooth scroll.
+        if (frameCountRef.current % 15 === 0) {
+          setGlobalTime(masterTime);
+        }
+        frameCountRef.current++;
+      }
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+    rafIdRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
+      }
+      isProgrammaticScrollRef.current = false;
+    };
+  }, [isPlaying, segments]);
 
   // Seek video when scrubbing
   useEffect(() => {
@@ -1557,7 +1678,10 @@ export default function ReelsEditScreen() {
   // Phase 16.b — Render <ExpoImage> for photo segments and
   // <VideoView> for video segments. The preview container is
   // agnostic; both render at 100% width/height with cover fit.
-  const videoElement = (() => {
+  // Phase 17.c.3 Priority 3: Memoize videoElement to prevent
+  // re-allocation on every 4Hz render. Deps are all values the
+  // IIFE reads; player ref is stable from useVideoPlayer.
+  const videoElement = useMemo(() => {
     if (!segments.length) return null;
     const current = segments[currentSegmentIndex];
     if (!current?.uri) return null;
@@ -1578,7 +1702,7 @@ export default function ReelsEditScreen() {
         nativeControls={false}
       />
     );
-  })();
+  }, [segments, currentSegmentIndex, player]);
 
   const activeStyle = STYLE_PRESETS.find(s => s.id === selectedStyleId);
   const activeSegmentIndex = getSegmentFromGlobalTime(globalTime).index;
@@ -1607,6 +1731,8 @@ export default function ReelsEditScreen() {
   selectedOverlayIdRef.current = selectedOverlayId;
   const globalTimeRef = useRef<number>(0);
   globalTimeRef.current = globalTime;
+  // Phase 17.c Batch 2: Sync elapsedBefore for RAF closure access
+  elapsedBeforeRef.current = elapsedBefore;
   const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
 
   const overlayItems = textOverlays
@@ -2323,7 +2449,7 @@ export default function ReelsEditScreen() {
             }} hitSlop={8}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
             </Pressable>
-            <Text style={styles.timeText}>{formatTime(globalTime)} / {formatTime(totalDuration)}</Text>
+            <Text style={styles.timeText}>{formatTimePrecise(globalTime)} / {formatTime(totalDuration)}</Text>
             <View style={styles.controlsRight}>
               <Ionicons name="arrow-undo-outline" size={18} color="#fff" />
               <Ionicons name="arrow-redo-outline" size={18} color="#fff" />
@@ -2395,6 +2521,15 @@ export default function ReelsEditScreen() {
                 isProgrammaticScrollRef.current = false;
                 if (wasPlayingBeforeScrubRef.current) {
                   wasPlayingBeforeScrubRef.current = false;
+                  // Phase 17.c.5: Use FRESH lastScrollXRef (synchronously updated
+                  // by onScroll on every event) instead of stale globalTimeRef
+                  // (render-time synced — may lag 1-3 renders during fast scrubs).
+                  // getSegmentFromGlobalTime walks segments directly to compute
+                  // correct localTime — handles cross-segment scrubs correctly.
+                  const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                  const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                  nativeTimeRef.current = primedLocalT;
+                  localTimeRef.current = primedLocalT;
                   // Phase 17.0.1: Native player was paused by onScrollBeginDrag;
                   //               must be explicitly resumed, not just state-flag flipped
                   player.play();
@@ -2408,6 +2543,11 @@ export default function ReelsEditScreen() {
                 isScrubbingRef.current = false;
                 if (wasPlayingBeforeScrubRef.current) {
                   wasPlayingBeforeScrubRef.current = false;
+                  // Phase 17.c.5: Use FRESH lastScrollXRef (see onMomentumScrollEnd)
+                  const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                  const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                  nativeTimeRef.current = primedLocalT;
+                  localTimeRef.current = primedLocalT;
                   // Phase 17.0.1: Resume native player, not just state flag
                   player.play();
                   setIsPlaying(true);
@@ -2418,41 +2558,7 @@ export default function ReelsEditScreen() {
             <View style={{ width: totalDuration * PIXELS_PER_SECOND }}>
             {/* Phase 17.a: Time ruler — CapCut-grade */}
             <View style={styles.rulerContainer}>
-              {(() => {
-                const ticks = [];
-                const { major, minor } = rulerIntervals;
-                // Minor ticks: every `minor` seconds (excluding major positions)
-                for (let t = 0; t <= totalDuration + 0.0001; t += minor) {
-                  const tRounded = Math.round(t * 1000) / 1000;
-                  const isMajor = Math.abs(tRounded % major) < 0.0001
-                                  || Math.abs(tRounded % major - major) < 0.0001;
-                  if (isMajor) continue; // major ticks rendered in second pass
-                  ticks.push(
-                    <View
-                      key={`minor-${tRounded}`}
-                      style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
-                      pointerEvents="none"
-                    >
-                      <View style={styles.rulerMinorDot} />
-                    </View>
-                  );
-                }
-                // Major ticks: every `major` seconds, with label
-                for (let t = 0; t <= totalDuration + 0.0001; t += major) {
-                  const tRounded = Math.round(t * 1000) / 1000;
-                  ticks.push(
-                    <View
-                      key={`major-${tRounded}`}
-                      style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
-                      pointerEvents="none"
-                    >
-                      <Text style={styles.rulerLabel}>{formatTime(tRounded)}</Text>
-                      <View style={styles.rulerMajorDot} />
-                    </View>
-                  );
-                }
-                return ticks;
-              })()}
+              {rulerTicks}
             </View>
             {/* Segment row */}
             <View style={styles.timelineSegmentRow}>
