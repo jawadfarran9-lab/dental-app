@@ -7,6 +7,13 @@ import { useVideoPlayer, VideoView } from 'expo-video';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+// Phase 17.d: Reanimated UI-thread scroll (Batch 1: infrastructure, Batch 2: worklet)
+import ReAnimated, {
+  useAnimatedRef,
+  useSharedValue,
+  useAnimatedReaction,
+  scrollTo,
+} from 'react-native-reanimated';
 
 // Phase 17.0: Timeline pixel scale — 1 second of media = 80px
 const PIXELS_PER_SECOND = 80;
@@ -599,6 +606,24 @@ const styles = StyleSheet.create({
     width: '90%',
     marginTop: 8,
     position: 'relative',
+    flexDirection: 'row', // Phase 17.f: counter column + scroll column
+  },
+  // Phase 17.f: Fixed-width counter column — left of ruler in same row
+  timelineCounterCol: {
+    width: 60, // Phase 17.f.2: narrower since only "MM:SS" shown
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+    paddingLeft: 6, // Phase 17.f.2: tighter padding
+  },
+  timelineCounterText: {
+    color: '#fff',
+    fontSize: 14, // Phase 17.f.2: restored — fits since "/ XX:XX" removed
+    fontVariant: ['tabular-nums'],
+  },
+  // Phase 17.f: Scroll column — fills remaining width; playhead relative to this
+  timelineScrollCol: {
+    flex: 1,
+    position: 'relative',
   },
   timelineSegmentRow: {
     flexDirection: 'row',
@@ -1133,8 +1158,8 @@ export default function ReelsEditScreen() {
   // globalTime during photo clip playback (expo-video's
   // timeUpdate event never fires for photo segments).
   const photoClockRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Phase 17.0: ScrollView ref for programmatic scroll control
-  const scrollViewRef = useRef<ScrollView>(null);
+  // Phase 17.d Batch 1: useAnimatedRef for UI-thread scroll access
+  const scrollViewRef = useAnimatedRef<ReAnimated.ScrollView>();
   // Phase 17.0: Guard flag to prevent onScroll ↔ setGlobalTime feedback loop
   const isProgrammaticScrollRef = useRef(false);
   // Phase 17.b.11 (HYBRID-1): Track last known scroll target.
@@ -1157,6 +1182,28 @@ export default function ReelsEditScreen() {
   const rafIdRef = useRef<number | null>(null);
   // Phase 17.c Batch 2: Frame counter for 30Hz setGlobalTime throttle.
   const frameCountRef = useRef<number>(0);
+  // Phase 17.c.6 (Mitigation A): Track last masterTime read by
+  // RAF tick. Used to clamp out backward jumps caused by the
+  // segmentIndexRef → elapsedBeforeRef race window at segment
+  // transitions. Reset to 0 at RAF loop start so legitimate
+  // loop-back to t=0 (end of playlist → restart) is not blocked.
+  const lastMasterTimeRef = useRef<number>(0);
+  // Phase 17.d Batch 2: Shared values for UI-thread scroll
+  const masterTimeShared = useSharedValue<number>(0);
+  const isScrubbingShared = useSharedValue<boolean>(false);
+
+  // Phase 17.d Batch 2: UI-thread scroll worklet
+  // Reads masterTimeShared, calls scrollTo on UI thread
+  // Eliminates JS→native bridge latency
+  useAnimatedReaction(
+    () => masterTimeShared.value,
+    (masterTime) => {
+      'worklet';
+      if (isScrubbingShared.value) return;
+      scrollTo(scrollViewRef, masterTime * PIXELS_PER_SECOND, 0, false);
+    },
+  );
+
   // Phase 17.0: Reactive viewport width for contentContainerStyle padding and playhead centering
   const [viewportWidth, setViewportWidth] = useState(0);
 
@@ -1363,6 +1410,13 @@ export default function ReelsEditScreen() {
     return `${m}:${s.toString().padStart(2, '0')}.${decisecond}`;
   }
 
+  // Phase 17.f: Counter format — whole seconds, padded minutes
+  function formatTimeCounter(t: number): string {
+    const mm = Math.floor(Math.max(0, t) / 60).toString().padStart(2, '0');
+    const ss = Math.floor(Math.max(0, t) % 60).toString().padStart(2, '0');
+    return `${mm}:${ss}`;
+  }
+
   const previewPan = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
@@ -1395,14 +1449,33 @@ export default function ReelsEditScreen() {
     const nextIndex = segmentIndexRef.current + 1;
     if (nextIndex < segments.length) {
       segmentIndexRef.current = nextIndex;
+      // Phase 17.c.6 (Mitigation C): Zero nativeTimeRef synchronously
+      // at segment flip. Prevents the race window where RAF sees
+      // NEW segmentIndexRef + OLD nativeTimeRef + STALE elapsedBeforeRef,
+      // producing a forward spike in masterTime. Combined with the
+      // monotonic clamp (Mitigation A), eliminates all backward AND
+      // forward jumps at transitions.
+      nativeTimeRef.current = 0;
       setCurrentSegmentIndex(nextIndex);
       const next = segments[nextIndex];
-      if (next.mediaType === 'photo') return;
+      if (next.mediaType === 'photo') {
+        // Phase 17.c.7 Fix A: Reset localTimeRef before early-return.
+        // Photo clock useEffect overwrites this when it fires (16-50ms),
+        // but until then RAF would read stale photo-time from a prior
+        // photo segment, producing a forward-spike past timeline end
+        // that is NOT caught by the monotonic clamp (which only catches
+        // backward jumps). Setting to 0 ensures masterTime stays sane
+        // during the brief race window.
+        localTimeRef.current = 0;
+        return;
+      }
       player.replaceAsync(next.uri).then(() => {
         player.play();
       }).catch(() => {});
     } else {
       segmentIndexRef.current = 0;
+      // Phase 17.c.6 (Mitigation C): Reset nativeTimeRef on loop-back.
+      nativeTimeRef.current = 0;
       setCurrentSegmentIndex(0);
       setIsPlaying(false);
       // Phase 17.0: Scroll back to t=0 on loop
@@ -1523,12 +1596,6 @@ export default function ReelsEditScreen() {
   useEffect(() => {
     const sub = player.addListener('timeUpdate', (payload) => {
       if (isScrubbingRef.current) return;
-      // Phase 16.b.1 — Ignore stale native-player timeUpdate
-      // events while a photo segment is active. The native
-      // player may still emit events from a previously loaded
-      // video source (e.g., after a loop-back), which would
-      // corrupt globalTime. The photo clock useEffect is the
-      // sole authority for globalTime during photo segments.
       if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
       // Phase 17.c Batch 2: Update ref only. RAF loop reads it at 60Hz
       // and drives both setGlobalTime (30Hz) and scrollTo (60Hz).
@@ -1611,6 +1678,9 @@ export default function ReelsEditScreen() {
     if (!isPlaying) return;
     isProgrammaticScrollRef.current = true;
     frameCountRef.current = 0;
+    // Phase 17.c.6 (Mitigation A): Reset clamp baseline so loop-back
+    // restarts and play-from-zero scenarios begin cleanly.
+    lastMasterTimeRef.current = 0;
     const tick = () => {
       if (!isScrubbingRef.current) {
         const seg = segments[segmentIndexRef.current];
@@ -1618,18 +1688,31 @@ export default function ReelsEditScreen() {
           ? localTimeRef.current
           : nativeTimeRef.current;
         const masterTime = elapsedBeforeRef.current + localT;
-        const targetX = masterTime * PIXELS_PER_SECOND;
-        if (scrollViewRef.current) {
-          scrollViewRef.current.scrollTo({ x: targetX, animated: false });
-          lastScrollXRef.current = targetX;
+        // Phase 17.c.6 (Mitigation A): Backward jump guard.
+        // 100ms epsilon tolerates measurement noise in native player
+        // currentTime. If masterTime is meaningfully behind the last
+        // good frame, this is the segment-transition race — skip
+        // this frame and re-queue. Next tick reads consistent refs.
+        if (masterTime < lastMasterTimeRef.current - 0.1) {
+          rafIdRef.current = requestAnimationFrame(tick);
+          return;
         }
-        // Phase 17.c.1: Throttle to 4Hz (every 15th frame at 60fps).
-        // CapCut ≈ 1Hz visible counter; 4Hz dwells each digit value
-        // for ~250ms — matches human number-reading latency. 30Hz
-        // saturated JS thread reconciliation → starved RAF → scroll
-        // micro-jumps. 4Hz reduces reconciliation pressure ~7.5×,
-        // restoring stable 60Hz RAF for smooth scroll.
-        if (frameCountRef.current % 15 === 0) {
+        lastMasterTimeRef.current = masterTime;
+        // Phase 17.d Batch 2: scrollTo moved to UI thread via worklet.
+        // RAF still updates lastScrollXRef for HYBRID-1 backward detection.
+        const targetX = masterTime * PIXELS_PER_SECOND;
+        masterTimeShared.value = masterTime;
+        lastScrollXRef.current = targetX;
+        // Phase 17.c.9: Throttle to 10Hz (every 6th frame at 60fps).
+        // Matches nativeTimeRef update cadence — counter and scroll
+        // now read the same source value within 1 frame of each
+        // other. Max counter-scroll divergence: 1.3px at PIXELS_PER_SECOND=80
+        // (sub-perceptible, vs 18.7px at the prior 4Hz throttle).
+        // formatTimePrecise's decisecond floor caps visible changes
+        // to ≤10/sec regardless, so no readability regression.
+        // VideoView memoization (Phase 17.c.3) prevents the original
+        // 30Hz RAF starvation that motivated the 4Hz fallback.
+        if (frameCountRef.current % 6 === 0) {
           setGlobalTime(masterTime);
         }
         frameCountRef.current++;
@@ -2449,7 +2532,8 @@ export default function ReelsEditScreen() {
             }} hitSlop={8}>
               <Ionicons name={isPlaying ? 'pause' : 'play'} size={18} color="#fff" />
             </Pressable>
-            <Text style={styles.timeText}>{formatTimePrecise(globalTime)} / {formatTime(totalDuration)}</Text>
+            {/* Phase 17.f: Counter moved to timelineCounterCol */}
+            <View style={{ flex: 1 }} />
             <View style={styles.controlsRight}>
               <Ionicons name="arrow-undo-outline" size={18} color="#fff" />
               <Ionicons name="arrow-redo-outline" size={18} color="#fff" />
@@ -2457,32 +2541,40 @@ export default function ReelsEditScreen() {
           </View>
 
           {/* Video track — proportional segment strip */}
-          <View
-            style={styles.timelineWrapper}
-            onLayout={(e) => {
-              const w = e.nativeEvent.layout.width;
-              timelineWidthRef.current = w;
-              // Phase 17.0: Update reactive state if viewport changed
-              if (w !== viewportWidth) setViewportWidth(w);
-            }}
-          >
-            {/* Phase 17.0: Fixed centered playhead overlay */}
-            {totalDuration > 0 && (
-              <View
-                style={[
-                  styles.playhead,
-                  { left: viewportWidth ? viewportWidth / 2 - 1 : 0 },
-                ]}
-              />
-            )}
-            {/* Phase 17.0: Horizontal ScrollView — scrub surface */}
-            <ScrollView
-              ref={scrollViewRef}
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              scrollEventThrottle={16}
-              decelerationRate="fast"
-              bounces={false}
+          <View style={styles.timelineWrapper}>
+            {/* Phase 17.f: Fixed counter column — left of scroll column */}
+            <View style={styles.timelineCounterCol}>
+              <Text style={styles.timelineCounterText}>
+                {formatTimeCounter(globalTime)}
+              </Text>
+            </View>
+            {/* Phase 17.f: Scroll column — onLayout measures THIS width for scroll math */}
+            <View
+              style={styles.timelineScrollCol}
+              onLayout={(e) => {
+                const w = e.nativeEvent.layout.width;
+                timelineWidthRef.current = w;
+                // Phase 17.0: Update reactive state if viewport changed
+                if (w !== viewportWidth) setViewportWidth(w);
+              }}
+            >
+              {/* Phase 17.0: Fixed centered playhead overlay */}
+              {totalDuration > 0 && (
+                <View
+                  style={[
+                    styles.playhead,
+                    { left: viewportWidth ? viewportWidth / 2 - 1 : 0 },
+                  ]}
+                />
+              )}
+              {/* Phase 17.d Batch 1: Animated.ScrollView for UI-thread scroll */}
+              <ReAnimated.ScrollView
+                ref={scrollViewRef}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                scrollEventThrottle={16}
+                decelerationRate="fast"
+                bounces={false}
               alwaysBounceHorizontal={false}
               // Phase 17.0: Half-viewport padding so t=0 and t=totalDuration can reach center
               contentContainerStyle={{ paddingHorizontal: viewportWidth / 2 }}
@@ -2506,6 +2598,14 @@ export default function ReelsEditScreen() {
               onScrollBeginDrag={() => {
                 // Phase 17.0.1: Enable seek effect gate for user-driven scrub
                 isScrubbingRef.current = true;
+                isScrubbingShared.value = true; // Phase 17.d Batch 2: gate UI worklet
+                // Phase 17.c.7 Fix B: Clear isProgrammaticScrollRef immediately.
+                // Otherwise the RAF cleanup (which clears it) runs only after
+                // setIsPlaying(false) commits a render, leaving a 16-50ms gap
+                // where onScroll suppresses setGlobalTime via the guard.
+                // Counter would freeze during user drag, then snap to final
+                // position when the flag finally clears.
+                isProgrammaticScrollRef.current = false;
                 wasPlayingBeforeScrubRef.current = isPlaying;
                 if (isPlaying) {
                   player.pause();
@@ -2518,40 +2618,31 @@ export default function ReelsEditScreen() {
               onMomentumScrollEnd={() => {
                 // Phase 17.0.1: Disable seek gate after deceleration completes
                 isScrubbingRef.current = false;
+                isScrubbingShared.value = false; // Phase 17.d Batch 2
                 isProgrammaticScrollRef.current = false;
-                if (wasPlayingBeforeScrubRef.current) {
-                  wasPlayingBeforeScrubRef.current = false;
-                  // Phase 17.c.5: Use FRESH lastScrollXRef (synchronously updated
-                  // by onScroll on every event) instead of stale globalTimeRef
-                  // (render-time synced — may lag 1-3 renders during fast scrubs).
-                  // getSegmentFromGlobalTime walks segments directly to compute
-                  // correct localTime — handles cross-segment scrubs correctly.
-                  const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                  const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
-                  nativeTimeRef.current = primedLocalT;
-                  localTimeRef.current = primedLocalT;
-                  // Phase 17.0.1: Native player was paused by onScrollBeginDrag;
-                  //               must be explicitly resumed, not just state-flag flipped
-                  player.play();
-                  setIsPlaying(true);
-                }
+                // Phase 17.e: Pause-on-Scrub UX. Always prime refs from final
+                // scroll position. Do NOT auto-resume playback — user must
+                // press Play to continue. This matches CapCut/Premiere
+                // behavior and eliminates the snap-back race.
+                const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                nativeTimeRef.current = primedLocalT;
+                localTimeRef.current = primedLocalT;
+                wasPlayingBeforeScrubRef.current = false;
               }}
               // Phase 17.0: Resume playback after scroll ends (drag without momentum)
               onScrollEndDrag={() => {
                 // Phase 17.0.1: Clear seek gate on drag release (covers slow-release
                 //               case that does not enter momentum deceleration)
                 isScrubbingRef.current = false;
-                if (wasPlayingBeforeScrubRef.current) {
-                  wasPlayingBeforeScrubRef.current = false;
-                  // Phase 17.c.5: Use FRESH lastScrollXRef (see onMomentumScrollEnd)
-                  const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                  const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
-                  nativeTimeRef.current = primedLocalT;
-                  localTimeRef.current = primedLocalT;
-                  // Phase 17.0.1: Resume native player, not just state flag
-                  player.play();
-                  setIsPlaying(true);
-                }
+                isScrubbingShared.value = false; // Phase 17.d Batch 2
+                // Phase 17.e: Pause-on-Scrub UX. Always prime refs from final
+                // scroll position. Do NOT auto-resume playback.
+                const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                nativeTimeRef.current = primedLocalT;
+                localTimeRef.current = primedLocalT;
+                wasPlayingBeforeScrubRef.current = false;
               }}
             >
             {/* Phase 17.0: Inner content wrapper */}
@@ -2831,7 +2922,8 @@ export default function ReelsEditScreen() {
               );
             })()}
             </View>
-            </ScrollView>
+            </ReAnimated.ScrollView>
+            </View>{/* timelineScrollCol */}
           </View>
         </View>
 
