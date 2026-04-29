@@ -9,10 +9,12 @@ import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, Scroll
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Phase 17.d: Reanimated UI-thread scroll (Batch 1: infrastructure, Batch 2: worklet)
 import ReAnimated, {
+  Easing as ReanimatedEasing,
+  scrollTo,
+  useAnimatedReaction,
   useAnimatedRef,
   useSharedValue,
-  useAnimatedReaction,
-  scrollTo,
+  withTiming,
 } from 'react-native-reanimated';
 
 // Phase 17.0: Timeline pixel scale — 1 second of media = 80px
@@ -1188,6 +1190,9 @@ export default function ReelsEditScreen() {
   // transitions. Reset to 0 at RAF loop start so legitimate
   // loop-back to t=0 (end of playlist → restart) is not blocked.
   const lastMasterTimeRef = useRef<number>(0);
+  // Phase 17.d Batch 3 v2: tracks last masterTime that triggered
+  // withTiming. Prevents 60Hz cancellation of 100ms animations.
+  const lastAnimatedMasterTimeRef = useRef<number>(-1);
   // Phase 17.d Batch 2: Shared values for UI-thread scroll
   const masterTimeShared = useSharedValue<number>(0);
   const isScrubbingShared = useSharedValue<boolean>(false);
@@ -1392,7 +1397,7 @@ export default function ReelsEditScreen() {
     // 60fps interpolation to UIKit native thread (smoother than
     // 20Hz discrete updates). Reanimated UI-thread approach
     // planned as Phase 17.d.
-    p.timeUpdateEventInterval = 0.1;
+    p.timeUpdateEventInterval = 0.1; // Phase 17.d Batch 3 v3: revert from 0.05 (caused animation overlap with 95ms withTiming)
   });
 
   const formatTime = (t: number) => {
@@ -1681,6 +1686,7 @@ export default function ReelsEditScreen() {
     // Phase 17.c.6 (Mitigation A): Reset clamp baseline so loop-back
     // restarts and play-from-zero scenarios begin cleanly.
     lastMasterTimeRef.current = 0;
+    lastAnimatedMasterTimeRef.current = -1; // Phase 17.d Batch 3 v2
     const tick = () => {
       if (!isScrubbingRef.current) {
         const seg = segments[segmentIndexRef.current];
@@ -1698,10 +1704,17 @@ export default function ReelsEditScreen() {
           return;
         }
         lastMasterTimeRef.current = masterTime;
-        // Phase 17.d Batch 2: scrollTo moved to UI thread via worklet.
-        // RAF still updates lastScrollXRef for HYBRID-1 backward detection.
+        // Phase 17.d: UI-thread scroll via worklet; throttled withTiming
+        // writes only when masterTime changes (~10Hz sample rate),
+        // giving the 95ms animation its full window before each update.
         const targetX = masterTime * PIXELS_PER_SECOND;
-        masterTimeShared.value = masterTime;
+        if (masterTime !== lastAnimatedMasterTimeRef.current) {
+          lastAnimatedMasterTimeRef.current = masterTime;
+          masterTimeShared.value = withTiming(masterTime, {
+            duration: 95,
+            easing: ReanimatedEasing.linear,
+          });
+        }
         lastScrollXRef.current = targetX;
         // Phase 17.c.9: Throttle to 10Hz (every 6th frame at 60fps).
         // Matches nativeTimeRef update cadence — counter and scroll
@@ -2628,6 +2641,11 @@ export default function ReelsEditScreen() {
                 const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
                 nativeTimeRef.current = primedLocalT;
                 localTimeRef.current = primedLocalT;
+                // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
+                // Cancels any in-flight withTiming and prevents the worklet from
+                // calling scrollTo with the stale pre-scrub value.
+                masterTimeShared.value = finalGlobalTime;
+                lastAnimatedMasterTimeRef.current = finalGlobalTime;
                 wasPlayingBeforeScrubRef.current = false;
               }}
               // Phase 17.0: Resume playback after scroll ends (drag without momentum)
@@ -2642,6 +2660,9 @@ export default function ReelsEditScreen() {
                 const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
                 nativeTimeRef.current = primedLocalT;
                 localTimeRef.current = primedLocalT;
+                // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
+                masterTimeShared.value = finalGlobalTime;
+                lastAnimatedMasterTimeRef.current = finalGlobalTime;
                 wasPlayingBeforeScrubRef.current = false;
               }}
             >
