@@ -1461,6 +1461,12 @@ export default function ReelsEditScreen() {
       // monotonic clamp (Mitigation A), eliminates all backward AND
       // forward jumps at transitions.
       nativeTimeRef.current = 0;
+      // Phase 18.b Fix #1: sync elapsedBeforeRef immediately to
+      // close the React-render race window (H1). Prevents RAF
+      // backward-clamp from freezing scroll at segment boundaries.
+      elapsedBeforeRef.current = segments
+        .slice(0, nextIndex)
+        .reduce((sum, s) => sum + (s.duration || 0), 0);
       setCurrentSegmentIndex(nextIndex);
       const next = segments[nextIndex];
       if (next.mediaType === 'photo') {
@@ -1481,6 +1487,9 @@ export default function ReelsEditScreen() {
       segmentIndexRef.current = 0;
       // Phase 17.c.6 (Mitigation C): Reset nativeTimeRef on loop-back.
       nativeTimeRef.current = 0;
+      // Phase 18.b Fix #1: sync elapsedBeforeRef to 0 immediately
+      // for loop-back consistency (matches forward-branch pattern).
+      elapsedBeforeRef.current = 0;
       setCurrentSegmentIndex(0);
       setIsPlaying(false);
       // Phase 17.0: Scroll back to t=0 on loop
