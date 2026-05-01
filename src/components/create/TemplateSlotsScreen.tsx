@@ -45,13 +45,13 @@ const TemplateSlotsScreen: React.FC<TemplateSlotsScreenProps> = ({ templateId, s
   };
 
   const handleNext = async () => {
-    const segments: { uri: string; duration: number }[] = [];
+    const segments: { uri: string; duration: number; mediaType: 'photo' | 'video' }[] = [];
     for (const item of mediaItems) {
       let playableUri = item.uri;
       if (item.mediaType === 'video') {
         playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
       }
-      segments.push({ uri: playableUri, duration: item.duration ?? 0 });
+      segments.push({ uri: playableUri, duration: item.duration ?? 0, mediaType: item.mediaType });
     }
     console.log('[template] Resolved segments count:', segments.length);
     if (segments.length > 0) console.log('[template] First segment URI:', segments[0].uri);

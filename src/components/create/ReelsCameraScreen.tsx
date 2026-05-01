@@ -3,8 +3,8 @@ import FaceDetectionService from '@/src/services/FaceDetectionService';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { CameraView, useCameraPermissions, useMicrophonePermissions } from 'expo-camera';
+import { File as FSFile, Paths } from 'expo-file-system';
 import * as Haptics from 'expo-haptics';
-import { Paths, File as FSFile } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -124,7 +124,7 @@ interface ReelsCameraScreenProps {
   initialMode?: 'reel' | 'post';
 }
 
-type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number };
+type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number; mediaType?: 'photo' | 'video' };
 
 const formatTime = (seconds: number): string => {
   const total = Math.floor(seconds);
@@ -825,7 +825,7 @@ const ReelsCameraScreen: React.FC<ReelsCameraScreenProps> = ({ onClose, initialM
       }
 
       const segmentDuration = recordingTimeRef.current;
-      setSegments((prev) => [...prev, { uri: result.uri, duration: segmentDuration }]);
+      setSegments((prev) => [...prev, { uri: result.uri, duration: segmentDuration, mediaType: 'video' }]);
     } catch {
     } finally {
       isRecordingRef.current = false;
