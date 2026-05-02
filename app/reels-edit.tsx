@@ -2580,7 +2580,7 @@ export default function ReelsEditScreen() {
             {/* Phase 17.f: Fixed counter column — left of scroll column */}
             <View style={styles.timelineCounterCol}>
               <Text style={styles.timelineCounterText}>
-                {formatTimePrecise(globalTime)}
+                {formatTime(globalTime)}
               </Text>
             </View>
             {/* Phase 17.f: Scroll column — onLayout measures THIS width for scroll math */}
