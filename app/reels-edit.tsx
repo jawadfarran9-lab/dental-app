@@ -639,6 +639,8 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 60,
     flexDirection: 'row',
+    // Phase 18.c Fix #K: required so absolute-positioned separators anchor here
+    position: 'relative',
   },
   segmentBar: {
     height: 60,
@@ -660,8 +662,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   separatorHitbox: {
+    // Phase 18.c Fix #K: removed from flex flow via position:'absolute' in JSX;
+    // width/height here are unused in layout but kept for reference
     width: 12,
-    height: '100%',
+    height: 60,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -2702,37 +2706,46 @@ export default function ReelsEditScreen() {
             <View style={styles.timelineSegmentRow}>
               <View style={styles.videoTrack}>
                 {segments.length > 0 ? (
-                  segments.map((seg, index) => {
-                    // Phase 17.0: Pixel-based segment width
-                    const segmentPx = (seg.duration || 1) * PIXELS_PER_SECOND;
-                    return (
-                      <React.Fragment key={index}>
-                        <View
-                          style={[
-                            styles.segmentBar,
-                            { width: segmentPx },
-                            index === 0 && styles.segmentFirst,
-                            index === segments.length - 1 && styles.segmentLast,
-                            index === activeSegmentIndex && { backgroundColor: '#666' },
-                          ]}
-                        >
-                          {/* Phase 17.b.1: Photo thumbnail — explicit % size matches working Phase 16.b preview pattern */}
-                          {seg.mediaType === 'photo' && seg.uri && (
-                            <ExpoImage
-                              source={{ uri: seg.uri }}
-                              style={{ width: '100%', height: '100%' }}
-                              contentFit="cover"
-                            />
+                  (() => {
+                    let cumulativeOffset = 0;
+                    return segments.map((seg, index) => {
+                      // Phase 17.0: Pixel-based segment width
+                      const segmentPx = (seg.duration || 1) * PIXELS_PER_SECOND;
+                      cumulativeOffset += segmentPx;
+                      const isLast = index === segments.length - 1;
+                      return (
+                        <React.Fragment key={index}>
+                          <View
+                            style={[
+                              styles.segmentBar,
+                              { width: segmentPx },
+                              index === 0 && styles.segmentFirst,
+                              isLast && styles.segmentLast,
+                              index === activeSegmentIndex && { backgroundColor: '#666' },
+                            ]}
+                          >
+                            {/* Phase 17.b.1: Photo thumbnail — explicit % size matches working Phase 16.b preview pattern */}
+                            {seg.mediaType === 'photo' && seg.uri && (
+                              <ExpoImage
+                                source={{ uri: seg.uri }}
+                                style={{ width: '100%', height: '100%' }}
+                                contentFit="cover"
+                              />
+                            )}
+                          </View>
+                          {!isLast && (
+                            <Pressable
+                              onPress={() => onSeparatorPress(index)}
+                              style={[styles.separatorHitbox, { position: 'absolute', left: cumulativeOffset - 6, top: 0 }]}
+                              hitSlop={10}
+                            >
+                              <View style={styles.segmentSeparator} />
+                            </Pressable>
                           )}
-                        </View>
-                        {index < segments.length - 1 && (
-                          <Pressable onPress={() => onSeparatorPress(index)} style={styles.separatorHitbox} hitSlop={10}>
-                            <View style={styles.segmentSeparator} />
-                          </Pressable>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
+                        </React.Fragment>
+                      );
+                    });
+                  })()
                 ) : (
                   <View style={styles.segmentEmpty}>
                     <Text style={styles.segmentEmptyText}>No segments</Text>
