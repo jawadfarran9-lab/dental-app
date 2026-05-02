@@ -1141,6 +1141,13 @@ const styles = StyleSheet.create({
     marginBottom: 2,
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
+    // Phase 18.b Fix #C-Fix: explicit width gives Text a
+    // non-zero layout box. Without this, parent rulerTickWrap's
+    // width:0 propagates availableWidth=0 to Text via Yoga,
+    // and iOS Core Text refuses to render glyphs in a 0-width
+    // box. Width 50 fits up to "0:00.0" (~44px) with safety
+    // margin.
+    width: 50,
   },
   // Phase 17.a polish: Taller + more opaque for clearer hierarchy
   rulerMajorDot: { width: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
@@ -1586,7 +1593,7 @@ export default function ReelsEditScreen() {
           style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
           pointerEvents="none"
         >
-          <Text style={styles.rulerLabel} numberOfLines={1}>{formatTime(tRounded)}</Text>
+          <Text style={styles.rulerLabel}>{formatTime(tRounded)}</Text>
           <View style={styles.rulerMajorDot} />
         </View>
       );
