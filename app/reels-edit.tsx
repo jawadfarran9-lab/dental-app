@@ -17,8 +17,12 @@ import ReAnimated, {
   withTiming,
 } from 'react-native-reanimated';
 
-// Phase 17.0: Timeline pixel scale — 1 second of media = 80px
-const PIXELS_PER_SECOND = 80;
+// Phase 17.0: Timeline pixel scale — 1 second of media = 40px
+// Phase 18.b Fix #G: reduced from 80 to 40 (50% density reduction)
+// to match CapCut compact timeline pattern. Yields ~10s visible
+// in viewport instead of ~5s. All scroll/scrub formulas use this
+// constant by name — auto-propagates to 22 reference sites.
+const PIXELS_PER_SECOND = 40;
 
 type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number; mediaType?: 'photo' | 'video' };
 type TextOverlayItem = {
@@ -1554,7 +1558,7 @@ export default function ReelsEditScreen() {
 
   // Phase 17.a: Adaptive tick intervals — matches CapCut density curve
   const rulerIntervals = useMemo(() => {
-    if (totalDuration <= 15) return { major: 1, minor: 0.5 };
+    if (totalDuration <= 15) return { major: 2, minor: 1 };
     if (totalDuration <= 60) return { major: 5, minor: 1 };
     return { major: 10, minor: 2 };
   }, [totalDuration]);
