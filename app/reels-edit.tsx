@@ -1114,17 +1114,23 @@ const styles = StyleSheet.create({
   rulerContainer: {
     height: 24,
     position: 'relative',
-    overflow: 'hidden',
+    // Phase 18.b Fix #C: removed overflow:'hidden' so boundary
+    // tick labels (e.g. "0:00" at x=0) render fully instead of
+    // being half-clipped by the container edge.
     backgroundColor: 'rgba(255,255,255,0.02)',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     marginBottom: 4,
   },
   rulerTickWrap: {
+    // Phase 18.b Fix #C: width: 0 + alignItems center makes
+    // children overflow symmetrically around the declared left,
+    // so both Text label and dot center at T * PIXELS_PER_SECOND
+    // exactly. Fixes major:minor tick asymmetry (28:52 → 40:40).
     position: 'absolute',
     bottom: 0,
+    width: 0,
     alignItems: 'center',
-    transform: [{ translateX: -0.5 }],
   },
   // Phase 17.a polish: Bolder, clearer, with tabular-nums for stable width
   rulerLabel: {
@@ -1580,7 +1586,7 @@ export default function ReelsEditScreen() {
           style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
           pointerEvents="none"
         >
-          <Text style={styles.rulerLabel}>{formatTime(tRounded)}</Text>
+          <Text style={styles.rulerLabel} numberOfLines={1}>{formatTime(tRounded)}</Text>
           <View style={styles.rulerMajorDot} />
         </View>
       );
