@@ -17,6 +17,8 @@ import ReAnimated, {
   withTiming,
 } from 'react-native-reanimated';
 
+import VideoThumbnailStrip from '@/src/components/timeline/VideoThumbnailStrip';
+
 // Phase 17.0: Timeline pixel scale — 1 second of media = 40px
 // Phase 18.b Fix #G: reduced from 80 to 40 (50% density reduction)
 // to match CapCut compact timeline pattern. Yields ~10s visible
@@ -2744,6 +2746,15 @@ export default function ReelsEditScreen() {
                                 source={{ uri: seg.uri }}
                                 style={{ width: '100%', height: '100%' }}
                                 contentFit="cover"
+                              />
+                            )}
+                            {/* Phase 18.a Step 3: Video thumbnail filmstrip */}
+                            {seg.mediaType === 'video' && seg.uri && (
+                              <VideoThumbnailStrip
+                                uri={seg.uri}
+                                segmentPx={segmentPx}
+                                duration={seg.duration || 1}
+                                isActive={index === activeSegmentIndex}
                               />
                             )}
                           </View>
