@@ -52,7 +52,11 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
           segments: JSON.stringify([
             {
               uri: playableUri,
-              duration: item.mediaType === 'photo' ? 5 : (item.duration ?? 0),
+              // Phase 18.c Fix #M: Math.round eliminates iOS AVFoundation
+              // sub-second float drift (e.g., 10.034 → 10). At PPS=40, this
+              // removes the ~1.36px ruler-vs-segment misalignment visible after
+              // Fix #K corrected the larger 12px separator drift. Photos remain 5.
+              duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
               mediaType: item.mediaType,
             },
           ]),
@@ -87,7 +91,7 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
       console.log('[gallery] Resolved URI:', playableUri);
       segments.push({
         uri: playableUri,
-        duration: item.mediaType === 'photo' ? 5 : (item.duration ?? 0),
+        duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
         mediaType: item.mediaType,
       });
     }

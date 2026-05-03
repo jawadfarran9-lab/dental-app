@@ -51,7 +51,12 @@ const TemplateSlotsScreen: React.FC<TemplateSlotsScreenProps> = ({ templateId, s
       if (item.mediaType === 'video') {
         playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
       }
-      segments.push({ uri: playableUri, duration: item.duration ?? 0, mediaType: item.mediaType });
+      // Phase 18.c Fix #M: round duration to integer seconds.
+      segments.push({
+        uri: playableUri,
+        duration: item.mediaType === 'photo' ? (item.duration ?? 5) : Math.round(item.duration ?? 0),
+        mediaType: item.mediaType
+      });
     }
     console.log('[template] Resolved segments count:', segments.length);
     if (segments.length > 0) console.log('[template] First segment URI:', segments[0].uri);
