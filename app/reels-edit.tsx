@@ -1145,7 +1145,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: 'rgba(255,255,255,0.75)',
     fontWeight: '600',
-    letterSpacing: 0.3,
+    // Phase 18.c Fix #N: removed letterSpacing:0.3 — caused
+    // 0.6 logical px (1.8 physical px at 3×) optical leftward
+    // shift of label ink center vs geometric box center.
+    // textAlign:'center' centers the full text block including
+    // trailing letter-spacing, displacing visible glyphs from
+    // box center. This produced the 2-4px perceived ruler-vs-
+    // separator misalignment that Fix #M (Math.round) could not
+    // resolve because the offset was optical, not data-driven.
+    // tabular-nums already provides consistent digit widths.
     marginBottom: 2,
     textAlign: 'center',
     fontVariant: ['tabular-nums'],
@@ -1157,8 +1165,14 @@ const styles = StyleSheet.create({
     // margin.
     width: 50,
   },
-  // Phase 17.a polish: Taller + more opaque for clearer hierarchy
-  rulerMajorDot: { width: 1, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
+  // Phase 18.c Fix #O: width 1 → 2 eliminates sub-pixel rounding
+  // at 3× density. Yoga centering of width:1 in width:0 parent
+  // produces left = -0.5 logical → -1.5 physical → rounds to -2,
+  // shifting dot center 0.5 physical px left of T×PPS. width:2
+  // produces left = -1.0 logical → -3.0 physical (exact integer),
+  // placing dot center at T×PPS exactly. Bonus: dot now matches
+  // segmentSeparator width (both 2px) for continuous vertical line.
+  rulerMajorDot: { width: 2, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
   // Phase 17.a polish: More visible minor ticks for density perception
   rulerMinorDot: { width: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
 });
