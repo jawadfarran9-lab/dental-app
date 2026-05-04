@@ -1177,6 +1177,12 @@ const styles = StyleSheet.create({
   rulerMajorDot: { width: 2, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
   // Phase 17.a polish: More visible minor ticks for density perception
   rulerMinorDot: { width: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
+  // Phase 19 Step 3: Sub-mini tick. Half the height of minor (2px),
+  // 60% the opacity (0.25). Provides eye with closer spatial reference
+  // during playback motion — reduces perceived inter-tick gap from
+  // 40px to 20px (Tier 1&2) or 80px to 40px (Tier 3). Geometric
+  // hierarchy: Major (8px/0.55) → Minor (4px/0.4) → SubMini (2px/0.25).
+  rulerSubMiniDot: { width: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.25)' },
 });
 
 export default function ReelsEditScreen() {
@@ -1230,6 +1236,22 @@ export default function ReelsEditScreen() {
   // Phase 17.d Batch 3 v2: tracks last masterTime that triggered
   // withTiming. Prevents 60Hz cancellation of 100ms animations.
   const lastAnimatedMasterTimeRef = useRef<number>(-1);
+  // Phase 19 Fix #L: Wall-clock timestamp captured when
+  // player.replaceAsync starts. Non-zero indicates a video
+  // transition is in progress; RAF tick uses synthetic localT
+  // from (Date.now() - transitionStartTimeRef) to keep scroll
+  // moving smoothly during the 80-500ms async player load.
+  // Cleared in replaceAsync .then() / .catch().
+  const transitionStartTimeRef = useRef<number>(0);
+
+  // Phase 19 Fix #L refinement: High-water mark of synthetic
+  // localT at the moment replaceAsync resolved. Prevents the
+  // backward jump at handoff by holding localT at synthetic
+  // position until native time catches up, then releasing.
+  // Without this: at t=100ms when transitionStartTimeRef
+  // clears to 0, RAF immediately falls to nativeTimeRef=0,
+  // causing visible 4px backward jump (clamp misses by epsilon).
+  const transitionFloorRef = useRef<number>(0);
   // Phase 17.d Batch 2: Shared values for UI-thread scroll
   const masterTimeShared = useSharedValue<number>(0);
   const isScrubbingShared = useSharedValue<boolean>(false);
@@ -1517,9 +1539,22 @@ export default function ReelsEditScreen() {
         localTimeRef.current = 0;
         return;
       }
+      // Phase 19 Fix #L: mark transition start for synthetic
+      // clock interpolation in RAF. Prevents 80-500ms scroll
+      // freeze during the async player load.
+      transitionStartTimeRef.current = Date.now();
       player.replaceAsync(next.uri).then(() => {
+        // Phase 19 Fix #L refinement: capture synthetic high-water
+        // mark BEFORE clearing transitionStartTimeRef. This becomes
+        // the floor that RAF holds until native time catches up,
+        // preventing the backward jump at handoff.
+        transitionFloorRef.current = (Date.now() - transitionStartTimeRef.current) / 1000;
+        transitionStartTimeRef.current = 0;
         player.play();
-      }).catch(() => {});
+      }).catch(() => {
+        transitionFloorRef.current = 0;
+        transitionStartTimeRef.current = 0;
+      });
     } else {
       segmentIndexRef.current = 0;
       // Phase 17.c.6 (Mitigation C): Reset nativeTimeRef on loop-back.
@@ -1576,11 +1611,13 @@ export default function ReelsEditScreen() {
     [segments],
   );
 
-  // Phase 17.a: Adaptive tick intervals — matches CapCut density curve
+  // Phase 17.a: Adaptive tick intervals — matches CapCut density curve.
+  // Phase 19 Step 3: Added subMini tier — provides eye with closer
+  // spatial references during playback motion (halves perceptual gap).
   const rulerIntervals = useMemo(() => {
-    if (totalDuration <= 15) return { major: 2, minor: 1 };
-    if (totalDuration <= 60) return { major: 5, minor: 1 };
-    return { major: 10, minor: 2 };
+    if (totalDuration <= 15) return { major: 2, minor: 1, subMini: 0.5 };
+    if (totalDuration <= 60) return { major: 5, minor: 1, subMini: 0.5 };
+    return { major: 10, minor: 2, subMini: 1 };
   }, [totalDuration]);
 
   // Phase 17.c.3 Priority 2: Memoize ruler ticks. Pure function of
@@ -1591,7 +1628,30 @@ export default function ReelsEditScreen() {
   // functions with no state captures — safe to omit from deps.
   const rulerTicks = useMemo(() => {
     const ticks: React.ReactNode[] = [];
-    const { major, minor } = rulerIntervals;
+    const { major, minor, subMini } = rulerIntervals;
+
+    // Phase 19 Step 3: Sub-mini ticks rendered FIRST (lowest z-order).
+    // Provides eye with closer spatial references during playback —
+    // halves the perceptual inter-tick gap. Excludes positions that
+    // coincide with minor or major ticks.
+    for (let t = 0; t <= totalDuration + 0.0001; t += subMini) {
+      const tRounded = Math.round(t * 1000) / 1000;
+      const isMajor = Math.abs(tRounded % major) < 0.0001
+                      || Math.abs(tRounded % major - major) < 0.0001;
+      const isMinor = Math.abs(tRounded % minor) < 0.0001
+                      || Math.abs(tRounded % minor - minor) < 0.0001;
+      if (isMajor || isMinor) continue;
+      ticks.push(
+        <View
+          key={`submini-${tRounded}`}
+          style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+          pointerEvents="none"
+        >
+          <View style={styles.rulerSubMiniDot} />
+        </View>
+      );
+    }
+
     // Minor ticks: every `minor` seconds (excluding major positions)
     for (let t = 0; t <= totalDuration + 0.0001; t += minor) {
       const tRounded = Math.round(t * 1000) / 1000;
@@ -1608,6 +1668,7 @@ export default function ReelsEditScreen() {
         </View>
       );
     }
+
     // Major ticks: every `major` seconds, with label
     for (let t = 0; t <= totalDuration + 0.0001; t += major) {
       const tRounded = Math.round(t * 1000) / 1000;
@@ -1743,9 +1804,29 @@ export default function ReelsEditScreen() {
     const tick = () => {
       if (!isScrubbingRef.current) {
         const seg = segments[segmentIndexRef.current];
-        const localT = seg?.mediaType === 'photo'
-          ? localTimeRef.current
-          : nativeTimeRef.current;
+        let localT: number;
+        if (transitionStartTimeRef.current > 0) {
+          // Synthetic clock active — replaceAsync in flight
+          const elapsedSinceTransition = (Date.now() - transitionStartTimeRef.current) / 1000;
+          const expectedDuration = (seg?.trimEnd ?? seg?.duration ?? 1) - (seg?.trimStart ?? 0);
+          localT = Math.min(elapsedSinceTransition, expectedDuration);
+          // Phase 19 Fix #L refinement: keep floor current during
+          // synthetic phase so it has the latest high-water mark
+          // when transitionStartTimeRef clears.
+          transitionFloorRef.current = localT;
+        } else {
+          // Synthetic clock OFF — read real source
+          const rawT = seg?.mediaType === 'photo' ? localTimeRef.current : nativeTimeRef.current;
+          // Phase 19 Fix #L refinement: hold at synthetic floor until
+          // native time catches up. Prevents backward jump at handoff
+          // (rawT may be 0 when player just resumed playback).
+          if (rawT < transitionFloorRef.current) {
+            localT = transitionFloorRef.current;
+          } else {
+            localT = rawT;
+            transitionFloorRef.current = 0; // native caught up — release floor
+          }
+        }
         const masterTime = elapsedBeforeRef.current + localT;
         // Phase 17.c.6 (Mitigation A): Backward jump guard.
         // 100ms epsilon tolerates measurement noise in native player

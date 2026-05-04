@@ -1,14 +1,14 @@
-import React, { useEffect, useState, useRef, memo } from 'react';
-import { View, StyleSheet } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import * as VideoThumbnails from 'expo-video-thumbnails';
+import { memo, useEffect, useRef, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withRepeat,
-  withSequence,
-  Easing,
+    Easing,
+    useAnimatedStyle,
+    useSharedValue,
+    withRepeat,
+    withSequence,
+    withTiming,
 } from 'react-native-reanimated';
 
 /**
