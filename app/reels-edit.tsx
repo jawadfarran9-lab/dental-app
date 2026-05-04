@@ -1177,6 +1177,12 @@ const styles = StyleSheet.create({
   rulerMajorDot: { width: 2, height: 8, backgroundColor: 'rgba(255,255,255,0.55)' },
   // Phase 17.a polish: More visible minor ticks for density perception
   rulerMinorDot: { width: 1, height: 4, backgroundColor: 'rgba(255,255,255,0.4)' },
+  // Phase 19 Step 3: Sub-mini tick. Half the height of minor (2px),
+  // 60% the opacity (0.25). Provides eye with closer spatial reference
+  // during playback motion — reduces perceived inter-tick gap from
+  // 40px to 20px (Tier 1&2) or 80px to 40px (Tier 3). Geometric
+  // hierarchy: Major (8px/0.55) → Minor (4px/0.4) → SubMini (2px/0.25).
+  rulerSubMiniDot: { width: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.25)' },
 });
 
 export default function ReelsEditScreen() {
@@ -1576,11 +1582,13 @@ export default function ReelsEditScreen() {
     [segments],
   );
 
-  // Phase 17.a: Adaptive tick intervals — matches CapCut density curve
+  // Phase 17.a: Adaptive tick intervals — matches CapCut density curve.
+  // Phase 19 Step 3: Added subMini tier — provides eye with closer
+  // spatial references during playback motion (halves perceptual gap).
   const rulerIntervals = useMemo(() => {
-    if (totalDuration <= 15) return { major: 2, minor: 1 };
-    if (totalDuration <= 60) return { major: 5, minor: 1 };
-    return { major: 10, minor: 2 };
+    if (totalDuration <= 15) return { major: 2, minor: 1, subMini: 0.5 };
+    if (totalDuration <= 60) return { major: 5, minor: 1, subMini: 0.5 };
+    return { major: 10, minor: 2, subMini: 1 };
   }, [totalDuration]);
 
   // Phase 17.c.3 Priority 2: Memoize ruler ticks. Pure function of
@@ -1591,7 +1599,30 @@ export default function ReelsEditScreen() {
   // functions with no state captures — safe to omit from deps.
   const rulerTicks = useMemo(() => {
     const ticks: React.ReactNode[] = [];
-    const { major, minor } = rulerIntervals;
+    const { major, minor, subMini } = rulerIntervals;
+
+    // Phase 19 Step 3: Sub-mini ticks rendered FIRST (lowest z-order).
+    // Provides eye with closer spatial references during playback —
+    // halves the perceptual inter-tick gap. Excludes positions that
+    // coincide with minor or major ticks.
+    for (let t = 0; t <= totalDuration + 0.0001; t += subMini) {
+      const tRounded = Math.round(t * 1000) / 1000;
+      const isMajor = Math.abs(tRounded % major) < 0.0001
+                      || Math.abs(tRounded % major - major) < 0.0001;
+      const isMinor = Math.abs(tRounded % minor) < 0.0001
+                      || Math.abs(tRounded % minor - minor) < 0.0001;
+      if (isMajor || isMinor) continue;
+      ticks.push(
+        <View
+          key={`submini-${tRounded}`}
+          style={[styles.rulerTickWrap, { left: tRounded * PIXELS_PER_SECOND }]}
+          pointerEvents="none"
+        >
+          <View style={styles.rulerSubMiniDot} />
+        </View>
+      );
+    }
+
     // Minor ticks: every `minor` seconds (excluding major positions)
     for (let t = 0; t <= totalDuration + 0.0001; t += minor) {
       const tRounded = Math.round(t * 1000) / 1000;
@@ -1608,6 +1639,7 @@ export default function ReelsEditScreen() {
         </View>
       );
     }
+
     // Major ticks: every `major` seconds, with label
     for (let t = 0; t <= totalDuration + 0.0001; t += major) {
       const tRounded = Math.round(t * 1000) / 1000;
