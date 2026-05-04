@@ -1757,7 +1757,12 @@ export default function ReelsEditScreen() {
         if (masterTime !== lastAnimatedMasterTimeRef.current) {
           lastAnimatedMasterTimeRef.current = masterTime;
           masterTimeShared.value = withTiming(masterTime, {
-            duration: 95,
+            // Phase 19 Fix #J: 95ms → 100ms exactly matches
+            // timeUpdateEventInterval=0.1 (100ms). Eliminates the 5ms
+            // structural stationary gap per cycle. Reanimated handles
+            // 1-2ms early re-targets via interpolation from current
+            // position.
+            duration: 100,
             easing: ReanimatedEasing.linear,
           });
         }
@@ -1771,7 +1776,13 @@ export default function ReelsEditScreen() {
         // to ≤10/sec regardless, so no readability regression.
         // VideoView memoization (Phase 17.c.3) prevents the original
         // 30Hz RAF starvation that motivated the 4Hz fallback.
-        if (frameCountRef.current % 6 === 0) {
+        // Phase 19 Fix #J: setGlobalTime throttled 10Hz → 5Hz.
+        // React reconciliation on the ~3100-line component costs
+        // 5-15ms per pass. At 10Hz this blocked JS thread enough
+        // to delay timeUpdate event delivery and cause subtle
+        // scroll judder. Counter still updates at 5Hz (200ms) —
+        // imperceptible difference for whole-second display.
+        if (frameCountRef.current % 12 === 0) {
           setGlobalTime(masterTime);
         }
         frameCountRef.current++;
