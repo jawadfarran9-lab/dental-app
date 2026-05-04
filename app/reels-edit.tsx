@@ -1654,7 +1654,14 @@ export default function ReelsEditScreen() {
       nativeTimeRef.current = payload.currentTime;
     });
     return () => sub.remove();
-  }, [player, elapsedBefore, segments]);
+  // Phase 19 Step 2: Removed `elapsedBefore` from dep array.
+  // The listener closure only reads `segments[segmentIndexRef.current]`
+  // (via ref, not value) and writes nativeTimeRef. It does NOT
+  // use elapsedBefore. The spurious dep caused the listener to
+  // be torn down + recreated on every segment transition,
+  // creating a 0-2ms window where no listener was registered
+  // and native timeUpdate events were silently dropped.
+  }, [player, segments]);
 
   // Phase 16.b — Photo clock: drives globalTime for photo
   // segments. expo-video's timeUpdate event only fires for
