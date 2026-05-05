@@ -1544,15 +1544,35 @@ export default function ReelsEditScreen() {
       // freeze during the async player load.
       transitionStartTimeRef.current = Date.now();
       player.replaceAsync(next.uri).then(() => {
-        // Phase 19 Fix #L refinement: capture synthetic high-water
-        // mark BEFORE clearing transitionStartTimeRef. This becomes
-        // the floor that RAF holds until native time catches up,
-        // preventing the backward jump at handoff.
-        transitionFloorRef.current = (Date.now() - transitionStartTimeRef.current) / 1000;
+        // Phase 19 Fix #L FIXED: capture the LAST ACTUAL synthetic
+        // localT (== lastMasterTimeRef - elapsedBeforeRef), not
+        // wall-clock elapsed. This matches the scroll position the
+        // user has actually seen, so the floor hold doesn't cause
+        // a freeze-then-jump artifact.
+        const syntheticLocalT = lastMasterTimeRef.current - elapsedBeforeRef.current;
+        transitionFloorRef.current = Math.max(0, syntheticLocalT);
         // DIAG #1: confirms .then() fires and captures floor value.
-        // If floor=0.0000, R1 (zero-floor bug) is confirmed.
-        console.log('[FIX_L] then fired, floor=', transitionFloorRef.current.toFixed(4));
+        // Compare floor to wall-clock elapsed for diagnostic.
+        console.log(
+          '[FIX_L] then fired, floor=', transitionFloorRef.current.toFixed(4),
+          'walltime=', ((Date.now() - transitionStartTimeRef.current) / 1000).toFixed(4)
+        );
         transitionStartTimeRef.current = 0;
+        // Phase 19 Fix #L Remedy C: seek native player to floor
+        // position before play(). AVFoundation begins playback from
+        // floor instead of t=0, so the first timeUpdate arrives
+        // ABOVE floor and releases the hold immediately. Eliminates
+        // the ~200ms freeze caused by RN bridge latency between
+        // native replaceAsync completion and JS .then() delivery.
+        if (transitionFloorRef.current > 0) {
+          // Phase 19 Fix #L Remedy C tweak: pause BEFORE seek.
+          // AVPlayer ignores currentTime assignment if the player
+          // is in a transient state (just after replaceAsync). The
+          // standard pattern is pause → seek → play to ensure the
+          // seek takes effect deterministically.
+          player.pause();
+          player.currentTime = transitionFloorRef.current;
+        }
         player.play();
       }).catch((err: unknown) => {
         // DIAG #2: confirms .catch() fires. If this appears, R2 is
