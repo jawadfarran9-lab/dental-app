@@ -1549,9 +1549,15 @@ export default function ReelsEditScreen() {
         // the floor that RAF holds until native time catches up,
         // preventing the backward jump at handoff.
         transitionFloorRef.current = (Date.now() - transitionStartTimeRef.current) / 1000;
+        // DIAG #1: confirms .then() fires and captures floor value.
+        // If floor=0.0000, R1 (zero-floor bug) is confirmed.
+        console.log('[FIX_L] then fired, floor=', transitionFloorRef.current.toFixed(4));
         transitionStartTimeRef.current = 0;
         player.play();
-      }).catch(() => {
+      }).catch((err: unknown) => {
+        // DIAG #2: confirms .catch() fires. If this appears, R2 is
+        // confirmed — replaceAsync rejected, floor reset to 0.
+        console.log('[FIX_L] catch fired, err=', String(err));
         transitionFloorRef.current = 0;
         transitionStartTimeRef.current = 0;
       });
@@ -1821,6 +1827,14 @@ export default function ReelsEditScreen() {
           // native time catches up. Prevents backward jump at handoff
           // (rawT may be 0 when player just resumed playback).
           if (rawT < transitionFloorRef.current) {
+            // DIAG #3: confirms floor is actively holding. If this never
+            // logs but rewind still occurs, R1 (floor=0) is confirmed.
+            // If this logs but rewind still occurs, dig into R3/R4.
+            console.log('[FIX_L] floor active', {
+              floor: transitionFloorRef.current.toFixed(4),
+              rawT: rawT.toFixed(4),
+              delta: (transitionFloorRef.current - rawT).toFixed(4),
+            });
             localT = transitionFloorRef.current;
           } else {
             localT = rawT;
