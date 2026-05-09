@@ -1582,7 +1582,38 @@ export default function ReelsEditScreen() {
     }).catch(() => {});
   }, [player, segments]);
 
-  // Phase 19 Dual-Player: attach playToEnd to BOTH players.
+  // Phase 19 Dual-Player Step 4: Pre-load second video segment into
+  // playerB (idle player) at mount. This makes the next V→V
+  // transition instant — no replaceAsync gap during playback.
+  //
+  // Strategy: find the SECOND video segment (skipping photos) and
+  // load it into playerB. playerB stays paused at currentTime=0,
+  // muted, ready to be promoted to active in Step 5.
+  useEffect(() => {
+    // Find first video segment (already loaded in playerA via existing logic)
+    const firstVideoIndex = segments.findIndex(s => s.mediaType === 'video');
+    if (firstVideoIndex === -1) return;
+
+    // Find SECOND video segment (the one to pre-load in playerB)
+    const secondVideoIndex = segments
+      .slice(firstVideoIndex + 1)
+      .findIndex(s => s.mediaType === 'video');
+
+    if (secondVideoIndex === -1) {
+      // No second video — only photos after first video, or only one video
+      return;
+    }
+
+    const actualIndex = firstVideoIndex + 1 + secondVideoIndex;
+    const secondVideo = segments[actualIndex];
+
+    console.log('[DUAL] Pre-loading playerB with segment[' + actualIndex + ']:', secondVideo.uri.substring(0, 50));
+
+    // Pre-load into playerB. Stays paused at t=0, muted (set in Step 1).
+    playerB.replaceAsync(secondVideo.uri).catch((err) => {
+      console.warn('[DUAL] playerB pre-load failed:', err);
+    });
+  }, [segments, playerB]);
   // Only the currently-active player's events trigger advancement.
   // Idle player's playToEnd (e.g., from pre-load completion) is ignored.
   useEffect(() => {
