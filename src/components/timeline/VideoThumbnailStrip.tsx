@@ -27,11 +27,13 @@ import Animated, {
  *   - Active segment yellow tint overlay
  */
 
-const THUMB_SIZE = 60;
+const THUMB_WIDTH = 40;
+const THUMB_HEIGHT = 60;
 // Pixel-grid-aligned extraction interval. Invariant:
-// THUMB_SECONDS === THUMB_SIZE / PIXELS_PER_SECOND (60 / 40 = 1.5).
-// If PIXELS_PER_SECOND in app/reels-edit.tsx changes, update this.
-const THUMB_SECONDS = 1.5;
+// THUMB_SECONDS === THUMB_WIDTH / PIXELS_PER_SECOND (40 / 40 = 1.0).
+// THUMB_HEIGHT preserves vertical parity with photo segmentBar (60 px) at app/reels-edit.tsx:648.
+// If PIXELS_PER_SECOND in app/reels-edit.tsx changes, update THUMB_SECONDS.
+const THUMB_SECONDS = 1.0;
 const QUALITY = 0.7;
 const FADE_DURATION = 250;
 const SHIMMER_DURATION = 1200;
@@ -67,7 +69,7 @@ const AnimatedThumb = memo<AnimatedThumbProps>(({ uri, width }) => {
   }));
 
   return (
-    <Animated.View style={[{ width, height: THUMB_SIZE }, animatedStyle]}>
+    <Animated.View style={[{ width, height: THUMB_HEIGHT }, animatedStyle]}>
       <ExpoImage
         source={{ uri }}
         style={{ width: '100%', height: '100%' }}
@@ -106,7 +108,7 @@ const ShimmerPlaceholder = memo<ShimmerPlaceholderProps>(({ width }) => {
   return (
     <Animated.View
       style={[
-        { width, height: THUMB_SIZE, backgroundColor: '#3a3a3a' },
+        { width, height: THUMB_HEIGHT, backgroundColor: '#3a3a3a' },
         animatedStyle,
       ]}
     />
@@ -118,8 +120,8 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // Main component
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
-  const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_SIZE));
-  const cacheKey = `${uri}::${numThumbs}::v2`;
+  const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
+  const cacheKey = `${uri}::${numThumbs}::v3`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
     return thumbnailCache.get(cacheKey) ?? Array(numThumbs).fill(null);
@@ -177,8 +179,8 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
       {thumbUris.map((thumbUri, i) => {
         const isLast = i === numThumbs - 1;
         const thumbWidth = isLast
-          ? Math.max(THUMB_SIZE, segmentPx - i * THUMB_SIZE)
-          : THUMB_SIZE;
+          ? Math.max(THUMB_WIDTH, segmentPx - i * THUMB_WIDTH)
+          : THUMB_WIDTH;
 
         if (thumbUri) {
           return <AnimatedThumb key={`${cacheKey}-${i}`} uri={thumbUri} width={thumbWidth} />;
@@ -197,7 +199,7 @@ VideoThumbnailStrip.displayName = 'VideoThumbnailStrip';
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    height: THUMB_SIZE,
+    height: THUMB_HEIGHT,
     position: 'relative',
   },
   activeOverlay: {
