@@ -24,7 +24,7 @@ import VideoThumbnailStrip from '@/src/components/timeline/VideoThumbnailStrip';
 // to match CapCut compact timeline pattern. Yields ~10s visible
 // in viewport instead of ~5s. All scroll/scrub formulas use this
 // constant by name — auto-propagates to 22 reference sites.
-const PIXELS_PER_SECOND = 40;
+const PIXELS_PER_SECOND = 30;
 
 type Segment = { uri: string; duration: number; trimStart?: number; trimEnd?: number; mediaType?: 'photo' | 'video' };
 type TextOverlayItem = {
