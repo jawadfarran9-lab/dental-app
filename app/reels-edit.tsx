@@ -1587,7 +1587,7 @@ export default function ReelsEditScreen() {
   // spatial references during playback motion (halves perceptual gap).
   const rulerIntervals = useMemo(() => {
     if (totalDuration <= 15) return { major: 2, minor: 1, subMini: 0.5 };
-    if (totalDuration <= 60) return { major: 5, minor: 1, subMini: 0.5 };
+    if (totalDuration <= 60) return { major: 2, minor: 1, subMini: 0.5 };
     return { major: 10, minor: 2, subMini: 1 };
   }, [totalDuration]);
 
