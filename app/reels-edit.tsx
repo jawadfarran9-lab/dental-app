@@ -1434,14 +1434,34 @@ export default function ReelsEditScreen() {
     }, 100);
   };
 
-  const player = useVideoPlayer(null, (p) => {
+  // Phase 19 Dual-Player: Two player instances for seamless V→V transitions.
+  // playerA and playerB swap roles at each transition. The idle player
+  // pre-loads the next segment's URI so transitions are instant (no
+  // replaceAsync gap in the hot path).
+  const playerA = useVideoPlayer(null, (p) => {
     p.loop = false;
-    // Phase 17.b.9: Reverted to 10Hz — animated:true delegates
-    // 60fps interpolation to UIKit native thread (smoother than
-    // 20Hz discrete updates). Reanimated UI-thread approach
-    // planned as Phase 17.d.
-    p.timeUpdateEventInterval = 0.1; // Phase 17.d Batch 3 v3: revert from 0.05 (caused animation overlap with 95ms withTiming)
+    p.timeUpdateEventInterval = 0.1;
+    p.muted = false;  // active player has audio
   });
+  const playerB = useVideoPlayer(null, (p) => {
+    p.loop = false;
+    p.timeUpdateEventInterval = 0.1;
+    p.muted = true;   // idle player muted to prevent audio bleed
+  });
+
+  // Role tracking refs. activePlayerRef points to the player currently
+  // connected to VideoView and driving timeUpdate. idlePlayerRef points
+  // to the pre-loading player.
+  const activePlayerRef = useRef(playerA);
+  const idlePlayerRef = useRef(playerB);
+
+  // activePlayerKey drives the VideoView player prop. State (not ref)
+  // because React must re-render to swap the player prop on VideoView.
+  const [activePlayerKey, setActivePlayerKey] = useState<'A' | 'B'>('A');
+
+  // Shim: existing code uses `player` extensively. This alias keeps
+  // existing code working unchanged. Will be cleaned up in later steps.
+  const player = activePlayerRef.current;
 
   const formatTime = (t: number) => {
     const m = Math.floor(t / 60);
@@ -1562,19 +1582,23 @@ export default function ReelsEditScreen() {
     }).catch(() => {});
   }, [player, segments]);
 
-  // Segment end listener — advance to next or loop back
+  // Phase 19 Dual-Player: attach playToEnd to BOTH players.
+  // Only the currently-active player's events trigger advancement.
+  // Idle player's playToEnd (e.g., from pre-load completion) is ignored.
   useEffect(() => {
-    const sub = player.addListener('playToEnd', () => {
-      // Phase 16.b.1 — Empty/photo-mode native player emits
-      // a spurious playToEnd on .play(). Guard against
-      // advancing segments from this event when the current
-      // segment is a photo — the photo clock useEffect owns
-      // advancement for photos via its setInterval tick.
+    const handler = (sourcePlayer: typeof playerA) => () => {
+      // Gate: only active player's event fires advancement
+      if (activePlayerRef.current !== sourcePlayer) return;
       if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
       advanceToNextSegment();
-    });
-    return () => sub.remove();
-  }, [player, segments]);
+    };
+    const subA = playerA.addListener('playToEnd', handler(playerA));
+    const subB = playerB.addListener('playToEnd', handler(playerB));
+    return () => {
+      subA.remove();
+      subB.remove();
+    };
+  }, [playerA, playerB, segments]);
 
 
   const totalDuration = useMemo(
@@ -1675,25 +1699,25 @@ export default function ReelsEditScreen() {
     [segments, currentSegmentIndex],
   );
 
-  // Time update listener
+  // Phase 19 Dual-Player: attach timeUpdate to BOTH players.
+  // Only the currently-active player updates nativeTimeRef.
+  // Idle player's timeUpdate events are ignored (it should be paused
+  // anyway, but this is defense-in-depth).
   useEffect(() => {
-    const sub = player.addListener('timeUpdate', (payload) => {
+    const handler = (sourcePlayer: typeof playerA) => (payload: { currentTime: number }) => {
+      // Gate: only active player's event updates nativeTimeRef
+      if (activePlayerRef.current !== sourcePlayer) return;
       if (isScrubbingRef.current) return;
       if (segments[segmentIndexRef.current]?.mediaType === 'photo') return;
-      // Phase 17.c Batch 2: Update ref only. RAF loop reads it at 60Hz
-      // and drives both setGlobalTime (30Hz) and scrollTo (60Hz).
-      // Eliminates bridge read of player.currentTime per RAF frame.
       nativeTimeRef.current = payload.currentTime;
-    });
-    return () => sub.remove();
-  // Phase 19 Step 2: Removed `elapsedBefore` from dep array.
-  // The listener closure only reads `segments[segmentIndexRef.current]`
-  // (via ref, not value) and writes nativeTimeRef. It does NOT
-  // use elapsedBefore. The spurious dep caused the listener to
-  // be torn down + recreated on every segment transition,
-  // creating a 0-2ms window where no listener was registered
-  // and native timeUpdate events were silently dropped.
-  }, [player, segments]);
+    };
+    const subA = playerA.addListener('timeUpdate', handler(playerA));
+    const subB = playerB.addListener('timeUpdate', handler(playerB));
+    return () => {
+      subA.remove();
+      subB.remove();
+    };
+  }, [playerA, playerB, segments]);
 
   // Phase 16.b — Photo clock: drives globalTime for photo
   // segments. expo-video's timeUpdate event only fires for
@@ -1888,7 +1912,11 @@ export default function ReelsEditScreen() {
     }
     return (
       <VideoView
-        player={player}
+        // Phase 19 Dual-Player: drive player prop from activePlayerKey
+        // state. When state changes, React re-renders, VideoView swaps
+        // its underlying AVPlayer to the newly-active instance. expo-video
+        // 3.0.16+ handles this swap atomically without black frame.
+        player={activePlayerKey === 'A' ? playerA : playerB}
         style={{ width: '100%', height: '100%' }}
         contentFit="cover"
         nativeControls={false}
