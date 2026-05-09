@@ -27,12 +27,12 @@ import Animated, {
  *   - Active segment yellow tint overlay
  */
 
-const THUMB_WIDTH = 40;
+const THUMB_WIDTH = 30;
 const THUMB_HEIGHT = 60;
 // Pixel-grid-aligned extraction interval. Invariant:
-// THUMB_SECONDS === THUMB_WIDTH / PIXELS_PER_SECOND (40 / 40 = 1.0).
+// THUMB_SECONDS === THUMB_WIDTH / PIXELS_PER_SECOND (30 / 30 = 1.0).
 // THUMB_HEIGHT preserves vertical parity with photo segmentBar (60 px) at app/reels-edit.tsx:648.
-// If PIXELS_PER_SECOND in app/reels-edit.tsx changes, update THUMB_SECONDS.
+// If PIXELS_PER_SECOND in app/reels-edit.tsx changes, update THUMB_WIDTH to match (THUMB_WIDTH must equal PIXELS_PER_SECOND to preserve THUMB_SECONDS = 1.0).
 const THUMB_SECONDS = 1.0;
 const QUALITY = 0.7;
 const FADE_DURATION = 250;
@@ -121,7 +121,7 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
   const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
-  const cacheKey = `${uri}::${numThumbs}::v3`;
+  const cacheKey = `${uri}::${numThumbs}::v4`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
     return thumbnailCache.get(cacheKey) ?? Array(numThumbs).fill(null);
