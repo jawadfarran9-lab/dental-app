@@ -1,0 +1,56 @@
+diff --git a/node_modules/expo-video-thumbnails/build/VideoThumbnailsTypes.types.d.ts b/node_modules/expo-video-thumbnails/build/VideoThumbnailsTypes.types.d.ts
+index 207cbb8..f9407d5 100644
+--- a/node_modules/expo-video-thumbnails/build/VideoThumbnailsTypes.types.d.ts
++++ b/node_modules/expo-video-thumbnails/build/VideoThumbnailsTypes.types.d.ts
+@@ -26,5 +26,7 @@ export type VideoThumbnailsOptions = {
+      * In case `sourceFilename` is a remote URI, `headers` object is passed in a network request.
+      */
+     headers?: Record<string, string>;
++    toleranceBeforeMs?: number;
++    toleranceAfterMs?: number;
+ };
+ //# sourceMappingURL=VideoThumbnailsTypes.types.d.ts.map
+\ No newline at end of file
+diff --git a/node_modules/expo-video-thumbnails/ios/VideoThumbnailsModule.swift b/node_modules/expo-video-thumbnails/ios/VideoThumbnailsModule.swift
+index ecc46d1..d55115c 100644
+--- a/node_modules/expo-video-thumbnails/ios/VideoThumbnailsModule.swift
++++ b/node_modules/expo-video-thumbnails/ios/VideoThumbnailsModule.swift
+@@ -23,14 +23,14 @@ public class VideoThumbnailsModule: Module {
+     let generator = AVAssetImageGenerator(asset: asset)
+ 
+     generator.appliesPreferredTrackTransform = true
+-    generator.requestedTimeToleranceAfter = CMTime.zero
++    generator.requestedTimeToleranceAfter = CMTime(value: options.toleranceAfterMs, timescale: 1000)
+ 
+     let time = CMTimeMake(value: options.time, timescale: 1000)
+ 
+     // `requestedTimeToleranceBefore` can only be set if `time` is less
+     // than the video duration, otherwise it will fail to generate an image.
+     if time < asset.duration {
+-      generator.requestedTimeToleranceBefore = .zero
++      generator.requestedTimeToleranceBefore = CMTime(value: options.toleranceBeforeMs, timescale: 1000)
+     }
+ 
+     let imgRef = try generator.copyCGImage(at: time, actualTime: nil)
+diff --git a/node_modules/expo-video-thumbnails/ios/VideoThumbnailsOptions.swift b/node_modules/expo-video-thumbnails/ios/VideoThumbnailsOptions.swift
+index 8310a8c..34f1e6e 100644
+--- a/node_modules/expo-video-thumbnails/ios/VideoThumbnailsOptions.swift
++++ b/node_modules/expo-video-thumbnails/ios/VideoThumbnailsOptions.swift
+@@ -4,4 +4,6 @@ internal struct VideoThumbnailsOptions: Record {
+   @Field var quality: Double = 1.0
+   @Field var time: Int64 = 0
+   @Field var headers: [String: String] = [String: String]()
++  @Field var toleranceBeforeMs: Int64 = 0
++  @Field var toleranceAfterMs: Int64 = 0
+ }
+diff --git a/node_modules/expo-video-thumbnails/src/VideoThumbnailsTypes.types.ts b/node_modules/expo-video-thumbnails/src/VideoThumbnailsTypes.types.ts
+index 1576080..9f196b9 100644
+--- a/node_modules/expo-video-thumbnails/src/VideoThumbnailsTypes.types.ts
++++ b/node_modules/expo-video-thumbnails/src/VideoThumbnailsTypes.types.ts
+@@ -29,4 +29,6 @@ export type VideoThumbnailsOptions = {
+    * In case `sourceFilename` is a remote URI, `headers` object is passed in a network request.
+    */
+   headers?: Record<string, string>;
++  toleranceBeforeMs?: number;
++  toleranceAfterMs?: number;
+ };
