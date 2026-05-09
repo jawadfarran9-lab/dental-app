@@ -28,6 +28,10 @@ import Animated, {
  */
 
 const THUMB_SIZE = 60;
+// Pixel-grid-aligned extraction interval. Invariant:
+// THUMB_SECONDS === THUMB_SIZE / PIXELS_PER_SECOND (60 / 40 = 1.5).
+// If PIXELS_PER_SECOND in app/reels-edit.tsx changes, update this.
+const THUMB_SECONDS = 1.5;
 const QUALITY = 0.7;
 const FADE_DURATION = 250;
 const SHIMMER_DURATION = 1200;
@@ -115,7 +119,7 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
   const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_SIZE));
-  const cacheKey = `${uri}::${numThumbs}`;
+  const cacheKey = `${uri}::${numThumbs}::v2`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
     return thumbnailCache.get(cacheKey) ?? Array(numThumbs).fill(null);
@@ -133,7 +137,7 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
     }
 
     const generateThumbnails = async () => {
-      const interval = duration / numThumbs;
+      const interval = THUMB_SECONDS;
       const maxTimeMs = Math.max(0, (duration - 0.1) * 1000);
 
       const promises = Array.from({ length: numThumbs }, (_, i) => {
