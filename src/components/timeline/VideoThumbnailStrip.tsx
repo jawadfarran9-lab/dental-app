@@ -121,7 +121,7 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
   const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
-  const cacheKey = `${uri}::${numThumbs}::v5`;
+  const cacheKey = `${uri}::${numThumbs}::v6`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
     return thumbnailCache.get(cacheKey) ?? Array(numThumbs).fill(null);
@@ -143,10 +143,13 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
       const maxTimeMs = Math.max(0, (duration - 0.1) * 1000);
 
       const promises = Array.from({ length: numThumbs }, (_, i) => {
-        const timeMs = Math.min(Math.round((i + 0.5) * interval * 1000), maxTimeMs);
+        const offset = ((i * 0.6180339887) % 1) * 0.9 + 0.05;
+        const timeMs = Math.min(Math.round((i + offset) * interval * 1000), maxTimeMs);
         return VideoThumbnails.getThumbnailAsync(uri, {
           time: timeMs,
           quality: QUALITY,
+          toleranceBeforeMs: 500,
+          toleranceAfterMs: 500,
         })
           .then((result) => result.uri)
           .catch((err) => {
