@@ -39,30 +39,37 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<MediaAsset[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
 
   const handleSelect = useCallback(async (item: MediaAsset) => {
     if (!isSelecting) {
-      let playableUri = item.uri;
-      if (item.mediaType === 'video') {
-        playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+      if (isResolving) return;
+      setIsResolving(true);
+      try {
+        let playableUri = item.uri;
+        if (item.mediaType === 'video') {
+          playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+        }
+        console.log('[gallery] Resolved URI:', playableUri);
+        router.push({
+          pathname: '/reels-edit' as any,
+          params: {
+            segments: JSON.stringify([
+              {
+                uri: playableUri,
+                // Phase 18.c Fix #M: Math.round eliminates iOS AVFoundation
+                // sub-second float drift (e.g., 10.034 → 10). At PPS=40, this
+                // removes the ~1.36px ruler-vs-segment misalignment visible after
+                // Fix #K corrected the larger 12px separator drift. Photos remain 5.
+                duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
+                mediaType: item.mediaType,
+              },
+            ]),
+          },
+        });
+      } finally {
+        setIsResolving(false);
       }
-      console.log('[gallery] Resolved URI:', playableUri);
-      router.push({
-        pathname: '/reels-edit' as any,
-        params: {
-          segments: JSON.stringify([
-            {
-              uri: playableUri,
-              // Phase 18.c Fix #M: Math.round eliminates iOS AVFoundation
-              // sub-second float drift (e.g., 10.034 → 10). At PPS=40, this
-              // removes the ~1.36px ruler-vs-segment misalignment visible after
-              // Fix #K corrected the larger 12px separator drift. Photos remain 5.
-              duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
-              mediaType: item.mediaType,
-            },
-          ]),
-        },
-      });
       return;
     }
     setSelectedItems((prev) => {
@@ -71,7 +78,7 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
       if (prev.length >= MAX_SELECTION) return prev;
       return [...prev, item];
     });
-  }, [isSelecting, router]);
+  }, [isSelecting, isResolving, router]);
 
   const handleHeaderAction = () => {
     if (isSelecting) {
@@ -280,6 +287,11 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
               </>
             )}
           </Pressable>
+        </View>
+      )}
+      {isResolving && (
+        <View style={styles.loadingOverlay} pointerEvents="auto">
+          <ActivityIndicator size="large" color="#fff" />
         </View>
       )}
     </View>
@@ -528,5 +540,16 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 999,
   },
 });
