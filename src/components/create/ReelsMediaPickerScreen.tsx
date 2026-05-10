@@ -38,6 +38,7 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
 
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectedItems, setSelectedItems] = useState<MediaAsset[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSelect = useCallback(async (item: MediaAsset) => {
     if (!isSelecting) {
@@ -82,23 +83,29 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
   };
 
   const handleNext = async () => {
-    const segments: { uri: string; duration: number; mediaType: 'photo' | 'video' }[] = [];
-    for (const item of selectedItems) {
-      let playableUri = item.uri;
-      if (item.mediaType === 'video') {
-        playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    try {
+      const segments: { uri: string; duration: number; mediaType: 'photo' | 'video' }[] = [];
+      for (const item of selectedItems) {
+        let playableUri = item.uri;
+        if (item.mediaType === 'video') {
+          playableUri = await resolveMediaToOwnedFile(item.id, item.uri, item.mediaType);
+        }
+        console.log('[gallery] Resolved URI:', playableUri);
+        segments.push({
+          uri: playableUri,
+          duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
+          mediaType: item.mediaType,
+        });
       }
-      console.log('[gallery] Resolved URI:', playableUri);
-      segments.push({
-        uri: playableUri,
-        duration: item.mediaType === 'photo' ? 5 : Math.round(item.duration ?? 0),
-        mediaType: item.mediaType,
+      router.push({
+        pathname: '/reels-edit' as any,
+        params: { segments: JSON.stringify(segments) },
       });
+    } finally {
+      setIsSubmitting(false);
     }
-    router.push({
-      pathname: '/reels-edit' as any,
-      params: { segments: JSON.stringify(segments) },
-    });
   };
 
   const handleRemoveItem = useCallback((id: string) => {
@@ -263,9 +270,15 @@ const ReelsMediaPickerScreen: React.FC<ReelsMediaPickerScreenProps> = ({ onClose
               </View>
             ))}
           </ScrollView>
-          <Pressable style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>Next</Text>
-            <Ionicons name="arrow-forward" size={16} color="#fff" />
+          <Pressable style={styles.nextButton} onPress={handleNext} disabled={isSubmitting}>
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <Text style={styles.nextButtonText}>Next</Text>
+                <Ionicons name="arrow-forward" size={16} color="#fff" />
+              </>
+            )}
           </Pressable>
         </View>
       )}
