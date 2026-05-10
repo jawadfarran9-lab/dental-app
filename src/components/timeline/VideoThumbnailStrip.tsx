@@ -125,7 +125,7 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
   // after a bump may briefly contend with the player for CPU while the
   // cache fills; subsequent plays are smooth (Phase 24A confirmed transient,
   // not a regression). Versions: v5=Phase 22 mid-tile, v6=Phase 23 keyframe.
-  const cacheKey = `${uri}::${numThumbs}::v6`;
+  const cacheKey = `${uri}::${numThumbs}::v7`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
     return thumbnailCache.get(cacheKey) ?? Array(numThumbs).fill(null);
@@ -147,13 +147,11 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
       const maxTimeMs = Math.max(0, (duration - 0.1) * 1000);
 
       const promises = Array.from({ length: numThumbs }, (_, i) => {
-        const offset = ((i * 0.6180339887) % 1) * 0.9 + 0.05;
-        const timeMs = Math.min(Math.round((i + offset) * interval * 1000), maxTimeMs);
+        const offset = (i % 2 === 1) ? -0.3 : 0.5;
+        const timeMs = Math.max(0, Math.min(Math.round((i + offset) * interval * 1000), maxTimeMs));
         return VideoThumbnails.getThumbnailAsync(uri, {
           time: timeMs,
           quality: QUALITY,
-          toleranceBeforeMs: 500,
-          toleranceAfterMs: 500,
         })
           .then((result) => result.uri)
           .catch((err) => {
