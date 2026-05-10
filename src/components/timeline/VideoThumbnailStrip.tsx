@@ -121,6 +121,10 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
   const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
+  // Cache key. Bumping forces full re-extraction on next mount. First play
+  // after a bump may briefly contend with the player for CPU while the
+  // cache fills; subsequent plays are smooth (Phase 24A confirmed transient,
+  // not a regression). Versions: v5=Phase 22 mid-tile, v6=Phase 23 keyframe.
   const cacheKey = `${uri}::${numThumbs}::v6`;
 
   const [thumbUris, setThumbUris] = useState<(string | null)[]>(() => {
