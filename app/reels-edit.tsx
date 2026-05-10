@@ -1539,7 +1539,7 @@ export default function ReelsEditScreen() {
       programmaticScrollTo(0, false);
       const first = segments[0];
       if (first.mediaType !== 'photo') {
-        player.replace(first.uri);
+        player.replaceAsync(first.uri);
       }
     }
   };
