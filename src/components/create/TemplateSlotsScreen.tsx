@@ -54,7 +54,7 @@ const TemplateSlotsScreen: React.FC<TemplateSlotsScreenProps> = ({ templateId, s
       // Phase 18.c Fix #M: round duration to integer seconds.
       segments.push({
         uri: playableUri,
-        duration: item.mediaType === 'photo' ? (item.duration ?? 5) : Math.round(item.duration ?? 0),
+        duration: item.mediaType === 'photo' ? (item.duration ?? 5) : (item.duration ?? 0),
         mediaType: item.mediaType
       });
     }

@@ -120,7 +120,14 @@ ShimmerPlaceholder.displayName = 'ShimmerPlaceholder';
 // Main component
 // ============================================================
 const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive }) => {
-  const numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
+  // Phase 41a-fix-2: drop the last thumb if it would be narrower than
+  // the perceptual minimum. The prior thumb absorbs the remainder via
+  // the existing per-thumb width formula.
+  const MIN_LAST_THUMB_WIDTH = 8;
+  let numThumbs = Math.max(1, Math.ceil(segmentPx / THUMB_WIDTH));
+  if (numThumbs > 1 && segmentPx - (numThumbs - 1) * THUMB_WIDTH < MIN_LAST_THUMB_WIDTH) {
+    numThumbs -= 1;
+  }
   // Cache key. Bumping forces full re-extraction on next mount. First play
   // after a bump may briefly contend with the player for CPU while the
   // cache fills; subsequent plays are smooth (Phase 24A confirmed transient,
@@ -186,7 +193,7 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
       {thumbUris.map((thumbUri, i) => {
         const isLast = i === numThumbs - 1;
         const thumbWidth = isLast
-          ? Math.max(THUMB_WIDTH, segmentPx - i * THUMB_WIDTH)
+          ? Math.max(1, segmentPx - i * THUMB_WIDTH)
           : THUMB_WIDTH;
 
         if (thumbUri) {
