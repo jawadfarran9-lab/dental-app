@@ -186,7 +186,7 @@ const VideoThumbnailStrip = memo<Props>(({ uri, segmentPx, duration, isActive })
       {thumbUris.map((thumbUri, i) => {
         const isLast = i === numThumbs - 1;
         const thumbWidth = isLast
-          ? Math.max(THUMB_WIDTH, segmentPx - i * THUMB_WIDTH)
+          ? Math.max(1, segmentPx - i * THUMB_WIDTH)
           : THUMB_WIDTH;
 
         if (thumbUri) {
