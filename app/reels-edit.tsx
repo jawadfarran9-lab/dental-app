@@ -674,7 +674,11 @@ const styles = StyleSheet.create({
   playhead: {
     position: 'absolute',
     width: 2,
-    top: 0,
+    // Phase 43d: extend upward into the controls row above (controlsRow
+    // marginTop 8 + icon 18 + marginBottom 6 + timelineWrapper marginTop 8 = 40)
+    // so the line visually connects to the play controls. Relies on RN
+    // default overflow:'visible' on the relative parent timelineScrollCol.
+    top: -30,
     bottom: 0,
     backgroundColor: '#fff',
     zIndex: 10,
