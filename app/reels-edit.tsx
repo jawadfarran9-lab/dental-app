@@ -1825,7 +1825,7 @@ export default function ReelsEditScreen() {
         // to delay timeUpdate event delivery and cause subtle
         // scroll judder. Counter still updates at 5Hz (200ms) —
         // imperceptible difference for whole-second display.
-        if (frameCountRef.current % 12 === 0) {
+        if (frameCountRef.current % 60 === 0) { // Phase 43a: 5Hz -> 1Hz
           setGlobalTime(masterTime);
         }
         frameCountRef.current++;
@@ -1901,7 +1901,7 @@ export default function ReelsEditScreen() {
   }, [segments, currentSegmentIndex, player]);
 
   const activeStyle = STYLE_PRESETS.find(s => s.id === selectedStyleId);
-  const activeSegmentIndex = getSegmentFromGlobalTime(globalTime).index;
+  const activeSegmentIndex = currentSegmentIndex; // Phase 43a: sync source eliminates 1Hz throttle lag
 
   const gestureStartRef = useRef<{
     [id: string]: {
