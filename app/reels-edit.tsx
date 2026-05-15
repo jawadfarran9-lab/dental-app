@@ -1136,6 +1136,20 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.06)',
     marginBottom: 4,
   },
+  // Phase 51b: Time-driver line — absolute child of rulerContainer.
+  // Sits at the visual bottom edge, spans the full ruler width
+  // (= totalDuration * PIXELS_PER_SECOND because rulerContainer
+  // inherits the wrapper width). Zero layout impact: does NOT
+  // consume space, does NOT shift the segment row. Scrolls in sync
+  // with ruler ticks as part of the same scrollable wrapper.
+  timeDriverLine: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 1,
+    backgroundColor: '#ffffff',
+  },
   rulerTickWrap: {
     // Phase 18.b Fix #C: width: 0 + alignItems center makes
     // children overflow symmetrically around the declared left,
@@ -2733,12 +2747,23 @@ export default function ReelsEditScreen() {
                 isScrubbingRef.current = false;
                 isScrubbingShared.value = false; // Phase 17.d Batch 2
                 isProgrammaticScrollRef.current = false;
-                // Phase 17.e: Pause-on-Scrub UX. Always prime refs from final
-                // scroll position. Do NOT auto-resume playback — user must
-                // press Play to continue. This matches CapCut/Premiere
-                // behavior and eliminates the snap-back race.
-                const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                // Phase 52b: Atomic scrub commit — close the coherence gap.
+                // Compute final global time, clamp to valid range, derive segment
+                // index + localTime, then commit segment refs FIRST followed by
+                // time refs. This ensures the next RAF tick computes
+                // masterTime = elapsedBefore + nativeTime against a consistent
+                // (segIndex, elapsedBefore, nativeTime) triple.
+                const rawFinalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                const finalGlobalTime = Math.max(0, Math.min(rawFinalGlobalTime, totalDuration - 0.01));
+                const { index: finalSegIndex, localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                const finalElapsedBefore = finalGlobalTime - primedLocalT;
+                // Segment refs FIRST (atomic commit)
+                segmentIndexRef.current = finalSegIndex;
+                elapsedBeforeRef.current = finalElapsedBefore;
+                if (finalSegIndex !== currentSegmentIndex) {
+                  setCurrentSegmentIndex(finalSegIndex);
+                }
+                // Then time refs
                 nativeTimeRef.current = primedLocalT;
                 localTimeRef.current = primedLocalT;
                 // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
@@ -2746,6 +2771,7 @@ export default function ReelsEditScreen() {
                 // calling scrollTo with the stale pre-scrub value.
                 masterTimeShared.value = finalGlobalTime;
                 lastAnimatedMasterTimeRef.current = finalGlobalTime;
+                lastMasterTimeRef.current = finalGlobalTime;
                 wasPlayingBeforeScrubRef.current = false;
               }}
               // Phase 17.0: Resume playback after scroll ends (drag without momentum)
@@ -2754,15 +2780,27 @@ export default function ReelsEditScreen() {
                 //               case that does not enter momentum deceleration)
                 isScrubbingRef.current = false;
                 isScrubbingShared.value = false; // Phase 17.d Batch 2
-                // Phase 17.e: Pause-on-Scrub UX. Always prime refs from final
-                // scroll position. Do NOT auto-resume playback.
-                const finalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                const { localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                // Phase 52b: Atomic scrub commit — parity with onMomentumScrollEnd.
+                // Same atomic ordering: clamp → derive segment → commit segment
+                // refs FIRST, then time refs. Closes the same coherence gap on
+                // the drag-release-without-momentum path.
+                const rawFinalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+                const finalGlobalTime = Math.max(0, Math.min(rawFinalGlobalTime, totalDuration - 0.01));
+                const { index: finalSegIndex, localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+                const finalElapsedBefore = finalGlobalTime - primedLocalT;
+                // Segment refs FIRST (atomic commit)
+                segmentIndexRef.current = finalSegIndex;
+                elapsedBeforeRef.current = finalElapsedBefore;
+                if (finalSegIndex !== currentSegmentIndex) {
+                  setCurrentSegmentIndex(finalSegIndex);
+                }
+                // Then time refs
                 nativeTimeRef.current = primedLocalT;
                 localTimeRef.current = primedLocalT;
                 // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
                 masterTimeShared.value = finalGlobalTime;
                 lastAnimatedMasterTimeRef.current = finalGlobalTime;
+                lastMasterTimeRef.current = finalGlobalTime;
                 wasPlayingBeforeScrubRef.current = false;
               }}
             >
@@ -2771,6 +2809,8 @@ export default function ReelsEditScreen() {
             {/* Phase 17.a: Time ruler — CapCut-grade */}
             <View style={styles.rulerContainer}>
               {rulerTicks}
+              {/* Phase 51b: Time-driver line — absolute child, scrolls with ruler */}
+              <View style={styles.timeDriverLine} pointerEvents="none" />
             </View>
             {/* Segment row */}
             <View style={styles.timelineSegmentRow}>
