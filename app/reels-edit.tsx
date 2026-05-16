@@ -10,9 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Phase 17.d: Reanimated UI-thread scroll (Batch 1: infrastructure, Batch 2: worklet)
 import ReAnimated, {
   Easing as ReanimatedEasing,
-  runOnJS,
   scrollTo,
-  useAnimatedProps,
   useAnimatedReaction,
   useAnimatedRef,
   useSharedValue,
@@ -1213,8 +1211,6 @@ export default function ReelsEditScreen() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [globalTime, setGlobalTime] = useState(0);
-  // Phase 53a: 4Hz overlay visibility tick — replaces globalTime for overlay show/hide filter
-  const [overlayVisibilityTime, setOverlayVisibilityTime] = useState(0);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [selectedSeparatorIndex, setSelectedSeparatorIndex] = useState<number | null>(null);
   const segmentIndexRef = useRef(0);
@@ -1271,28 +1267,6 @@ export default function ReelsEditScreen() {
       'worklet';
       if (isScrubbingShared.value) return;
       scrollTo(scrollViewRef, masterTime * PIXELS_PER_SECOND, 0, false);
-    },
-  );
-
-  // Phase 53a: UI-thread counter text — derived from masterTimeShared, zero JS re-renders
-  const counterAnimatedProps = useAnimatedProps(() => {
-    'worklet';
-    const t = masterTimeShared.value;
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t % 60);
-    const text = `${m}:${s < 10 ? '0' : ''}${s}`;
-    return { text, defaultValue: text };
-  });
-
-  // Phase 53a: 4Hz overlay-visibility sync — quantize masterTime to 250ms steps,
-  // only setState when the quantized value changes (≤4 re-renders/sec instead of 60).
-  useAnimatedReaction(
-    () => Math.floor(masterTimeShared.value * 4) / 4,
-    (quantized, prev) => {
-      'worklet';
-      if (quantized !== prev) {
-        runOnJS(setOverlayVisibilityTime)(quantized);
-      }
     },
   );
 
@@ -1486,9 +1460,6 @@ export default function ReelsEditScreen() {
     // planned as Phase 17.d.
     p.timeUpdateEventInterval = 0.1; // Phase 17.d Batch 3 v3: revert from 0.05 (caused animation overlap with 95ms withTiming)
   });
-
-  // Phase 53a: AnimatedTextInput allows UI-thread text updates (Text doesn't support animated text content)
-  const AnimatedTextInput = ReAnimated.createAnimatedComponent(TextInput);
 
   const formatTime = (t: number) => {
     const m = Math.floor(t / 60);
@@ -1767,9 +1738,7 @@ export default function ReelsEditScreen() {
     // adding globalTime to deps (which would restart clock on every tick).
     // Phase 17.c Batch 1: Store in localTimeRef instead of let-variable so
     // Batch 2's RAF loop can read current photo time without closure capture.
-    // Phase 53a: source from masterTimeShared (live UI-thread truth) instead of
-    // globalTimeRef which lagged up to 1s due to throttled setGlobalTime.
-    localTimeRef.current = Math.max(0, masterTimeShared.value - elapsedBefore);
+    localTimeRef.current = Math.max(0, globalTimeRef.current - elapsedBefore);
     // Phase 17.b.9: Reverted to 100ms — matches video timeUpdate
     // 10Hz cadence. Reanimated approach in Phase 17.d.
     const TICK_MS = 100;
@@ -1870,10 +1839,9 @@ export default function ReelsEditScreen() {
         // to delay timeUpdate event delivery and cause subtle
         // scroll judder. Counter still updates at 5Hz (200ms) —
         // imperceptible difference for whole-second display.
-        // Phase 53a: setGlobalTime DELETED. Counter now reads masterTimeShared
-        // on UI thread (zero JS re-renders). Overlay visibility uses a separate
-        // 4Hz quantized useAnimatedReaction. This eliminates the 1Hz re-render
-        // storm that was starving RAF and causing ~1s playback freezes.
+        if (frameCountRef.current % 60 === 0) { // Phase 43a: 5Hz -> 1Hz
+          setGlobalTime(masterTime);
+        }
         frameCountRef.current++;
       }
       rafIdRef.current = requestAnimationFrame(tick);
@@ -1978,7 +1946,7 @@ export default function ReelsEditScreen() {
   const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
 
   const overlayItems = textOverlays
-    .filter(item => overlayVisibilityTime >= item.startTime && overlayVisibilityTime <= item.endTime)
+    .filter(item => globalTime >= item.startTime && globalTime <= item.endTime)
     .map(item => {
       const handleResponder = PanResponder.create({
         onStartShouldSetPanResponder: () => true,
@@ -2703,12 +2671,9 @@ export default function ReelsEditScreen() {
           <View style={styles.timelineWrapper}>
             {/* Phase 17.f: Fixed counter column — left of scroll column */}
             <View style={styles.timelineCounterCol}>
-              <AnimatedTextInput
-                style={styles.timelineCounterText}
-                editable={false}
-                value={undefined}
-                animatedProps={counterAnimatedProps}
-              />
+              <Text style={styles.timelineCounterText}>
+                {formatTime(globalTime)}
+              </Text>
             </View>
             {/* Phase 17.f: Scroll column — onLayout measures THIS width for scroll math */}
             <View
