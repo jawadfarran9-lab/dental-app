@@ -1215,6 +1215,7 @@ export default function ReelsEditScreen() {
   const [selectedSeparatorIndex, setSelectedSeparatorIndex] = useState<number | null>(null);
   const segmentIndexRef = useRef(0);
   const isScrubbingRef = useRef(false);
+  const momentumFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasPlayingBeforeScrubRef = useRef<boolean>(false);
   const timelineWidthRef = useRef(0);
   // Phase 16.b — Photo clock interval ID, used to advance
@@ -1254,6 +1255,17 @@ export default function ReelsEditScreen() {
   // Phase 17.d Batch 3 v2: tracks last masterTime that triggered
   // withTiming. Prevents 60Hz cancellation of 100ms animations.
   const lastAnimatedMasterTimeRef = useRef<number>(-1);
+  // Phase G.7: ensure the momentum-fallback timer never leaks
+  // across unmount or fast-refresh.
+  useEffect(() => {
+    return () => {
+      if (momentumFallbackTimerRef.current) {
+        clearTimeout(momentumFallbackTimerRef.current);
+        momentumFallbackTimerRef.current = null;
+      }
+    };
+  }, []);
+
   // Phase 17.d Batch 2: Shared values for UI-thread scroll
   const masterTimeShared = useSharedValue<number>(0);
   const isScrubbingShared = useSharedValue<boolean>(false);
@@ -2631,6 +2643,47 @@ export default function ReelsEditScreen() {
     </Animated.View>
   );
 
+  // Phase G.7: centralized scrub-end commit. Used by both the
+  // onMomentumScrollEnd path (normal momentum) and the
+  // onScrollEndDrag fallback timer (stationary release).
+  const handleScrubCommit = () => {
+    // Idempotent timer cleanup
+    if (momentumFallbackTimerRef.current) {
+      clearTimeout(momentumFallbackTimerRef.current);
+      momentumFallbackTimerRef.current = null;
+    }
+    // Phase 17.0.1: Disable seek gate after deceleration completes
+    isScrubbingRef.current = false;
+    isScrubbingShared.value = false; // Phase 17.d Batch 2
+    isProgrammaticScrollRef.current = false;
+    // Phase 52b: Atomic scrub commit — close the coherence gap.
+    // Compute final global time, clamp to valid range, derive segment
+    // index + localTime, then commit segment refs FIRST followed by
+    // time refs. This ensures the next RAF tick computes
+    // masterTime = elapsedBefore + nativeTime against a consistent
+    // (segIndex, elapsedBefore, nativeTime) triple.
+    const rawFinalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
+    const finalGlobalTime = Math.max(0, Math.min(rawFinalGlobalTime, totalDuration - 0.01));
+    const { index: finalSegIndex, localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
+    const finalElapsedBefore = finalGlobalTime - primedLocalT;
+    // Segment refs FIRST (atomic commit)
+    segmentIndexRef.current = finalSegIndex;
+    elapsedBeforeRef.current = finalElapsedBefore;
+    if (finalSegIndex !== currentSegmentIndex) {
+      setCurrentSegmentIndex(finalSegIndex);
+    }
+    // Then time refs
+    nativeTimeRef.current = primedLocalT;
+    localTimeRef.current = primedLocalT;
+    // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
+    // Cancels any in-flight withTiming and prevents the worklet from
+    // calling scrollTo with the stale pre-scrub value.
+    masterTimeShared.value = finalGlobalTime;
+    lastAnimatedMasterTimeRef.current = finalGlobalTime;
+    lastMasterTimeRef.current = finalGlobalTime;
+    wasPlayingBeforeScrubRef.current = false;
+  };
+
   /* ── STATE B: Raised / advanced edit mode ── */
   if (isFullscreen) {
     return (
@@ -2744,7 +2797,6 @@ export default function ReelsEditScreen() {
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 scrollEventThrottle={16}
-                decelerationRate="fast"
                 bounces={false}
               alwaysBounceHorizontal={false}
               // Phase 17.0: Half-viewport padding so t=0 and t=totalDuration can reach center
@@ -2767,6 +2819,12 @@ export default function ReelsEditScreen() {
               }}
               // Phase 17.0: Pause playback when user begins manual scrub
               onScrollBeginDrag={() => {
+                // Phase G.7: cancel any pending stationary-release fallback
+                // (covers fast re-grab before the 50ms fallback fires).
+                if (momentumFallbackTimerRef.current) {
+                  clearTimeout(momentumFallbackTimerRef.current);
+                  momentumFallbackTimerRef.current = null;
+                }
                 // Phase 17.0.1: Enable seek effect gate for user-driven scrub
                 isScrubbingRef.current = true;
                 isScrubbingShared.value = true; // Phase 17.d Batch 2: gate UI worklet
@@ -2785,67 +2843,38 @@ export default function ReelsEditScreen() {
                   setIsPlaying(false);
                 }
               }}
+              // Phase G.7: native momentum is starting after a drag release.
+              // Cancel the stationary-release fallback so only
+              // onMomentumScrollEnd runs the atomic commit.
+              onMomentumScrollBegin={() => {
+                if (momentumFallbackTimerRef.current) {
+                  clearTimeout(momentumFallbackTimerRef.current);
+                  momentumFallbackTimerRef.current = null;
+                }
+              }}
               // Phase 17.0: Resume playback after scroll ends (momentum)
               onMomentumScrollEnd={() => {
-                // Phase 17.0.1: Disable seek gate after deceleration completes
-                isScrubbingRef.current = false;
-                isScrubbingShared.value = false; // Phase 17.d Batch 2
-                isProgrammaticScrollRef.current = false;
-                // Phase 52b: Atomic scrub commit — close the coherence gap.
-                // Compute final global time, clamp to valid range, derive segment
-                // index + localTime, then commit segment refs FIRST followed by
-                // time refs. This ensures the next RAF tick computes
-                // masterTime = elapsedBefore + nativeTime against a consistent
-                // (segIndex, elapsedBefore, nativeTime) triple.
-                const rawFinalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                const finalGlobalTime = Math.max(0, Math.min(rawFinalGlobalTime, totalDuration - 0.01));
-                const { index: finalSegIndex, localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
-                const finalElapsedBefore = finalGlobalTime - primedLocalT;
-                // Segment refs FIRST (atomic commit)
-                segmentIndexRef.current = finalSegIndex;
-                elapsedBeforeRef.current = finalElapsedBefore;
-                if (finalSegIndex !== currentSegmentIndex) {
-                  setCurrentSegmentIndex(finalSegIndex);
-                }
-                // Then time refs
-                nativeTimeRef.current = primedLocalT;
-                localTimeRef.current = primedLocalT;
-                // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
-                // Cancels any in-flight withTiming and prevents the worklet from
-                // calling scrollTo with the stale pre-scrub value.
-                masterTimeShared.value = finalGlobalTime;
-                lastAnimatedMasterTimeRef.current = finalGlobalTime;
-                lastMasterTimeRef.current = finalGlobalTime;
-                wasPlayingBeforeScrubRef.current = false;
+                // Phase G.7: native momentum has settled — delegate to shared
+                // commit helper (previously this body was inline and duplicated
+                // in onScrollEndDrag).
+                handleScrubCommit();
               }}
               // Phase 17.0: Resume playback after scroll ends (drag without momentum)
               onScrollEndDrag={() => {
-                // Phase 17.0.1: Clear seek gate on drag release (covers slow-release
-                //               case that does not enter momentum deceleration)
-                isScrubbingRef.current = false;
-                isScrubbingShared.value = false; // Phase 17.d Batch 2
-                // Phase 52b: Atomic scrub commit — parity with onMomentumScrollEnd.
-                // Same atomic ordering: clamp → derive segment → commit segment
-                // refs FIRST, then time refs. Closes the same coherence gap on
-                // the drag-release-without-momentum path.
-                const rawFinalGlobalTime = lastScrollXRef.current / PIXELS_PER_SECOND;
-                const finalGlobalTime = Math.max(0, Math.min(rawFinalGlobalTime, totalDuration - 0.01));
-                const { index: finalSegIndex, localTime: primedLocalT } = getSegmentFromGlobalTime(finalGlobalTime);
-                const finalElapsedBefore = finalGlobalTime - primedLocalT;
-                // Segment refs FIRST (atomic commit)
-                segmentIndexRef.current = finalSegIndex;
-                elapsedBeforeRef.current = finalElapsedBefore;
-                if (finalSegIndex !== currentSegmentIndex) {
-                  setCurrentSegmentIndex(finalSegIndex);
+                // Phase G.7: do NOT commit yet. Native momentum may follow.
+                // Schedule a stationary-release fallback; if
+                // onMomentumScrollBegin fires within 50ms it will cancel
+                // this timer and onMomentumScrollEnd will commit instead.
+                // Keeping isScrubbingShared TRUE through momentum is the
+                // critical change — it lets the native scroll coast without
+                // the playback worklet snapping it back via scrollTo.
+                if (momentumFallbackTimerRef.current) {
+                  clearTimeout(momentumFallbackTimerRef.current);
                 }
-                // Then time refs
-                nativeTimeRef.current = primedLocalT;
-                localTimeRef.current = primedLocalT;
-                // Phase 17.d Batch 3 v4: Sync shared value to scrubbed position.
-                masterTimeShared.value = finalGlobalTime;
-                lastAnimatedMasterTimeRef.current = finalGlobalTime;
-                lastMasterTimeRef.current = finalGlobalTime;
-                wasPlayingBeforeScrubRef.current = false;
+                momentumFallbackTimerRef.current = setTimeout(() => {
+                  momentumFallbackTimerRef.current = null;
+                  handleScrubCommit();
+                }, 50);
               }}
             >
             {/* Phase 17.0: Inner content wrapper */}
