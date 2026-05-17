@@ -2654,7 +2654,6 @@ export default function ReelsEditScreen() {
     }
     // Phase 17.0.1: Disable seek gate after deceleration completes
     isScrubbingRef.current = false;
-    isScrubbingShared.value = false; // Phase 17.d Batch 2
     isProgrammaticScrollRef.current = false;
     // Phase 52b: Atomic scrub commit — close the coherence gap.
     // Compute final global time, clamp to valid range, derive segment
@@ -2681,6 +2680,12 @@ export default function ReelsEditScreen() {
     masterTimeShared.value = finalGlobalTime;
     lastAnimatedMasterTimeRef.current = finalGlobalTime;
     lastMasterTimeRef.current = finalGlobalTime;
+    // Phase G.8 PART A (Issue A fix): release the scrub flag
+    // ONLY AFTER masterTimeShared has been hard-written, so the
+    // useAnimatedReaction worklet sees a stable masterTime value
+    // when isScrubbingShared flips false. Prevents scrollTo from
+    // snapping back to the pre-scrub position.
+    isScrubbingShared.value = false;
     wasPlayingBeforeScrubRef.current = false;
   };
 
