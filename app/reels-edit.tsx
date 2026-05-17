@@ -4,7 +4,7 @@ import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useVideoPlayer, VideoView } from 'expo-video';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Animated, Dimensions, Easing, PanResponder, Platform, Pressable, ScrollView, StatusBar, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Phase 17.d: Reanimated UI-thread scroll (Batch 1: infrastructure, Batch 2: worklet)
@@ -1462,9 +1462,21 @@ export default function ReelsEditScreen() {
   });
 
   const formatTime = (t: number) => {
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t % 60);
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+    // Phase G.5: CapCut-style display.
+    // (1) Math.ceil on total seconds — counter increments immediately
+    //     at the start of playback (t=0.01 → "00:01" instead of
+    //     waiting until t=1.0 to leave "00:00"). Eliminates the
+    //     perception of "frozen counter" during the first second.
+    // (2) Zero-padded minutes — produces "MM:SS" matching CapCut and
+    //     the standard editor format.
+    // Both ruler labels (input = exact integer `tRounded`) and the
+    // live counter (input = `globalTime` float) consume this helper.
+    // Math.ceil(integer) === integer, so ruler labels are unchanged
+    // numerically; they only gain the zero-pad on minutes.
+    const total = Math.ceil(t);
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
   // Phase 17.c Batch 1: Format with one-decimal precision (e.g., "0:07.3")
@@ -1528,6 +1540,16 @@ export default function ReelsEditScreen() {
       elapsedBeforeRef.current = segments
         .slice(0, nextIndex)
         .reduce((sum, s) => sum + (s.duration || 0), 0);
+      // Phase G.1: Rebase the RAF backward-jump guard baseline to the new
+      // segment's global offset. Without this, lastMasterTimeRef retains
+      // the prior segment's tail value and the guard rejects every
+      // legitimate frame of the new segment until native catches up —
+      // producing the transition stutter and frozen counter/playhead.
+      // Resetting lastAnimatedMasterTimeRef to -1 invalidates the
+      // withTiming dedupe so the next RAF tick dispatches a fresh
+      // masterTimeShared update from the new baseline.
+      lastMasterTimeRef.current = elapsedBeforeRef.current;
+      lastAnimatedMasterTimeRef.current = -1;
       setCurrentSegmentIndex(nextIndex);
       const next = segments[nextIndex];
       if (next.mediaType === 'photo') {
@@ -1551,6 +1573,12 @@ export default function ReelsEditScreen() {
       // Phase 18.b Fix #1: sync elapsedBeforeRef to 0 immediately
       // for loop-back consistency (matches forward-branch pattern).
       elapsedBeforeRef.current = 0;
+      // Phase G.1: Rebase guard baseline to 0 on loop wrap. Mirrors the
+      // forward-branch fix. Without this, the rejection cascade resumes
+      // immediately on loop-back and persists until the RAF effect's
+      // play-state reset fires on the next isPlaying false→true edge.
+      lastMasterTimeRef.current = 0;
+      lastAnimatedMasterTimeRef.current = -1;
       setCurrentSegmentIndex(0);
       setIsPlaying(false);
       // Phase 17.0: Scroll back to t=0 on loop
@@ -1813,13 +1841,19 @@ export default function ReelsEditScreen() {
         const targetX = masterTime * PIXELS_PER_SECOND;
         if (masterTime !== lastAnimatedMasterTimeRef.current) {
           lastAnimatedMasterTimeRef.current = masterTime;
+          // Phase G.2: duration extended from 100ms to 200ms to absorb iOS
+          // timeUpdate inter-arrival jitter (typical 80-130ms, observed up
+          // to ~180ms). At PIXELS_PER_SECOND=30 this introduces ~3px of
+          // constant visual lag (imperceptible during playback flow) but
+          // eliminates the flat-spot stutter that occurred when the prior
+          // 100ms animation landed before the next timeUpdate arrived.
           masterTimeShared.value = withTiming(masterTime, {
             // Phase 19 Fix #J: 95ms → 100ms exactly matches
             // timeUpdateEventInterval=0.1 (100ms). Eliminates the 5ms
             // structural stationary gap per cycle. Reanimated handles
             // 1-2ms early re-targets via interpolation from current
             // position.
-            duration: 100,
+            duration: 200,
             easing: ReanimatedEasing.linear,
           });
         }
@@ -1839,8 +1873,18 @@ export default function ReelsEditScreen() {
         // to delay timeUpdate event delivery and cause subtle
         // scroll judder. Counter still updates at 5Hz (200ms) —
         // imperceptible difference for whole-second display.
+        // Phase G.3: Wrap setGlobalTime in startTransition so the
+        // React reconciliation of ReelsEditScreen is marked as a
+        // low-priority transition. Under React 18 concurrent
+        // rendering, the reconciler yields work at ~5ms intervals,
+        // allowing RAF callbacks to fire between yields. Eliminates
+        // the visible ~1Hz scroll freeze that occurred when the
+        // previous synchronous 5-15ms reconciliation blocked the JS
+        // thread and stalled the withTiming chain mid-animation.
         if (frameCountRef.current % 60 === 0) { // Phase 43a: 5Hz -> 1Hz
-          setGlobalTime(masterTime);
+          startTransition(() => {
+            setGlobalTime(masterTime);
+          });
         }
         frameCountRef.current++;
       }
