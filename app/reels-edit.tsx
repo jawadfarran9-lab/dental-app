@@ -658,10 +658,14 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 8,
     marginRight: 0,
   },
+  segmentSelected: {
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   segmentSeparator: {
     width: 2,
     height: '100%',
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
   },
   separatorHitbox: {
     // Phase 18.c Fix #K: removed from flex flow via position:'absolute' in JSX;
@@ -1213,6 +1217,12 @@ export default function ReelsEditScreen() {
   const [globalTime, setGlobalTime] = useState(0);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
   const [selectedSeparatorIndex, setSelectedSeparatorIndex] = useState<number | null>(null);
+  // Phase G.9.0a.1: visual-only clip selection state.
+  // null = no clip selected (default toolbar visible).
+  // Number = index of the selected clip (clip-action
+  // toolbar visible — to be wired in G.9.0a.2).
+  // DOES NOT replace activeSegmentIndex (playback state).
+  const [selectedClipIndex, setSelectedClipIndex] = useState<number | null>(null);
   const segmentIndexRef = useRef(0);
   const isScrubbingRef = useRef(false);
   const momentumFallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1940,6 +1950,20 @@ export default function ReelsEditScreen() {
     setSelectedSeparatorIndex(index);
     openSheet();
   };
+
+  // Phase G.9.0a.1: tap to toggle clip selection.
+  // Tapping a different clip switches selection.
+  // Tapping the same clip clears selection.
+  const handleClipPress = useCallback((index: number) => {
+    setSelectedClipIndex(prev => (prev === index ? null : index));
+  }, []);
+
+  // Phase G.9.0a.1: clear clip selection when exiting STATE B.
+  // STATE A has no thumbnails, so a stale selection would
+  // resurface if the user re-enters STATE B.
+  useEffect(() => {
+    if (!isFullscreen) setSelectedClipIndex(null);
+  }, [isFullscreen]);
 
   // Phase 16.b — Render <ExpoImage> for photo segments and
   // <VideoView> for video segments. The preview container is
@@ -2903,33 +2927,55 @@ export default function ReelsEditScreen() {
                       const isLast = index === segments.length - 1;
                       return (
                         <React.Fragment key={index}>
-                          <View
-                            style={[
-                              styles.segmentBar,
-                              { width: segmentPx },
-                              index === 0 && styles.segmentFirst,
-                              isLast && styles.segmentLast,
-                              index === activeSegmentIndex && { backgroundColor: '#666' },
-                            ]}
-                          >
-                            {/* Phase 17.b.1: Photo thumbnail — explicit % size matches working Phase 16.b preview pattern */}
-                            {seg.mediaType === 'photo' && seg.uri && (
-                              <ExpoImage
-                                source={{ uri: seg.uri }}
-                                style={{ width: '100%', height: '100%' }}
-                                contentFit="cover"
-                              />
-                            )}
-                            {/* Phase 18.a Step 3: Video thumbnail filmstrip */}
-                            {seg.mediaType === 'video' && seg.uri && (
-                              <VideoThumbnailStrip
-                                uri={seg.uri}
-                                segmentPx={segmentPx}
-                                duration={seg.duration || 1}
-                                isActive={index === activeSegmentIndex}
-                              />
-                            )}
-                          </View>
+                          <Pressable onPress={() => handleClipPress(index)}>
+                            <View
+                              style={[
+                                styles.segmentBar,
+                                { width: segmentPx },
+                                index === 0 && styles.segmentFirst,
+                                isLast && styles.segmentLast,
+                                index === activeSegmentIndex && { backgroundColor: '#666' },
+                                index === selectedClipIndex && styles.segmentSelected,
+                              ]}
+                            >
+                              {/* Phase 17.b.1: Photo thumbnail — explicit % size matches working Phase 16.b preview pattern */}
+                              {seg.mediaType === 'photo' && seg.uri && (
+                                <ExpoImage
+                                  source={{ uri: seg.uri }}
+                                  style={{ width: '100%', height: '100%' }}
+                                  contentFit="cover"
+                                />
+                              )}
+                              {/* Phase 18.a Step 3: Video thumbnail filmstrip */}
+                              {seg.mediaType === 'video' && seg.uri && (
+                                <VideoThumbnailStrip
+                                  uri={seg.uri}
+                                  segmentPx={segmentPx}
+                                  duration={seg.duration || 1}
+                                  isActive={index === activeSegmentIndex}
+                                />
+                              )}
+                              {/* Phase G.9.0a.1: selected-state trim handles
+                                  (visual mockup — no pan responders). Reuses
+                                  timelineTrimHandle styles. */}
+                              {index === selectedClipIndex && (
+                                <>
+                                  <View
+                                    style={[styles.timelineTrimHandle, styles.timelineTrimHandleLeft]}
+                                    pointerEvents="none"
+                                  >
+                                    <View style={styles.timelineTrimHandleGrip} pointerEvents="none" />
+                                  </View>
+                                  <View
+                                    style={[styles.timelineTrimHandle, styles.timelineTrimHandleRight]}
+                                    pointerEvents="none"
+                                  >
+                                    <View style={styles.timelineTrimHandleGrip} pointerEvents="none" />
+                                  </View>
+                                </>
+                              )}
+                            </View>
+                          </Pressable>
                           {!isLast && (
                             <Pressable
                               onPress={() => onSeparatorPress(index)}
