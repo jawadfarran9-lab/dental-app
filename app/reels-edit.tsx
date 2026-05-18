@@ -2085,6 +2085,21 @@ export default function ReelsEditScreen() {
     if (!isFullscreen) setSelectedClipIndex(null);
   }, [isFullscreen]);
 
+  // Phase G.9.0b.2: selection follows the playhead.
+  // When currentSegmentIndex changes (via scrub commit or
+  // playback advance), auto-transfer the white selection to
+  // the new clip under the playhead — matches CapCut.
+  // Gated via functional setState: only syncs if a selection
+  // ALREADY exists; does NOT auto-create one on scrub when
+  // nothing was selected.
+  useEffect(() => {
+    setSelectedClipIndex((prev) => {
+      if (prev === null) return null;
+      if (prev === currentSegmentIndex) return prev;
+      return currentSegmentIndex;
+    });
+  }, [currentSegmentIndex]);
+
   // Phase 16.b — Render <ExpoImage> for photo segments and
   // <VideoView> for video segments. The preview container is
   // agnostic; both render at 100% width/height with cover fit.
