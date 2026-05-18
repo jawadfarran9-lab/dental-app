@@ -473,6 +473,51 @@ function ToolbarPill({
   );
 }
 
+// Phase G.9.0a.2: visual-only clip-action button (CapCut
+// style). Icon + label + optional badge (Try free / New /
+// Free) + optional premium gem. NO onPress — purely visual.
+type ClipActionButtonProps = {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  badge?: 'try-free' | 'new' | 'free';
+  premium?: boolean;
+};
+const ClipActionButton: React.FC<ClipActionButtonProps> = ({
+  icon,
+  label,
+  badge,
+  premium,
+}) => (
+  <View style={styles.clipActionButton}>
+    <View style={styles.clipActionIconBox}>
+      <Ionicons name={icon} size={22} color="#fff" />
+      {premium && (
+        <View style={styles.clipActionGem}>
+          <Ionicons name="diamond" size={9} color="#A78BFA" />
+        </View>
+      )}
+      {badge === 'try-free' && (
+        <View style={[styles.clipActionBadge, styles.clipActionBadgeTryFree]}>
+          <Text style={styles.clipActionBadgeText}>Try free</Text>
+        </View>
+      )}
+      {badge === 'new' && (
+        <View style={[styles.clipActionBadge, styles.clipActionBadgeNew]}>
+          <Text style={styles.clipActionBadgeText}>New</Text>
+        </View>
+      )}
+      {badge === 'free' && (
+        <View style={[styles.clipActionBadge, styles.clipActionBadgeFree]}>
+          <Text style={styles.clipActionBadgeTextDark}>Free</Text>
+        </View>
+      )}
+    </View>
+    <Text style={styles.clipActionLabel} numberOfLines={2}>
+      {label}
+    </Text>
+  </View>
+);
+
 const pillStyles = StyleSheet.create({
   pillShadow: {
     borderRadius: 18,
@@ -794,6 +839,65 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 16,
     alignItems: 'center',
+  },
+  clipActionButton: {
+    width: 64,
+    marginHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 4,
+  },
+  clipActionIconBox: {
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  clipActionLabel: {
+    color: '#fff',
+    fontSize: 10,
+    marginTop: 6,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  clipActionGem: {
+    position: 'absolute',
+    top: -2,
+    right: 2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#1F1F1F',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clipActionBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  clipActionBadgeTryFree: {
+    backgroundColor: '#3FE5DB',
+  },
+  clipActionBadgeNew: {
+    backgroundColor: '#FF7A45',
+  },
+  clipActionBadgeFree: {
+    backgroundColor: '#4FC3F7',
+  },
+  clipActionBadgeText: {
+    color: '#000',
+    fontSize: 8,
+    fontWeight: '700',
+  },
+  clipActionBadgeTextDark: {
+    color: '#000',
+    fontSize: 8,
+    fontWeight: '700',
   },
   ctxBackBtn: {
     width: 40,
@@ -2149,6 +2253,58 @@ export default function ReelsEditScreen() {
       );
     });
 
+  // Phase G.9.0a.2: CapCut-style clip-action toolbar.
+  // Renders when selectedClipIndex !== null.
+  // Visual-only mockup — every button has NO onPress.
+  const clipActionToolbar = (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.toolRowContent}
+    >
+      <ClipActionButton icon="cut-outline" label="Split" />
+      <ClipActionButton icon="volume-medium-outline" label="Volume" />
+      <ClipActionButton icon="flash-outline" label="Animations" />
+      <ClipActionButton icon="sparkles-outline" label="Effects" />
+      <ClipActionButton icon="trash-outline" label="Delete" />
+      <ClipActionButton icon="videocam-outline" label="AI video" />
+      <ClipActionButton icon="speedometer-outline" label="Speed" />
+      <ClipActionButton icon="musical-notes-outline" label="Beats" />
+      <ClipActionButton icon="crop-outline" label="Crop" />
+      <ClipActionButton icon="copy-outline" label="Duplicate" />
+      <ClipActionButton icon="swap-horizontal-outline" label="Replace" />
+      <ClipActionButton icon="layers-outline" label="Overlay" />
+      <ClipActionButton icon="options-outline" label="Adjust" />
+      <ClipActionButton icon="color-filter-outline" label="Filters" />
+      <ClipActionButton icon="tv-outline" label="Video quality" premium />
+      <ClipActionButton icon="person-outline" label="Remove BG" premium />
+      <ClipActionButton icon="image-outline" label="Change BG" premium />
+      <ClipActionButton icon="remove-circle-outline" label="AI remove" badge="try-free" />
+      <ClipActionButton icon="expand-outline" label="AI expand" premium />
+      <ClipActionButton icon="shuffle-outline" label="AI remix" badge="try-free" />
+      <ClipActionButton icon="eye-outline" label="Eye contact" badge="free" />
+      <ClipActionButton icon="bulb-outline" label="Relight" premium />
+      <ClipActionButton icon="ellipse-outline" label="Opacity" />
+      <ClipActionButton icon="move-outline" label="Motion blur" premium />
+      <ClipActionButton icon="body-outline" label="Mimic motion" badge="try-free" />
+      <ClipActionButton icon="happy-outline" label="Change expressions" badge="try-free" />
+      <ClipActionButton icon="resize-outline" label="Transform" />
+      <ClipActionButton icon="scan-outline" label="Auto reframe" premium />
+      <ClipActionButton icon="analytics-outline" label="Stabilize" premium />
+      <ClipActionButton icon="locate-outline" label="Camera tracking" badge="new" />
+      <ClipActionButton icon="download-outline" label="Extract audio" premium />
+      <ClipActionButton icon="mic-outline" label="Isolate voice" premium />
+      <ClipActionButton icon="volume-mute-outline" label="Reduce noise" premium />
+      <ClipActionButton icon="pulse-outline" label="Audio effects" premium />
+      <ClipActionButton icon="mic-circle-outline" label="Enhance voice" />
+      <ClipActionButton icon="language-outline" label="Video translator" badge="try-free" />
+      <ClipActionButton icon="snow-outline" label="Freeze" />
+      <ClipActionButton icon="play-back-outline" label="Reverse" />
+      <ClipActionButton icon="ellipse-outline" label="Mask" />
+      <ClipActionButton icon="unlink-outline" label="Unlink" />
+    </ScrollView>
+  );
+
   const toolbar = (
     <ScrollView
       horizontal
@@ -3233,7 +3389,13 @@ export default function ReelsEditScreen() {
         {/* Toolbar — absolute bottom */}
         {addTextPanelOpen ? textEditor : (
           <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
-            {selectedOverlayId !== null ? contextualToolbar : textModeActive ? textModeToolbar : toolbar}
+            {selectedClipIndex !== null
+              ? clipActionToolbar
+              : selectedOverlayId !== null
+              ? contextualToolbar
+              : textModeActive
+              ? textModeToolbar
+              : toolbar}
           </View>
         )}
         {transitionPanel}
@@ -3297,7 +3459,13 @@ export default function ReelsEditScreen() {
       {/* Toolbar */}
       {addTextPanelOpen ? textEditor : (
         <View style={[styles.bottomDock, { paddingBottom: insets.bottom || 16 }]}>
-          {selectedOverlayId !== null ? contextualToolbar : textModeActive ? textModeToolbar : toolbar}
+          {selectedClipIndex !== null
+            ? clipActionToolbar
+            : selectedOverlayId !== null
+            ? contextualToolbar
+            : textModeActive
+            ? textModeToolbar
+            : toolbar}
         </View>
       )}
       {transitionPanel}
