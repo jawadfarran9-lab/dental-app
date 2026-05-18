@@ -1643,11 +1643,30 @@ export default function ReelsEditScreen() {
   // Phase 17.0: playheadPan PanResponder retired — ScrollView is now the scrub surface.
   // wasPlayingBeforeScrubRef is preserved for onScrollBeginDrag (Batch 3).
 
-  const segments: Segment[] = useMemo(() => {
+  // Phase G.9.0b.3.a: convert to useState for mutability.
+  // Trim handles (G.9.0b.3.b/c) will mutate segment.duration
+  // and segment.trimStart via setSegments. Lazy init mirrors
+  // the original useMemo semantics on first render. Sync
+  // effect below re-applies params on prop change. The
+  // identifier `segments` and all 43 read sites are preserved
+  // verbatim — only the declaration changes.
+  const [segments, setSegments] = useState<Segment[]>(() => {
     try {
       return params.segments ? JSON.parse(params.segments) : [];
     } catch {
       return [];
+    }
+  });
+
+  // Phase G.9.0b.3.a: re-sync segments state if the route
+  // param JSON changes (e.g., on navigation back-and-forth).
+  // Mirrors the original useMemo dependency behavior.
+  useEffect(() => {
+    try {
+      const fresh = params.segments ? JSON.parse(params.segments) : [];
+      setSegments(fresh);
+    } catch {
+      // Swallow parse errors; previous state retained.
     }
   }, [params.segments]);
 
