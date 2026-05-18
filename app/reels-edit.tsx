@@ -997,6 +997,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
   },
+  // Phase G.9.0b.1: transparent tap-catcher above preview, below overlayLayer.
+  clipDeselectLayer: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+  },
   overlayItem: {
     position: 'absolute' as const,
     alignItems: 'center',
@@ -2062,6 +2071,13 @@ export default function ReelsEditScreen() {
     setSelectedClipIndex(prev => (prev === index ? null : index));
   }, []);
 
+  // Phase G.9.0b.1: tap on preview black-area deselects clip.
+  const handleDeselectClip = useCallback(() => {
+    if (selectedClipIndex !== null) {
+      setSelectedClipIndex(null);
+    }
+  }, [selectedClipIndex]);
+
   // Phase G.9.0a.1: clear clip selection when exiting STATE B.
   // STATE A has no thumbnails, so a stale selection would
   // resurface if the user re-enters STATE B.
@@ -2128,6 +2144,8 @@ export default function ReelsEditScreen() {
   // Phase 17.c Batch 2: Sync elapsedBefore for RAF closure access
   elapsedBeforeRef.current = elapsedBefore;
   const deselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
+  // Phase G.9.0b.1: separate tap-tracking ref for the clip-deselect layer.
+  const clipDeselectTouchRef = useRef<{ startTime: number; startX: number; startY: number } | null>(null);
 
   const overlayItems = textOverlays
     .filter(item => globalTime >= item.startTime && globalTime <= item.endTime)
@@ -2923,6 +2941,35 @@ export default function ReelsEditScreen() {
                 {overlayItems}
               </View>
             )}
+            {/* Phase G.9.0b.1: tap-on-black-area to deselect clip (STATE B). */}
+            {selectedClipIndex !== null && (
+              <View
+                style={styles.clipDeselectLayer}
+                onStartShouldSetResponder={() => true}
+                onMoveShouldSetResponder={() => false}
+                onResponderGrant={(e) => {
+                  clipDeselectTouchRef.current = {
+                    startTime: Date.now(),
+                    startX: e.nativeEvent.pageX,
+                    startY: e.nativeEvent.pageY,
+                  };
+                }}
+                onResponderRelease={(e) => {
+                  const start = clipDeselectTouchRef.current;
+                  clipDeselectTouchRef.current = null;
+                  if (!start) return;
+                  const dt = Date.now() - start.startTime;
+                  const dx = e.nativeEvent.pageX - start.startX;
+                  const dy = e.nativeEvent.pageY - start.startY;
+                  if (dt < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                    handleDeselectClip();
+                  }
+                }}
+                onResponderTerminate={() => {
+                  clipDeselectTouchRef.current = null;
+                }}
+              />
+            )}
           </View>
 
           {/* Controls row */}
@@ -3453,6 +3500,35 @@ export default function ReelsEditScreen() {
           >
             {overlayItems}
           </View>
+        )}
+        {/* Phase G.9.0b.1: tap-on-black-area to deselect clip (STATE A). */}
+        {selectedClipIndex !== null && (
+          <View
+            style={styles.clipDeselectLayer}
+            onStartShouldSetResponder={() => true}
+            onMoveShouldSetResponder={() => false}
+            onResponderGrant={(e) => {
+              clipDeselectTouchRef.current = {
+                startTime: Date.now(),
+                startX: e.nativeEvent.pageX,
+                startY: e.nativeEvent.pageY,
+              };
+            }}
+            onResponderRelease={(e) => {
+              const start = clipDeselectTouchRef.current;
+              clipDeselectTouchRef.current = null;
+              if (!start) return;
+              const dt = Date.now() - start.startTime;
+              const dx = e.nativeEvent.pageX - start.startX;
+              const dy = e.nativeEvent.pageY - start.startY;
+              if (dt < 300 && Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+                handleDeselectClip();
+              }
+            }}
+            onResponderTerminate={() => {
+              clipDeselectTouchRef.current = null;
+            }}
+          />
         )}
       </View>
 
