@@ -6,13 +6,12 @@ import { Platform, SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from
 
 /**
  * CLINIC ENTRY PAGE
- * 
+ *
  * Main entry point with navigation buttons:
- * - "عيادة" → /clinic/login
- * - "مريض" → /patient
- * - "اشتراك" → /clinic/signup
- * - "ألعاب" → /kids
- * - "رجوع" → /(tabs)/home
+ * - "Clinic" → /clinic/login
+ * - "Patient" → /patient
+ * - "Games" → /kids
+ * - "Back" → /(tabs)/home
  */
 export default function ClinicTab() {
   const router = useRouter();
@@ -44,44 +43,34 @@ export default function ClinicTab() {
 
       {/* Action Buttons */}
       <View style={styles.actions}>
-        {/* Button 1: "عيادة" → /clinic/login */}
+        {/* Button 1: "Clinic" → /clinic/login */}
         <TouchableOpacity
           style={[styles.cta, styles.ctaClinic]}
           activeOpacity={0.85}
           onPress={() => router.push('/clinic/login' as any)}
         >
           <Ionicons name="medical" size={22} color="#FFFFFF" />
-          <Text style={styles.ctaText}>عيادة</Text>
+          <Text style={styles.ctaText}>Clinic</Text>
         </TouchableOpacity>
 
-        {/* Button 2: "مريض" → /patient */}
+        {/* Button 2: "Patient" → /patient */}
         <TouchableOpacity
           style={[styles.cta, styles.ctaPatient]}
           activeOpacity={0.85}
           onPress={() => router.push('/patient' as any)}
         >
           <Ionicons name="person" size={22} color="#FFFFFF" />
-          <Text style={styles.ctaText}>مريض</Text>
+          <Text style={styles.ctaText}>Patient</Text>
         </TouchableOpacity>
 
-        {/* Button 3: "اشتراك" → /clinic/signup */}
-        <TouchableOpacity
-          style={[styles.cta, styles.ctaSubscribe]}
-          activeOpacity={0.85}
-          onPress={() => router.push('/clinic/signup' as any)}
-        >
-          <Ionicons name="card" size={22} color="#FFFFFF" />
-          <Text style={styles.ctaText}>اشتراك</Text>
-        </TouchableOpacity>
-
-        {/* Button 4: "ألعاب" → /kids */}
+        {/* Button 4: "Games" → /kids */}
         <TouchableOpacity
           style={[styles.cta, styles.ctaGames]}
           activeOpacity={0.85}
           onPress={() => router.push('/kids' as any)}
         >
           <Ionicons name="game-controller" size={22} color="#FFFFFF" />
-          <Text style={styles.ctaText}>ألعاب</Text>
+          <Text style={styles.ctaText}>Games</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -150,9 +139,6 @@ const styles = StyleSheet.create({
   },
   ctaPatient: {
     backgroundColor: '#5BA3E0',
-  },
-  ctaSubscribe: {
-    backgroundColor: '#7C6AE8',
   },
   ctaGames: {
     backgroundColor: '#34A853',
