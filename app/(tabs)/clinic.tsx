@@ -184,7 +184,7 @@ const RoleButton = memo(function RoleButton({
         />
 
         <View style={styles.iconBadge}>
-          <Ionicons name={icon} size={28} color="#FFFFFF" />
+          <Ionicons name={icon} size={25} color="#FFFFFF" />
         </View>
         <View style={styles.textBlock}>
           <Text style={styles.ctaTitle}>{title}</Text>
@@ -373,7 +373,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 17,
+    paddingVertical: 13,
     paddingHorizontal: 18,
   } as ViewStyle,
   topHighlight: {
@@ -401,26 +401,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.95)',
   } as ViewStyle,
   iconBadge: {
-    width: 56,
-    height: 56,
-    borderRadius: 17,
+    width: 50,
+    height: 50,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.22)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginEnd: 15,
+    marginEnd: 13,
   } as ViewStyle,
   textBlock: {
     flex: 1,
   } as ViewStyle,
   ctaTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   } as TextStyle,
   ctaDesc: {
-    fontSize: 13,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.86)',
-    lineHeight: 18,
+    lineHeight: 16,
     marginTop: 3,
   } as TextStyle,
 });
