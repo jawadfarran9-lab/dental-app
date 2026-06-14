@@ -3,7 +3,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Animated,
@@ -82,25 +82,27 @@ const RoleButton = memo(function RoleButton({
   const sweepWidth =
     Dimensions.get('window').width - SCREEN_PADDING_H * 2;
 
-  useEffect(() => {
-    shimmerValue.setValue(0);
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmerValue, {
-          toValue: 1,
-          duration: 1700,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: true,
-        }),
-        Animated.delay(2000),
-      ]),
-    );
-    const starter = setTimeout(() => loop.start(), delay);
-    return () => {
-      clearTimeout(starter);
-      loop.stop();
-    };
-  }, [delay, shimmerValue]);
+  useFocusEffect(
+    useCallback(() => {
+      shimmerValue.setValue(0);
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(shimmerValue, {
+            toValue: 1,
+            duration: 1700,
+            easing: Easing.out(Easing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.delay(2000),
+        ]),
+      );
+      const starter = setTimeout(() => loop.start(), delay);
+      return () => {
+        clearTimeout(starter);
+        loop.stop();
+      };
+    }, [delay, shimmerValue]),
+  );
 
   const translateX = useMemo(
     () =>
