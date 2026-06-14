@@ -7,6 +7,7 @@ import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -504,7 +505,7 @@ export default function ClinicLogin() {
       </SafeAreaView>
 
       {/* Bottom Tab Bar — edge-to-edge flush, mirrors app/(tabs)/_layout.tsx styling */}
-      <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
+      <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom - 8, 8) }]}>
         {/* Floating chrome: blur + translucent fill + hairline border */}
         <View style={styles.tabBarBackground} pointerEvents="none">
           <BlurView
@@ -535,7 +536,7 @@ export default function ClinicLogin() {
         </View>
 
         {/* 1. Home */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/home' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.push('/(tabs)/home' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
             <Ionicons name="home-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
           </View>
@@ -543,7 +544,7 @@ export default function ClinicLogin() {
         </TouchableOpacity>
 
         {/* 2. Reels */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/reels' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.push('/(tabs)/reels' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
             <Ionicons name="play-circle-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
           </View>
@@ -551,7 +552,7 @@ export default function ClinicLogin() {
         </TouchableOpacity>
 
         {/* 3. Subscribe */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/subscription' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.push('/(tabs)/subscription' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
             <Ionicons name="star-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
           </View>
@@ -559,7 +560,7 @@ export default function ClinicLogin() {
         </TouchableOpacity>
 
         {/* 4. AI Pro */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/ai' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.push('/(tabs)/ai' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
             <Ionicons name="sparkles-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
           </View>
@@ -567,7 +568,7 @@ export default function ClinicLogin() {
         </TouchableOpacity>
 
         {/* 5. Clinic — ACTIVE */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/clinic' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.push('/(tabs)/clinic' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 1.05 }] }]}>
             <View
               style={[
@@ -586,7 +587,7 @@ export default function ClinicLogin() {
         </TouchableOpacity>
 
         {/* 6. Clinics */}
-        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/(tabs)/clinics' as any)} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.navItem} onPress={() => { Haptics.selectionAsync().catch(() => {}); router.replace('/(tabs)/clinics' as any); }} activeOpacity={0.7}>
           <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
             <Ionicons name="medical-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
           </View>
@@ -767,7 +768,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     borderRadius: 0,
-    paddingTop: 2,
+    paddingTop: 4,
     paddingHorizontal: 8,
     flexDirection: 'row',
     backgroundColor: 'transparent',
@@ -789,7 +790,7 @@ const styles = StyleSheet.create({
   navItem: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     paddingVertical: 2,
     minHeight: 44,
   },
@@ -800,7 +801,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     position: 'relative',
     overflow: 'visible',
-    marginBottom: -2,
+    marginBottom: -8,
   },
   iconGlow: {
     position: 'absolute',
@@ -844,7 +845,7 @@ const styles = StyleSheet.create({
   navLabel: {
     fontSize: 10.5,
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: 0,
     letterSpacing: 0.2,
   },
 });

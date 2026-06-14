@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { Tabs, usePathname, useRouter } from 'expo-router';
 import { useEffect, useRef } from 'react';
 import { Animated, Easing, Platform, StyleSheet, useColorScheme, View } from 'react-native';
@@ -153,6 +154,11 @@ export default function TabsLayout() {
   return (
     <>
       <Tabs
+        screenListeners={{
+          tabPress: () => {
+            Haptics.selectionAsync().catch(() => {});
+          },
+        }}
         screenOptions={{
           tabBarActiveTintColor: activeColor,
           tabBarInactiveTintColor: inactiveColor,
