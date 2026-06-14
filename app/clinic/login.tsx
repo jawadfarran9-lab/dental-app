@@ -1,10 +1,13 @@
 import { auth, db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
@@ -12,7 +15,8 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
  * CLINIC LOGIN — Firebase Auth
@@ -23,16 +27,100 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, SafeAreaView,
  * Prevents patients from accessing this page
  */
 
+// ========== Orbiting Stars Component (copied from app/(tabs)/_layout.tsx) ==========
+const OrbitingStars: React.FC<{ active: boolean }> = ({ active }) => {
+  const orbitAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (active) {
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 5,
+        tension: 120,
+        useNativeDriver: true,
+      }).start();
+
+      const orbitLoop = Animated.loop(
+        Animated.timing(orbitAnim, {
+          toValue: 1,
+          duration: 3500,
+          easing: Easing.bezier(0.4, 0.0, 0.2, 1),
+          useNativeDriver: true,
+        })
+      );
+      orbitLoop.start();
+
+      return () => orbitLoop.stop();
+    } else {
+      Animated.timing(scaleAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+      orbitAnim.setValue(0);
+    }
+  }, [active]);
+
+  const orbitRotation = orbitAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.orbitContainer,
+        {
+          transform: [{ rotate: orbitRotation }],
+          opacity: scaleAnim,
+        },
+      ]}
+    >
+      <Animated.Text
+        style={[
+          styles.orbitStar,
+          styles.star1,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        ⭐
+      </Animated.Text>
+      <Animated.Text
+        style={[
+          styles.orbitStar,
+          styles.star2,
+          { transform: [{ scale: scaleAnim }] },
+        ]}
+      >
+        ⭐
+      </Animated.Text>
+    </Animated.View>
+  );
+};
+
 export default function ClinicLogin() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const biometricAttempted = useRef(false);
+  const entranceAnim = useRef(new Animated.Value(0)).current;
+  const badgeFloat = useRef(new Animated.Value(0)).current;
+  const emailFocusAnim = useRef(new Animated.Value(0)).current;
+  const passwordFocusAnim = useRef(new Animated.Value(0)).current;
+  const animateFocus = (v: Animated.Value, to: number) =>
+    Animated.timing(v, {
+      toValue: to,
+      duration: 200,
+      easing: Easing.out(Easing.quad),
+      useNativeDriver: true,
+    }).start();
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { setClinicAuth } = useAuth();
+  const insets = useSafeAreaInsets();
 
   // ✅ Helper function to get home route based on clinic type
   const getHomeRoute = (clinicType: string | null | undefined): string => {
@@ -47,6 +135,35 @@ export default function ClinicLogin() {
         return '/clinic/dashboard';  // Fallback to dashboard
     }
   };
+
+  // ── Presentation: entrance + badge float (native driver) ──
+  useEffect(() => {
+    Animated.timing(entranceAnim, {
+      toValue: 1,
+      duration: 550,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(badgeFloat, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(badgeFloat, {
+          toValue: 0,
+          duration: 1400,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => loop.stop();
+  }, []);
 
   // Clear sensitive inputs when navigating back
   useFocusEffect(
@@ -243,94 +360,237 @@ export default function ClinicLogin() {
   const goToSignup = () => router.replace('/clinic/subscribe' as any);
 
   return (
-    <View style={[styles.mainContainer, { backgroundColor: isDark ? colors.background : '#F5F7FA' }]}>
+    <View style={[styles.mainContainer, { backgroundColor: 'transparent' }]}>
+      <PremiumGradientBackground isDark={isDark} />
       <SafeAreaView style={styles.safeArea}>
-        <KeyboardAvoidingView 
-          style={styles.keyboardView} 
+        <View style={styles.customHeader}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={[styles.backBtn, { backgroundColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.70)' }]}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        </View>
+        <KeyboardAvoidingView
+          style={styles.keyboardView}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
         >
-          <View style={styles.content}>
-          {/* App Title */}
-          <Text style={[styles.appTitle, { color: colors.textPrimary }]}>
-            BeSmile AI
-          </Text>
+          <Animated.View
+            style={[
+              styles.content,
+              {
+                opacity: entranceAnim,
+                transform: [
+                  {
+                    translateY: entranceAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [24, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+          {/* Hero: brand badge + title + subtitle */}
+          <View style={styles.hero}>
+            <Animated.View
+              style={[
+                styles.brandBadgeWrap,
+                {
+                  transform: [
+                    {
+                      translateY: badgeFloat.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0, -6],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <LinearGradient
+                colors={['#5FB8FF', '#2E7CE0']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.brandBadge}
+              >
+                <Ionicons name="sparkles" size={30} color="#FFFFFF" />
+              </LinearGradient>
+            </Animated.View>
+            <Text style={[styles.appTitle, { color: colors.textPrimary }]}>
+              BeSmile AI
+            </Text>
+            <Text style={[styles.title, { color: colors.textSecondary }]}>{t('auth.clinicLogin')}</Text>
+          </View>
 
-          {/* Login Form */}
-          <View style={styles.formContainer}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>{t('auth.clinicLogin')}</Text>
+          {/* Login Form Card */}
+          <View
+            style={[
+              styles.formCard,
+              {
+                backgroundColor: isDark ? 'rgba(30,41,59,0.72)' : 'rgba(255,255,255,0.78)',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.90)',
+              },
+            ]}
+          >
+            <View style={[styles.inputRow, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+              <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.inputFlex, { color: colors.textPrimary }]}
+                placeholder={t('auth.email')}
+                placeholderTextColor={colors.inputPlaceholder}
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+                editable={!loading}
+                autoCapitalize="none"
+                onFocus={() => animateFocus(emailFocusAnim, 1)}
+                onBlur={() => animateFocus(emailFocusAnim, 0)}
+              />
+              <Animated.View pointerEvents="none" style={[styles.focusRing, { opacity: emailFocusAnim }]} />
+            </View>
 
-            <TextInput 
-              style={[styles.input, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder, color: colors.textPrimary }]} 
-              placeholder={t('auth.email')} 
-              placeholderTextColor={colors.inputPlaceholder}
-              keyboardType="email-address" 
-              value={email} 
-              onChangeText={setEmail} 
-              editable={!loading} 
-              autoCapitalize="none"
-            />
-            
             <View style={[styles.passwordContainer, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
-              <TextInput 
-                style={[styles.passwordInput, { color: colors.textPrimary }]} 
-                placeholder={t('auth.password')} 
+              <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.passwordInput, { color: colors.textPrimary }]}
+                placeholder={t('auth.password')}
                 placeholderTextColor={colors.inputPlaceholder}
                 secureTextEntry={!showPassword}
-                value={password} 
-                onChangeText={setPassword} 
-                editable={!loading} 
+                value={password}
+                onChangeText={setPassword}
+                editable={!loading}
+                onFocus={() => animateFocus(passwordFocusAnim, 1)}
+                onBlur={() => animateFocus(passwordFocusAnim, 0)}
               />
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.passwordToggle}
                 onPress={() => setShowPassword(!showPassword)}
                 disabled={loading}
               >
-                <Ionicons 
-                  name={showPassword ? 'eye-off' : 'eye'} 
-                  size={20} 
-                  color={colors.textSecondary} 
+                <Ionicons
+                  name={showPassword ? 'eye-off' : 'eye'}
+                  size={20}
+                  color={colors.textSecondary}
                 />
               </TouchableOpacity>
+              <Animated.View pointerEvents="none" style={[styles.focusRing, { opacity: passwordFocusAnim }]} />
             </View>
 
-            <TouchableOpacity 
-              style={[styles.btn, { backgroundColor: '#4A90D9' }]} 
-              onPress={onLogin} 
+            <TouchableOpacity
+              style={styles.btnWrap}
+              onPress={onLogin}
               disabled={loading}
+              activeOpacity={0.9}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.btnText}>{t('auth.login')}</Text>
-              )}
+              <LinearGradient
+                colors={['#54ACFF', '#1E6FD9']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.btnGradient}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.btnText}>{t('auth.login')}</Text>
+                )}
+              </LinearGradient>
             </TouchableOpacity>
           </View>
-        </View>
+          </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
-      
-      {/* Bottom Navigation Bar - Outside SafeAreaView */}
-      <View style={[styles.bottomNav, { backgroundColor: colors.background, borderTopColor: colors.inputBorder }]}>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/home' as any)}>
-          <Ionicons name="home" size={22} color={colors.textSecondary} />
-          <Text style={[styles.navText, { color: colors.textSecondary }]}>Home</Text>
+
+      {/* Bottom Tab Bar — edge-to-edge flush, mirrors app/(tabs)/_layout.tsx styling */}
+      <View style={[styles.bottomNav, { paddingBottom: insets.bottom }]}>
+        {/* Floating chrome: blur + translucent fill + hairline border */}
+        <View style={styles.tabBarBackground} pointerEvents="none">
+          <BlurView
+            intensity={Platform.OS === 'ios' ? (isDark ? 55 : 65) : 0}
+            tint={isDark ? 'dark' : 'light'}
+            style={StyleSheet.absoluteFillObject}
+          />
+          <View
+            style={[
+              StyleSheet.absoluteFillObject,
+              {
+                backgroundColor: isDark
+                  ? 'rgba(25, 40, 65, 0.82)'
+                  : 'rgba(235, 245, 255, 0.78)',
+              },
+            ]}
+          />
+          <View
+            style={[
+              styles.tabBarBorder,
+              {
+                borderColor: isDark
+                  ? 'rgba(255,255,255,0.12)'
+                  : 'rgba(255,255,255,0.50)',
+              },
+            ]}
+          />
+        </View>
+
+        {/* 1. Home */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/home' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
+            <Ionicons name="home-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
+          </View>
+          <Text style={[styles.navLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>Home</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/clinic' as any)}>
-          <Ionicons name="briefcase" size={22} color="#4A90D9" />
-          <Text style={[styles.navText, { color: '#4A90D9' }]}>Clinic</Text>
+
+        {/* 2. Reels */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/reels' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
+            <Ionicons name="play-circle-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
+          </View>
+          <Text style={[styles.navLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>Reels</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/subscription' as any)}>
-          <Ionicons name="star" size={22} color={colors.textSecondary} />
-          <Text style={[styles.navText, { color: colors.textSecondary }]}>Subscribe</Text>
+
+        {/* 3. Subscribe */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/subscription' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
+            <Ionicons name="star-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
+          </View>
+          <Text style={[styles.navLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>Subscribe</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/ai' as any)}>
-          <Ionicons name="sparkles" size={22} color={colors.textSecondary} />
-          <Text style={[styles.navText, { color: colors.textSecondary }]}>AI Pro</Text>
+
+        {/* 4. AI Pro */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/ai' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
+            <Ionicons name="sparkles-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
+          </View>
+          <Text style={[styles.navLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>AI Pro</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/clinics' as any)}>
-          <Ionicons name="grid" size={22} color={colors.textSecondary} />
-          <Text style={[styles.navText, { color: colors.textSecondary }]}>Clinics</Text>
+
+        {/* 5. Clinic — ACTIVE */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.push('/(tabs)/clinic' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 1.05 }] }]}>
+            <View
+              style={[
+                styles.iconGlow,
+                {
+                  backgroundColor: isDark
+                    ? 'rgba(61, 158, 255, 0.3)'
+                    : 'rgba(61, 158, 255, 0.18)',
+                },
+              ]}
+            />
+            <OrbitingStars active={true} />
+            <Ionicons name="briefcase" size={26} color="#3D9EFF" style={styles.iconShadow} />
+          </View>
+          <Text style={[styles.navLabel, { color: '#3D9EFF' }]}>Clinic</Text>
+        </TouchableOpacity>
+
+        {/* 6. Clinics */}
+        <TouchableOpacity style={styles.navItem} onPress={() => router.replace('/(tabs)/clinics' as any)} activeOpacity={0.7}>
+          <View style={[styles.iconContainer, { transform: [{ scale: 0.95 }] }]}>
+            <Ionicons name="medical-outline" size={24} color={isDark ? '#64748B' : '#94A3B8'} />
+          </View>
+          <Text style={[styles.navLabel, { color: isDark ? '#64748B' : '#94A3B8' }]}>Clinics</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -340,11 +600,25 @@ export default function ClinicLogin() {
 const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
+    backgroundColor: 'transparent',
   },
-  safeArea: { 
+  safeArea: {
     flex: 1,
   },
-  keyboardView: { 
+  customHeader: {
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  keyboardView: {
     flex: 1,
   },
   content: {
@@ -352,39 +626,86 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     justifyContent: 'center',
   },
+  hero: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  brandBadgeWrap: {
+    shadowColor: '#2E7CE0',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.4,
+    shadowRadius: 13,
+    elevation: 8,
+    borderRadius: 21,
+    marginBottom: 18,
+  },
+  brandBadge: {
+    width: 64,
+    height: 64,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   appTitle: {
     fontSize: 38,
     fontWeight: '800',
     textAlign: 'center',
-    marginBottom: 40,
-    letterSpacing: -0.5,
+    marginBottom: 8,
+    letterSpacing: -0.7,
   },
   formContainer: {
     gap: 12,
   },
-  title: { 
-    fontSize: 22, 
-    fontWeight: '700', 
-    marginBottom: 16,
+  formCard: {
+    borderRadius: 24,
+    padding: 20,
+    gap: 14,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 0,
     textAlign: 'center',
   },
-  input: { 
-    borderWidth: 1, 
-    padding: 14, 
-    borderRadius: 12, 
+  input: {
+    borderWidth: 1,
+    padding: 14,
+    borderRadius: 12,
     fontSize: 16,
     textAlign: 'left',
   },
-  passwordContainer: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    borderWidth: 1, 
-    borderRadius: 12,
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+  },
+  inputFlex: {
+    flex: 1,
+    paddingVertical: 14,
+    fontSize: 16,
+    textAlign: 'left',
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
     paddingRight: 8,
   },
-  passwordInput: { 
-    flex: 1, 
-    padding: 14, 
+  passwordInput: {
+    flex: 1,
+    paddingVertical: 14,
     fontSize: 16,
     textAlign: 'left',
   },
@@ -393,9 +714,40 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  btn: { 
-    padding: 16, 
-    borderRadius: 12, 
+  focusRing: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#3D9EFF',
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 4,
+  },
+  btnWrap: {
+    borderRadius: 16,
+    overflow: 'hidden',
+    marginTop: 4,
+    shadowColor: '#2E86E0',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
+  },
+  btnGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  btn: {
+    padding: 16,
+    borderRadius: 12,
     alignItems: 'center',
     marginTop: 8,
     shadowColor: '#000',
@@ -404,25 +756,95 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
-  btnText: { 
+  btnText: {
     fontWeight: '700',
     fontSize: 16,
     color: '#FFFFFF',
   },
   bottomNav: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderRadius: 0,
+    paddingTop: 2,
+    paddingHorizontal: 8,
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 10,
-    borderTopWidth: 1,
+    backgroundColor: 'transparent',
+    borderTopWidth: 0,
+  },
+  tabBarBackground: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 0,
+    overflow: 'hidden',
+  },
+  tabBarBorder: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
   navItem: {
+    flex: 1,
     alignItems: 'center',
-    gap: 4,
+    justifyContent: 'center',
+    paddingVertical: 2,
+    minHeight: 44,
   },
-  navText: {
-    fontSize: 10,
+  iconContainer: {
+    width: 56,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+    overflow: 'visible',
+    marginBottom: -2,
+  },
+  iconGlow: {
+    position: 'absolute',
+    width: 58,
+    height: 46,
+    borderRadius: 16,
+    shadowColor: '#3D9EFF',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+  },
+  iconShadow: {
+    textShadowColor: '#3D9EFF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 7,
+  },
+  orbitContainer: {
+    position: 'absolute',
+    width: 50,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  orbitStar: {
+    position: 'absolute',
+    fontSize: 7,
+    color: '#3D9EFF',
+    textShadowColor: '#3D9EFF',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 4,
+  },
+  star1: {
+    bottom: 2,
+    right: 2,
+  },
+  star2: {
+    top: 2,
+    right: 6,
+  },
+  navLabel: {
+    fontSize: 10.5,
     fontWeight: '600',
+    marginTop: 12,
+    letterSpacing: 0.2,
   },
 });
