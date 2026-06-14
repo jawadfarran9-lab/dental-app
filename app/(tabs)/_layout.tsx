@@ -165,25 +165,15 @@ export default function TabsLayout() {
           tabBarStyle: {
             position: 'absolute',
             bottom: 0,
-            left: 16,
-            right: 16,
-            height: 74,
-            borderRadius: 28,
+            left: 0,
+            right: 0,
+            borderRadius: 0,
             backgroundColor: 'transparent',
             borderTopWidth: 0,
             borderWidth: 0,
-            paddingBottom: 12,
-            paddingTop: 6,
+            paddingBottom: 8,
+            paddingTop: 4,
             paddingHorizontal: 8,
-            ...Platform.select({
-              ios: {
-                shadowColor: '#0D1B2A',
-                shadowOpacity: 0.22,
-                shadowRadius: 14,
-                shadowOffset: { width: 0, height: 6 },
-              },
-              android: { elevation: 12 },
-            }),
           },
           tabBarBackground: () => (
             <View style={styles.tabBarBackground}>
@@ -219,7 +209,7 @@ export default function TabsLayout() {
             letterSpacing: 0.2,
           },
           tabBarIconStyle: {
-            marginBottom: -2,
+            marginBottom: 2,
           },
           tabBarItemStyle: {
             paddingVertical: 2,
@@ -317,13 +307,16 @@ export default function TabsLayout() {
 const styles = StyleSheet.create({
   tabBarBackground: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 28,
+    borderRadius: 0,
     overflow: 'hidden',
   },
   tabBarBorder: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: 28,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderLeftWidth: 0,
+    borderRightWidth: 0,
+    borderBottomWidth: 0,
   },
   iconContainer: {
     width: 56,
@@ -335,9 +328,10 @@ const styles = StyleSheet.create({
   },
   iconGlow: {
     position: 'absolute',
+    top: 0,
     width: 58,
-    height: 46,
-    borderRadius: 16,
+    height: 64,
+    borderRadius: 20,
     shadowColor: '#3D9EFF',
     shadowOpacity: 0.3,
     shadowRadius: 8,

@@ -805,9 +805,10 @@ const styles = StyleSheet.create({
   },
   iconGlow: {
     position: 'absolute',
+    top: 0,
     width: 58,
-    height: 46,
-    borderRadius: 16,
+    height: 56,
+    borderRadius: 20,
     shadowColor: '#3D9EFF',
     shadowOpacity: 0.3,
     shadowRadius: 8,
