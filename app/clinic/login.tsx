@@ -1,7 +1,7 @@
 import { auth, db } from '@/firebaseConfig';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
