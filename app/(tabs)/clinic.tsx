@@ -1,4 +1,5 @@
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -243,6 +244,7 @@ export default function ClinicTab() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  const { logout } = useAuth();
 
   const backPillStyle = useMemo<ViewStyle>(
     () => ({
@@ -290,7 +292,12 @@ export default function ClinicTab() {
               key={key}
               {...rest}
               delay={i * 700}
-              onPress={() => router.push(rest.route as any)}
+              onPress={async () => {
+                if (key === 'patient') {
+                  await logout();
+                }
+                router.push(rest.route as any);
+              }}
             />
           ))}
         </View>
