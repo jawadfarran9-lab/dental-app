@@ -1,33 +1,38 @@
 import { db } from '@/firebaseConfig';
-import i18n from '@/i18n';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { CLINIC_HOME_CONFIG, ClinicTypeKey } from '@/src/utils/clinicTypeConfig';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, doc, getDoc, getDocs, orderBy, query } from 'firebase/firestore';
-import { useCallback, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Dimensions,
-    FlatList,
-    Image,
-    Platform,
-    RefreshControl,
-    SafeAreaView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  Easing,
+  FlatList,
+  I18nManager,
+  Image,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_MARGIN = 6;
+const GRID_PADDING = 16;
+const GRID_GAP = 12;
 const NUM_COLUMNS = 3;
-const CARD_WIDTH = (SCREEN_WIDTH - 32 - (CARD_MARGIN * 2 * NUM_COLUMNS)) / NUM_COLUMNS;
+const CARD_WIDTH =
+  (SCREEN_WIDTH - GRID_PADDING * 2 - GRID_GAP * (NUM_COLUMNS - 1)) / NUM_COLUMNS;
 
 type Patient = {
   id: string;
@@ -35,62 +40,120 @@ type Patient = {
   imageUrl?: string;
 };
 
+const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
+  ['#4D9DFF', '#1E6BE6'],
+  ['#A989FF', '#7C3AED'],
+  ['#34DDB0', '#0EA37A'],
+  ['#FF92B3', '#E0517E'],
+  ['#FFC36B', '#F59E0B'],
+  ['#7B8CFF', '#4F46E5'],
+];
+
+function hashName(name: string): number {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) {
+    h = (h * 31 + name.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function initialsOf(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
 export default function ClinicDashboard() {
   useClinicGuard();
   const router = useRouter();
-  const { t } = useTranslation();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
   const { clinicId } = useAuth();
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
+  const insets = useSafeAreaInsets();
 
   const [clinicName, setClinicName] = useState('');
   const [clinicImageUrl, setClinicImageUrl] = useState<string | null>(null);
+  const [clinicType, setClinicType] = useState<ClinicTypeKey | null>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
+  const [showSearch, setShowSearch] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load clinic and patients data
+  const heroAnim = useRef(new Animated.Value(0)).current;
+  const gridAnim = useRef(new Animated.Value(0)).current;
+  const waveAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.sequence([
+      Animated.timing(heroAnim, {
+        toValue: 1,
+        duration: 520,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+      Animated.timing(gridAnim, {
+        toValue: 1,
+        duration: 460,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [heroAnim, gridAnim]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(waveAnim, {
+        toValue: 1,
+        duration: 3000,
+        easing: Easing.linear,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      waveAnim.setValue(0);
+    };
+  }, [waveAnim]);
+
   const loadClinicData = useCallback(async () => {
     try {
-      const resolvedClinicId = clinicId || await AsyncStorage.getItem('clinicId');
-      
+      const resolvedClinicId = clinicId || (await AsyncStorage.getItem('clinicId'));
       if (!resolvedClinicId) {
         console.error('[Dashboard] No clinicId found');
         setLoading(false);
         return;
       }
 
-      // Load clinic info
       const clinicRef = doc(db, 'clinics', resolvedClinicId);
       const clinicSnap = await getDoc(clinicRef);
-      
+
       if (clinicSnap.exists()) {
         const data = clinicSnap.data();
         setClinicName(data.clinicName || data.name || '');
-        
-        // Prefer profileImageUrl (single source of truth), then legacy fields
-        const imageUrl = data.profileImageUrl || data.clinicImageUrl || data.imageUrl || null;
-        
+        const imageUrl =
+          data.profileImageUrl || data.clinicImageUrl || data.imageUrl || null;
         setClinicImageUrl(imageUrl);
+        const t = (data.clinicType || data.type) as string | undefined;
+        if (t === 'dental' || t === 'beauty' || t === 'laser') {
+          setClinicType(t);
+        }
       }
 
-      // Load patients
       const patientsRef = collection(db, 'clinics', resolvedClinicId, 'patients');
       const patientsQuery = query(patientsRef, orderBy('createdAt', 'desc'));
       const patientsSnap = await getDocs(patientsQuery);
-      
+
       const patientsList: Patient[] = [];
       patientsSnap.forEach((docSnap) => {
         const data = docSnap.data();
         patientsList.push({
           id: docSnap.id,
-          name: data.name || data.patientName || t('patients.unnamed', 'مريض'),
+          name: data.name || data.patientName || 'Unnamed',
           imageUrl: data.imageUrl || data.profileImage,
         });
       });
-
       setPatients(patientsList);
     } catch (error) {
       console.error('[Dashboard] Error loading data:', error);
@@ -98,7 +161,7 @@ export default function ClinicDashboard() {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [clinicId, t]);
+  }, [clinicId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -111,10 +174,15 @@ export default function ClinicDashboard() {
     loadClinicData();
   };
 
-  // Filter patients based on search query
-  const filteredPatients = searchQuery.trim()
-    ? patients.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase()))
-    : patients;
+  const filteredPatients = useMemo(
+    () =>
+      searchQuery.trim()
+        ? patients.filter((p) =>
+            p.name.toLowerCase().includes(searchQuery.toLowerCase())
+          )
+        : patients,
+    [patients, searchQuery]
+  );
 
   const navigateToPatient = (patientId: string) => {
     router.push(`/clinic/${patientId}`);
@@ -127,389 +195,693 @@ export default function ClinicDashboard() {
     setShowSearch(!showSearch);
   };
 
-  // Render patient card - iOS style square with soft corners
-  const renderPatientCard = ({ item }: { item: Patient }) => (
-    <TouchableOpacity
-      style={[styles.patientCard, { backgroundColor: colors.sheetSurface }]}
-      onPress={() => navigateToPatient(item.id)}
-      activeOpacity={0.8}
-    >
-      <View style={[styles.patientImageContainer, { backgroundColor: colors.sheetCancelBg }]}>
-        {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={styles.patientImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.patientImagePlaceholder}>
-            <Ionicons name="person" size={32} color={isDark ? '#636366' : '#8e8e93'} />
-          </View>
-        )}
-      </View>
-      <View style={styles.patientNameContainer}>
-        <Text style={[styles.patientName, { color: isDark ? '#ffffff' : '#1c1c1e' }]} numberOfLines={2}>
+  const goBack = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace('/(tabs)/home' as any);
+  };
+
+  const ltrRow: 'row' | 'row-reverse' = I18nManager.isRTL ? 'row-reverse' : 'row';
+
+  const typeInfo = clinicType ? CLINIC_HOME_CONFIG[clinicType] : null;
+  const typeEmoji = typeInfo?.emoji ?? '🏥';
+  const typeLabel = typeInfo?.name ?? 'Clinic';
+  const patientsWord = typeInfo?.patientsLabel ?? 'Patients';
+
+  const nameLetters = useMemo(() => {
+    const source = clinicName || 'Clinic';
+    const chars = Array.from(source);
+    return chars.map((ch, i) => {
+      if (ch === ' ') {
+        return { ch, transform: null as null | { translateY: Animated.AnimatedInterpolation<number>; rotate: Animated.AnimatedInterpolation<string> } };
+      }
+      const phase = i * 0.027;
+      const value = Animated.modulo(Animated.add(waveAnim, phase), 1);
+      const translateY = value.interpolate({
+        inputRange: [0, 0.25, 0.5, 0.75, 1],
+        outputRange: [0, -2.5, -3.5, -2.5, 0],
+      });
+      const rotate = value.interpolate({
+        inputRange: [0, 0.25, 0.5, 0.75, 1],
+        outputRange: ['0deg', '-3.2deg', '-4.5deg', '-3.2deg', '0deg'],
+      });
+      return { ch, transform: { translateY, rotate } };
+    });
+  }, [clinicName, waveAnim]);
+
+  const renderPatientCard = ({ item, index }: { item: Patient; index: number }) => {
+    const palette = AVATAR_PALETTE[hashName(item.name) % AVATAR_PALETTE.length];
+    const isLastInRow = (index + 1) % NUM_COLUMNS === 0;
+    return (
+      <TouchableOpacity
+        style={[styles.patientCard, { marginRight: isLastInRow ? 0 : GRID_GAP }]}
+        onPress={() => navigateToPatient(item.id)}
+        activeOpacity={0.85}
+      >
+        <View style={styles.avatarWrap}>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient
+              colors={palette}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatarGradient}
+            >
+              <Text style={styles.avatarInitials}>{initialsOf(item.name)}</Text>
+            </LinearGradient>
+          )}
+        </View>
+        <Text style={styles.patientName} numberOfLines={2}>
           {item.name}
         </Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
-  // Bottom tab button component - iOS Control Center style
-  const TabButton = ({ 
-    icon, 
-    label, 
-    isActive, 
-    onPress 
-  }: { 
-    icon: keyof typeof Ionicons.glyphMap; 
-    label: string; 
-    isActive?: boolean; 
+  const TabButton = ({
+    icon,
+    label,
+    isActive,
+    onPress,
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    isActive?: boolean;
     onPress: () => void;
-  }) => (
-    <TouchableOpacity 
-      style={styles.tabButton} 
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={[
-        styles.tabIconCircle, 
-        { 
-          backgroundColor: isActive 
-            ? (isDark ? 'rgba(10, 132, 255, 0.2)' : 'rgba(0, 122, 255, 0.12)') 
-            : (colors.sheetCancelBg) 
-        }
-      ]}>
-        <Ionicons 
-          name={icon} 
-          size={22} 
-          color={isActive ? '#007AFF' : (isDark ? '#8e8e93' : '#636366')} 
-        />
-      </View>
-      <Text style={[
-        styles.tabLabel, 
-        { color: isActive ? '#007AFF' : (isDark ? '#8e8e93' : '#636366') }
-      ]}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
+  }) => {
+    const inner = (
+      <Ionicons
+        name={icon}
+        size={22}
+        color={isActive ? '#FFFFFF' : 'rgba(255,255,255,0.78)'}
+      />
+    );
+    return (
+      <TouchableOpacity style={styles.tabButton} onPress={onPress} activeOpacity={0.75}>
+        {isActive ? (
+          <LinearGradient
+            colors={['#4D9DFF', '#1668E3']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.tabIconCircle, styles.tabIconCircleActive]}
+          >
+            {inner}
+          </LinearGradient>
+        ) : (
+          <View style={styles.tabIconCircle}>{inner}</View>
+        )}
+        <Text
+          style={[
+            styles.tabLabel,
+            { color: isActive ? '#FFFFFF' : 'rgba(255,255,255,0.72)' },
+          ]}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Scrollable Content */}
+    <View style={[styles.root, { direction: 'ltr' }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+
+      {/* Soft colour orbs behind everything */}
+      <View pointerEvents="none" style={styles.bgOrbBlue} />
+      <View pointerEvents="none" style={styles.bgOrbViolet} />
+      <View pointerEvents="none" style={styles.bgOrbTeal} />
+
       <FlatList
         data={filteredPatients}
         renderItem={renderPatientCard}
         keyExtractor={(item) => item.id}
         numColumns={NUM_COLUMNS}
-        contentContainerStyle={styles.listContent}
+        contentContainerStyle={[
+          styles.listContent,
+          { paddingTop: insets.top + 12 },
+        ]}
         columnWrapperStyle={styles.patientRow}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={colors.accentBlue}
+            tintColor="#FFFFFF"
           />
         }
         ListHeaderComponent={
-          <>
-            {/* Clinic Name */}
-            <Text style={[styles.clinicName, { color: isDark ? '#ffffff' : '#1c1c1e' }]}>
-              {clinicName || t('dashboard.clinicName', 'العيادة')}
-            </Text>
+          <Animated.View
+            style={{
+              opacity: heroAnim,
+              transform: [
+                {
+                  translateY: heroAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [22, 0],
+                  }),
+                },
+              ],
+            }}
+          >
+            {/* HERO */}
+            <LinearGradient
+              colors={['#2E5BFF', '#5546FF', '#8B5CF6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.hero}
+            >
+              <View pointerEvents="none" style={styles.heroOrbOne} />
+              <View pointerEvents="none" style={styles.heroOrbTwo} />
+              <LinearGradient
+                pointerEvents="none"
+                colors={['rgba(255,255,255,0.20)', 'rgba(255,255,255,0)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0.9 }}
+                style={styles.heroHighlight}
+              />
 
-            {/* Clinic Image - Large prominent display */}
-            <View style={styles.clinicImageContainer}>
-              {clinicImageUrl ? (
-                <Image 
-                  source={{ uri: clinicImageUrl }} 
-                  style={styles.clinicImage} 
-                  resizeMode="cover"
-                />
-              ) : (
-                <View style={[styles.clinicImagePlaceholder, { backgroundColor: colors.sheetCancelBg }]}>
-                  <Ionicons name="medical" size={56} color={isDark ? '#636366' : '#8e8e93'} />
-                  <Text style={[styles.placeholderText, { color: isDark ? '#636366' : '#8e8e93' }]}>
-                    {t('dashboard.noClinicImage', 'صورة العيادة')}
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Search Field (conditionally shown) */}
-            {showSearch && (
-              <View style={[styles.searchContainer, { backgroundColor: colors.sheetSurface }]}>
-                <View style={[styles.searchInputWrapper, { backgroundColor: colors.sheetCancelBg }]}>
-                  <Ionicons name="search" size={18} color={isDark ? '#8e8e93' : '#636366'} />
-                  <TextInput
-                    style={[styles.searchInput, { color: isDark ? '#ffffff' : '#1c1c1e' }]}
-                    placeholder={t('dashboard.searchPlaceholder', 'ابحث عن اسم المريض...')}
-                    placeholderTextColor={isDark ? '#636366' : '#8e8e93'}
-                    value={searchQuery}
-                    onChangeText={setSearchQuery}
-                    autoFocus
-                    textAlign={isRTL ? 'right' : 'left'}
-                  />
-                </View>
-                <TouchableOpacity onPress={toggleSearch} style={styles.cancelButtonContainer}>
-                  <Text style={styles.cancelButton}>
-                    {t('common.cancel', 'إلغاء')}
-                  </Text>
+              {/* Top: BACK only */}
+              <View style={[styles.heroTopRow, { flexDirection: ltrRow }]}>
+                <TouchableOpacity
+                  onPress={goBack}
+                  style={styles.frostedIconBtn}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  activeOpacity={0.85}
+                >
+                  <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
                 </TouchableOpacity>
               </View>
+
+              {/* Identity row */}
+              <View style={[styles.identityRow, { flexDirection: ltrRow }]}>
+                <View style={styles.identityTile}>
+                  {clinicImageUrl ? (
+                    <Image
+                      source={{ uri: clinicImageUrl }}
+                      style={styles.identityImage}
+                    />
+                  ) : (
+                    <Text style={styles.identityEmoji}>{typeEmoji}</Text>
+                  )}
+                </View>
+                <View style={styles.identityText}>
+                  <View style={styles.clinicTitleRow}>
+                    {nameLetters.map((item, i) =>
+                      item.transform ? (
+                        <Animated.Text
+                          key={`l-${i}`}
+                          style={[
+                            styles.clinicTitle,
+                            {
+                              transform: [
+                                { translateY: item.transform.translateY },
+                                { rotate: item.transform.rotate },
+                              ],
+                            },
+                          ]}
+                        >
+                          {item.ch}
+                        </Animated.Text>
+                      ) : (
+                        <Text key={`s-${i}`} style={styles.clinicTitle}>
+                          {item.ch}
+                        </Text>
+                      )
+                    )}
+                  </View>
+                  <Text style={styles.clinicMeta} numberOfLines={1}>
+                    {patients.length} {patientsWord.toLowerCase()} · {typeLabel}
+                  </Text>
+                </View>
+              </View>
+            </LinearGradient>
+
+            {/* Persistent search */}
+            {showSearch && (
+              <View style={[styles.searchBar, { flexDirection: ltrRow }]}>
+                <Ionicons name="search" size={18} color="#8A93AC" />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={`Search ${patientsWord.toLowerCase()}...`}
+                  placeholderTextColor="#8A93AC"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  textAlign="left"
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity
+                    onPress={() => setSearchQuery('')}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#8A93AC" />
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
-          </>
+
+            {/* Section header */}
+            <View style={[styles.sectionRow, { flexDirection: ltrRow }]}>
+              <Text style={styles.sectionTitle}>{patientsWord}</Text>
+              <View style={styles.countBadge}>
+                <Text style={styles.countText}>{filteredPatients.length}</Text>
+              </View>
+            </View>
+          </Animated.View>
         }
         ListEmptyComponent={
           loading ? (
             <View style={styles.emptyState}>
-              <ActivityIndicator size="large" color={colors.accentBlue} />
+              <ActivityIndicator size="large" color="#FFFFFF" />
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <View style={[styles.emptyIconCircle, { backgroundColor: colors.sheetCancelBg }]}>
-                <Ionicons name="people-outline" size={48} color={isDark ? '#636366' : '#8e8e93'} />
+              <View style={styles.emptyIconCircle}>
+                <Ionicons
+                  name="people-outline"
+                  size={42}
+                  color="rgba(255,255,255,0.78)"
+                />
               </View>
-              <Text style={[styles.emptyText, { color: isDark ? '#8e8e93' : '#636366' }]}>
-                {searchQuery 
-                  ? t('dashboard.noResults', 'لا توجد نتائج')
-                  : t('dashboard.noPatients', 'لا يوجد مرضى بعد')
-                }
+              <Text style={styles.emptyText}>
+                {searchQuery ? 'No results' : `No ${patientsWord.toLowerCase()} yet`}
               </Text>
             </View>
           )
         }
+        CellRendererComponent={({ children, style, ...props }) => (
+          <Animated.View
+            {...props}
+            style={[
+              style,
+              {
+                opacity: gridAnim,
+                transform: [
+                  {
+                    translateY: gridAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [14, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            {children}
+          </Animated.View>
+        )}
       />
 
-      {/* Bottom Navigation Bar - iOS Control Center Style */}
-      <View style={[styles.bottomNav, { 
-        backgroundColor: isDark ? 'rgba(28, 28, 30, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-        borderTopColor: isDark ? '#38383a' : '#e5e5e5'
-      }]}>
-        <TabButton
-          icon="search"
-          label={t('nav.search', 'بحث')}
-          isActive={showSearch}
-          onPress={toggleSearch}
+      {/* Floating + FAB (unwired) */}
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() => {}}
+        style={[styles.fabWrap, { bottom: insets.bottom + 96 }]}
+      >
+        <LinearGradient
+          colors={['#3D9DFF', '#1668E3']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.fab}
+        >
+          <Ionicons name="add" size={30} color="#FFFFFF" />
+        </LinearGradient>
+      </TouchableOpacity>
+
+      {/* Bottom bar */}
+      <View
+        style={[
+          styles.bottomNav,
+          { paddingBottom: Math.max(insets.bottom, 12) + 6 },
+        ]}
+      >
+        <LinearGradient
+          colors={['rgba(18,24,46,0.92)', 'rgba(12,16,32,0.96)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={StyleSheet.absoluteFill}
         />
-        <TabButton
-          icon="people"
-          label={t('nav.team', 'طاقم')}
-          onPress={() => router.push('/clinic/team')}
-        />
-        <TabButton
-          icon="settings-outline"
-          label={t('nav.settings', 'إعدادات')}
-          onPress={() => router.push('/clinic/settings')}
-        />
-        <TabButton
-          icon="time-outline"
-          label={t('nav.session', 'جلسة')}
-          onPress={() => router.push('/clinic/create')}
-        />
-        <TabButton
-          icon="person"
-          label={t('nav.patients', 'المرضى')}
-          isActive={true}
-          onPress={() => {}}
-        />
+        <View style={styles.bottomNavBorder} />
+        <View style={styles.bottomNavRow}>
+          <TabButton
+            icon="search"
+            label="Search"
+            isActive={showSearch}
+            onPress={toggleSearch}
+          />
+          <TabButton
+            icon="people"
+            label="Team"
+            onPress={() => router.push('/clinic/team')}
+          />
+          <TabButton
+            icon="settings-outline"
+            label="Settings"
+            onPress={() => router.push('/clinic/settings')}
+          />
+          <TabButton
+            icon="time-outline"
+            label="Session"
+            onPress={() => router.push('/clinic/create')}
+          />
+          <TabButton
+            icon="person"
+            label={patientsWord}
+            isActive
+            onPress={() => {}}
+          />
+        </View>
       </View>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
+
+  // Background orbs
+  bgOrbBlue: {
+    position: 'absolute',
+    width: 320,
+    height: 320,
+    borderRadius: 160,
+    backgroundColor: 'rgba(61,158,255,0.18)',
+    top: -80,
+    left: -100,
+  },
+  bgOrbViolet: {
+    position: 'absolute',
+    width: 280,
+    height: 280,
+    borderRadius: 140,
+    backgroundColor: 'rgba(139,92,246,0.18)',
+    top: 220,
+    right: -90,
+  },
+  bgOrbTeal: {
+    position: 'absolute',
+    width: 260,
+    height: 260,
+    borderRadius: 130,
+    backgroundColor: 'rgba(52,221,176,0.14)',
+    bottom: 160,
+    left: -80,
+  },
+
+  listContent: {
+    paddingHorizontal: GRID_PADDING,
+    paddingBottom: 200,
+  },
+
+  // Hero
+  hero: {
+    borderRadius: 28,
+    padding: 20,
+    overflow: 'hidden',
+    shadowColor: '#5546FF',
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.35,
+    shadowRadius: 28,
+    elevation: 12,
+  },
+  heroOrbOne: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    top: -70,
+    right: -50,
+  },
+  heroOrbTwo: {
+    position: 'absolute',
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    backgroundColor: 'rgba(139,92,246,0.22)',
+    bottom: -50,
+    left: -40,
+  },
+  heroHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: '55%',
+  },
+  heroTopRow: {
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  frostedIconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityRow: {
+    alignItems: 'center',
+    marginTop: 18,
+  },
+  identityTile: {
+    width: 64,
+    height: 64,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.17)',
+    borderColor: 'rgba(255,255,255,0.34)',
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+    overflow: 'hidden',
+  },
+  identityImage: {
+    width: '100%',
+    height: '100%',
+  },
+  identityEmoji: {
+    fontSize: 22,
+    lineHeight: 38,
+    textAlign: 'center',
+  },
+  identityText: {
     flex: 1,
   },
-  listContent: {
-    paddingHorizontal: 12,
-    paddingBottom: 120,
-    paddingTop: 8,
+  clinicTitle: {
+    color: '#FFFFFF',
+    fontSize: 23,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+    textAlign: 'left',
+    writingDirection: 'ltr',
   },
-  
-  // Clinic Header
-  clinicName: {
-    fontSize: 32,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-    letterSpacing: -0.5,
+  clinicTitleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
   },
-  clinicImageContainer: {
-    alignItems: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 8,
-  },
-  clinicImage: {
-    width: SCREEN_WIDTH - 48,
-    height: 220,
-    borderRadius: 24,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.15,
-        shadowRadius: 16,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  clinicImagePlaceholder: {
-    width: SCREEN_WIDTH - 48,
-    height: 220,
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 12,
-  },
-  placeholderText: {
-    fontSize: 16,
+  clinicMeta: {
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 12.5,
     fontWeight: '500',
+    marginTop: 4,
+    textAlign: 'left',
+    writingDirection: 'ltr',
   },
 
   // Search
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginHorizontal: 4,
-    marginBottom: 20,
-    gap: 12,
-  },
-  searchInputWrapper: {
-    flex: 1,
-    flexDirection: 'row',
+  searchBar: {
+    marginTop: 16,
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 12,
-    borderRadius: 14,
+    paddingVertical: 11,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.6)',
     gap: 10,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.10,
+    shadowRadius: 14,
+    elevation: 3,
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  cancelButtonContainer: {
-    paddingHorizontal: 4,
-  },
-  cancelButton: {
-    fontSize: 16,
+    color: '#0F1730',
+    fontSize: 15,
     fontWeight: '500',
-    color: '#007AFF',
+    padding: 0,
   },
 
-  // Patient Cards - iOS Style Grid
+  // Section
+  sectionRow: {
+    alignItems: 'center',
+    marginTop: 20,
+    marginBottom: 12,
+    gap: 8,
+  },
+  sectionTitle: {
+    color: '#1B2542',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  countBadge: {
+    paddingHorizontal: 9,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(46,107,224,0.12)',
+  },
+  countText: {
+    color: '#2E6BE0',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+
+  // Patient cards
   patientRow: {
     justifyContent: 'flex-start',
-    gap: CARD_MARGIN * 2,
   },
   patientCard: {
     width: CARD_WIDTH,
     borderRadius: 18,
-    marginBottom: CARD_MARGIN * 2,
-    overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-      },
-      android: {
-        elevation: 4,
-      },
-    }),
-  },
-  patientImageContainer: {
-    width: '100%',
-    aspectRatio: 1,
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
-    overflow: 'hidden',
-  },
-  patientImage: {
-    width: '100%',
-    height: '100%',
-  },
-  patientImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 8,
+    marginBottom: GRID_GAP,
+    backgroundColor: 'rgba(16,18,38,0.34)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.20)',
     alignItems: 'center',
   },
-  patientNameContainer: {
-    paddingHorizontal: 8,
-    paddingVertical: 10,
-    minHeight: 48,
+  avatarWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarGradient: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarInitials: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   patientName: {
-    fontSize: 13,
+    color: '#FFFFFF',
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 17,
+    lineHeight: 15,
   },
 
-  // Empty State
+  // Empty
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 80,
-    gap: 16,
+    paddingVertical: 70,
+    gap: 14,
   },
   emptyIconCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    justifyContent: 'center',
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: 'rgba(16,18,38,0.40)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   emptyText: {
-    fontSize: 17,
-    fontWeight: '500',
+    color: '#5B6B82',
+    fontSize: 15,
+    fontWeight: '600',
   },
 
-  // Bottom Navigation - iOS Control Center Style
+  // FAB
+  fabWrap: {
+    position: 'absolute',
+    right: 20,
+  },
+  fab: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1668E3',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
+  },
+
+  // Bottom nav
   bottomNav: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: 10,
+    overflow: 'hidden',
+  },
+  bottomNavBorder: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.10)',
+  },
+  bottomNavRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingTop: 12,
-    paddingBottom: Platform.OS === 'ios' ? 28 : 16,
-    borderTopWidth: 0.5,
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 12,
-      },
-    }),
   },
   tabButton: {
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
     minWidth: 56,
   },
   tabIconCircle: {
-    width: 48,
-    height: 48,
+    width: 44,
+    height: 44,
     borderRadius: 14,
-    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.10)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabIconCircleActive: {
+    borderColor: 'rgba(255,255,255,0.35)',
+    shadowColor: '#1668E3',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 12,
+    elevation: 6,
   },
   tabLabel: {
-    fontSize: 11,
-    fontWeight: '500',
+    fontSize: 10.5,
+    fontWeight: '600',
     letterSpacing: 0.2,
   },
 });
