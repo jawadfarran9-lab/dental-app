@@ -19,6 +19,7 @@ import {
   FlatList,
   I18nManager,
   Image,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -63,6 +64,70 @@ function initialsOf(name: string): string {
   if (parts.length === 0) return '?';
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function PatientCard({
+  item,
+  isLastInRow,
+  onPress,
+}: {
+  item: Patient;
+  isLastInRow: boolean;
+  onPress: () => void;
+}) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const palette = AVATAR_PALETTE[hashName(item.name) % AVATAR_PALETTE.length];
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 4,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 28,
+      bounciness: 6,
+    }).start();
+  };
+
+  return (
+    <Animated.View
+      style={[
+        styles.patientCard,
+        { marginRight: isLastInRow ? 0 : GRID_GAP, transform: [{ scale }] },
+      ]}
+    >
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        android_ripple={null}
+      >
+        <View style={styles.avatarWrap}>
+          {item.imageUrl ? (
+            <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
+          ) : (
+            <LinearGradient
+              colors={palette}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatarGradient}
+            >
+              <Text style={styles.avatarInitials}>{initialsOf(item.name)}</Text>
+            </LinearGradient>
+          )}
+        </View>
+        <Text style={styles.patientName} numberOfLines={2}>
+          {item.name}
+        </Text>
+      </Pressable>
+    </Animated.View>
+  );
 }
 
 export default function ClinicDashboard() {
@@ -235,32 +300,13 @@ export default function ClinicDashboard() {
   }, [clinicName, waveAnim]);
 
   const renderPatientCard = ({ item, index }: { item: Patient; index: number }) => {
-    const palette = AVATAR_PALETTE[hashName(item.name) % AVATAR_PALETTE.length];
     const isLastInRow = (index + 1) % NUM_COLUMNS === 0;
     return (
-      <TouchableOpacity
-        style={[styles.patientCard, { marginRight: isLastInRow ? 0 : GRID_GAP }]}
+      <PatientCard
+        item={item}
+        isLastInRow={isLastInRow}
         onPress={() => navigateToPatient(item.id)}
-        activeOpacity={0.85}
-      >
-        <View style={styles.avatarWrap}>
-          {item.imageUrl ? (
-            <Image source={{ uri: item.imageUrl }} style={styles.avatarImage} />
-          ) : (
-            <LinearGradient
-              colors={palette}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.avatarGradient}
-            >
-              <Text style={styles.avatarInitials}>{initialsOf(item.name)}</Text>
-            </LinearGradient>
-          )}
-        </View>
-        <Text style={styles.patientName} numberOfLines={2}>
-          {item.name}
-        </Text>
-      </TouchableOpacity>
+      />
     );
   };
 
@@ -468,15 +514,31 @@ export default function ClinicDashboard() {
             </View>
           ) : (
             <View style={styles.emptyState}>
-              <View style={styles.emptyIconCircle}>
-                <Ionicons
-                  name="people-outline"
-                  size={42}
-                  color="rgba(255,255,255,0.78)"
-                />
+              <View style={styles.emptyBadgeWrap}>
+                <View pointerEvents="none" style={styles.emptyGlow} />
+                <LinearGradient
+                  colors={['#FFFFFF', '#F4F7FF']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.emptyBadge}
+                >
+                  <LinearGradient
+                    colors={['#5BA4FF', '#6E5BFF']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.emptyBadgeInner}
+                  >
+                    <Ionicons name="people" size={28} color="#FFFFFF" />
+                  </LinearGradient>
+                </LinearGradient>
               </View>
-              <Text style={styles.emptyText}>
+              <Text style={styles.emptyTitle}>
                 {searchQuery ? 'No results' : `No ${patientsWord.toLowerCase()} yet`}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery
+                  ? 'Try a different search.'
+                  : `Your ${patientsWord.toLowerCase()} will appear here as you add them.`}
               </Text>
             </View>
           )
@@ -810,22 +872,61 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 70,
+    paddingHorizontal: 24,
     gap: 14,
   },
-  emptyIconCircle: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: 'rgba(16,18,38,0.40)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.18)',
+  emptyBadgeWrap: {
+    width: 140,
+    height: 140,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  emptyText: {
-    color: '#5B6B82',
-    fontSize: 15,
-    fontWeight: '600',
+  emptyGlow: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 999,
+    backgroundColor: 'rgba(110,91,255,0.18)',
+  },
+  emptyBadge: {
+    width: 104,
+    height: 104,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(15,23,42,0.06)',
+    shadowColor: '#1B2542',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.12,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  emptyBadgeInner: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#5546FF',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.32,
+    shadowRadius: 12,
+    elevation: 6,
+  },
+  emptyTitle: {
+    color: '#1B2542',
+    fontSize: 17,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  emptySubtitle: {
+    color: '#7A879E',
+    fontSize: 13,
+    lineHeight: 19,
+    textAlign: 'center',
+    maxWidth: 280,
   },
 
   // FAB
