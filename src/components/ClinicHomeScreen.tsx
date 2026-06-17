@@ -44,11 +44,13 @@ function HomeCard({
   action,
   index,
   isDark,
+  hasAIPro,
   onPress,
 }: {
   action: QuickActionDef;
   index: number;
   isDark: boolean;
+  hasAIPro: boolean;
   onPress: () => void;
 }) {
   const enter = useRef(new Animated.Value(0)).current;
@@ -125,10 +127,12 @@ function HomeCard({
             end={{ x: 1, y: 1 }}
             style={[styles.actionCard, { borderColor: border }]}
           >
-            <View
-              pointerEvents="none"
-              style={[styles.cardCornerTint, { backgroundColor: tintColor }]}
-            />
+            {hasAIPro ? (
+              <View
+                pointerEvents="none"
+                style={[styles.cardCornerTint, { backgroundColor: tintColor }]}
+              />
+            ) : null}
 
             <View style={[styles.chevronWrap, { backgroundColor: chevronBg }]}>
               <Ionicons name="chevron-forward" size={14} color={chevronColor} />
@@ -300,6 +304,10 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   }, [heroAnim]);
 
   useEffect(() => {
+    if (!hasAIPro) {
+      waveAnim.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.timing(waveAnim, {
         toValue: 1,
@@ -313,7 +321,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
       loop.stop();
       waveAnim.setValue(0);
     };
-  }, [waveAnim]);
+  }, [waveAnim, hasAIPro]);
 
   const nameLetters = useMemo(() => {
     const source = config.name || 'Clinic';
@@ -524,33 +532,39 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                 </View>
                 <View style={styles.identityText}>
                   <Text style={styles.kicker}>Welcome to your</Text>
-                  <View style={styles.clinicNameRow}>
-                    {nameLetters.map((letter, i) => {
-                      if (letter.ch === ' ' || !letter.transform) {
+                  {hasAIPro ? (
+                    <View style={styles.clinicNameRow}>
+                      {nameLetters.map((letter, i) => {
+                        if (letter.ch === ' ' || !letter.transform) {
+                          return (
+                            <Text key={`s-${i}`} style={styles.clinicName}>
+                              {letter.ch}
+                            </Text>
+                          );
+                        }
                         return (
-                          <Text key={`s-${i}`} style={styles.clinicName}>
+                          <Animated.Text
+                            key={`c-${i}`}
+                            style={[
+                              styles.clinicName,
+                              {
+                                transform: [
+                                  { translateY: letter.transform.translateY },
+                                  { rotate: letter.transform.rotate },
+                                ],
+                              },
+                            ]}
+                          >
                             {letter.ch}
-                          </Text>
+                          </Animated.Text>
                         );
-                      }
-                      return (
-                        <Animated.Text
-                          key={`c-${i}`}
-                          style={[
-                            styles.clinicName,
-                            {
-                              transform: [
-                                { translateY: letter.transform.translateY },
-                                { rotate: letter.transform.rotate },
-                              ],
-                            },
-                          ]}
-                        >
-                          {letter.ch}
-                        </Animated.Text>
-                      );
-                    })}
-                  </View>
+                      })}
+                    </View>
+                  ) : (
+                    <Text style={styles.clinicName} numberOfLines={1}>
+                      {config.name}
+                    </Text>
+                  )}
                 </View>
               </View>
 
@@ -577,6 +591,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                   action={a}
                   index={idx}
                   isDark={isDark}
+                  hasAIPro={hasAIPro === true}
                   onPress={() => router.push(a.route as any)}
                 />
               ))}

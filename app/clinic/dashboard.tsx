@@ -2,6 +2,7 @@ import { db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useAIProStatus } from '@/src/hooks/useAIProStatus';
 import { CLINIC_HOME_CONFIG, ClinicTypeKey } from '@/src/utils/clinicTypeConfig';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -69,6 +70,7 @@ export default function ClinicDashboard() {
   const router = useRouter();
   const { isDark } = useTheme();
   const { clinicId } = useAuth();
+  const { hasAIPro } = useAIProStatus();
   const insets = useSafeAreaInsets();
 
   const [clinicName, setClinicName] = useState('');
@@ -102,6 +104,10 @@ export default function ClinicDashboard() {
   }, [heroAnim, gridAnim]);
 
   useEffect(() => {
+    if (!hasAIPro) {
+      waveAnim.setValue(0);
+      return;
+    }
     const loop = Animated.loop(
       Animated.timing(waveAnim, {
         toValue: 1,
@@ -115,7 +121,7 @@ export default function ClinicDashboard() {
       loop.stop();
       waveAnim.setValue(0);
     };
-  }, [waveAnim]);
+  }, [waveAnim, hasAIPro]);
 
   const loadClinicData = useCallback(async () => {
     try {
@@ -386,30 +392,36 @@ export default function ClinicDashboard() {
                   )}
                 </View>
                 <View style={styles.identityText}>
-                  <View style={styles.clinicTitleRow}>
-                    {nameLetters.map((item, i) =>
-                      item.transform ? (
-                        <Animated.Text
-                          key={`l-${i}`}
-                          style={[
-                            styles.clinicTitle,
-                            {
-                              transform: [
-                                { translateY: item.transform.translateY },
-                                { rotate: item.transform.rotate },
-                              ],
-                            },
-                          ]}
-                        >
-                          {item.ch}
-                        </Animated.Text>
-                      ) : (
-                        <Text key={`s-${i}`} style={styles.clinicTitle}>
-                          {item.ch}
-                        </Text>
-                      )
-                    )}
-                  </View>
+                  {hasAIPro ? (
+                    <View style={styles.clinicTitleRow}>
+                      {nameLetters.map((item, i) =>
+                        item.transform ? (
+                          <Animated.Text
+                            key={`l-${i}`}
+                            style={[
+                              styles.clinicTitle,
+                              {
+                                transform: [
+                                  { translateY: item.transform.translateY },
+                                  { rotate: item.transform.rotate },
+                                ],
+                              },
+                            ]}
+                          >
+                            {item.ch}
+                          </Animated.Text>
+                        ) : (
+                          <Text key={`s-${i}`} style={styles.clinicTitle}>
+                            {item.ch}
+                          </Text>
+                        )
+                      )}
+                    </View>
+                  ) : (
+                    <Text style={styles.clinicTitle} numberOfLines={1}>
+                      {clinicName || 'Clinic'}
+                    </Text>
+                  )}
                   <Text style={styles.clinicMeta} numberOfLines={1}>
                     {patients.length} {patientsWord.toLowerCase()} · {typeLabel}
                   </Text>
