@@ -9,11 +9,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   Animated,
   Easing,
   I18nManager,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -39,9 +40,244 @@ interface ClinicHomeScreenProps {
 
 const HOME_FEED_ROUTE = '/(tabs)/home';
 
+function HomeCard({
+  action,
+  index,
+  isDark,
+  onPress,
+}: {
+  action: QuickActionDef;
+  index: number;
+  isDark: boolean;
+  onPress: () => void;
+}) {
+  const enter = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const anim = Animated.timing(enter, {
+      toValue: 1,
+      duration: 460,
+      delay: 120 + index * 75,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    });
+    anim.start();
+    return () => anim.stop();
+  }, [enter, index]);
+
+  const handlePressIn = () => {
+    Animated.spring(scale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 4,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 28,
+      bounciness: 6,
+    }).start();
+  };
+
+  const surface: readonly [string, string] = isDark
+    ? ['#202C40', '#15203A']
+    : ['#FFFFFF', '#F6F9FE'];
+  const border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.06)';
+  const titleColor = isDark ? '#F0F2F5' : '#1B2542';
+  const subColor = isDark ? '#9AA8BE' : '#8A93AC';
+  const chevronColor = isDark ? '#9AA8BE' : '#8A93AC';
+  const chevronBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(20,35,90,0.05)';
+  const tintColor = action.tile[0];
+
+  return (
+    <Animated.View
+      style={[
+        styles.cardWrap,
+        {
+          shadowColor: isDark ? '#000' : '#0F172A',
+          opacity: enter,
+          transform: [
+            {
+              translateY: enter.interpolate({
+                inputRange: [0, 1],
+                outputRange: [16, 0],
+              }),
+            },
+            { scale },
+          ],
+        },
+      ]}
+    >
+      <Pressable
+        onPress={onPress}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+        android_ripple={null}
+      >
+        <View style={styles.cardClip}>
+          <LinearGradient
+            colors={surface}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.actionCard, { borderColor: border }]}
+          >
+            <View
+              pointerEvents="none"
+              style={[styles.cardCornerTint, { backgroundColor: tintColor }]}
+            />
+
+            <View style={[styles.chevronWrap, { backgroundColor: chevronBg }]}>
+              <Ionicons name="chevron-forward" size={14} color={chevronColor} />
+            </View>
+
+            <LinearGradient
+              colors={action.tile}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.tile, { shadowColor: action.shadow }]}
+            >
+              <Ionicons name={action.icon} size={26} color="#FFFFFF" />
+            </LinearGradient>
+
+            <Text
+              style={[styles.cardTitle, { color: titleColor }]}
+              numberOfLines={1}
+            >
+              {action.title}
+            </Text>
+            <Text
+              style={[styles.cardSubtitle, { color: subColor }]}
+              numberOfLines={1}
+            >
+              {action.subtitle}
+            </Text>
+          </LinearGradient>
+        </View>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function AIProBanner({
+  hasAIPro,
+  onUpgrade,
+}: {
+  hasAIPro: boolean;
+  onUpgrade: () => void;
+}) {
+  const pressScale = useRef(new Animated.Value(1)).current;
+
+  const handlePressIn = () => {
+    Animated.spring(pressScale, {
+      toValue: 0.96,
+      useNativeDriver: true,
+      speed: 40,
+      bounciness: 4,
+    }).start();
+  };
+  const handlePressOut = () => {
+    Animated.spring(pressScale, {
+      toValue: 1,
+      useNativeDriver: true,
+      speed: 28,
+      bounciness: 6,
+    }).start();
+  };
+
+  if (hasAIPro) {
+    return (
+      <LinearGradient
+        colors={['#FFFDF6', '#FFF6E2']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.bannerStatus}
+      >
+        <View style={styles.bannerHeaderRow}>
+          <LinearGradient
+            colors={['#FFEDA0', '#FFD24D', '#F5A300']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.bannerTile}
+          >
+            <Ionicons name="sparkles" size={20} color="#6B4400" />
+          </LinearGradient>
+          <View style={styles.bannerHeaderText}>
+            <View style={styles.bannerTitleRow}>
+              <Text style={styles.bannerStatusTitle}>AI PRO is active</Text>
+              <View style={styles.bannerActivePill}>
+                <Text style={styles.bannerActivePillText}>ACTIVE</Text>
+              </View>
+            </View>
+            <Text style={styles.bannerStatusBody}>
+              You&apos;ve unlocked the full power of BeSmile AI — every premium
+              feature is open for your clinic.
+            </Text>
+          </View>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <View style={styles.bannerUpsellWrap}>
+      <View style={styles.bannerUpsellClip}>
+        <LinearGradient
+          colors={['#2E5BFF', '#5546FF', '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bannerUpsell}
+        >
+          <View pointerEvents="none" style={styles.bannerGoldOrb} />
+          <View style={styles.bannerHeaderRow}>
+            <LinearGradient
+              colors={['#FFEDA0', '#FFD24D', '#F5A300']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.bannerTile}
+            >
+              <Ionicons name="sparkles" size={20} color="#6B4400" />
+            </LinearGradient>
+            <View style={styles.bannerHeaderText}>
+              <Text style={styles.bannerUpsellTitle}>Unlock AI PRO</Text>
+              <Text style={styles.bannerUpsellBody}>
+                Upgrade to AI PRO and supercharge your clinic — intelligent
+                notes, patient message analysis, treatment recommendations &
+                more.
+              </Text>
+            </View>
+          </View>
+          <Animated.View
+            style={{ transform: [{ scale: pressScale }], marginTop: 14 }}
+          >
+            <Pressable
+              onPress={onUpgrade}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              android_ripple={null}
+            >
+              <LinearGradient
+                colors={['#FFEDA0', '#FFD24D', '#F5A300']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.bannerCta}
+              >
+                <Text style={styles.bannerCtaText}>Upgrade now →</Text>
+              </LinearGradient>
+            </Pressable>
+          </Animated.View>
+        </LinearGradient>
+      </View>
+    </View>
+  );
+}
+
 export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) {
   const router = useRouter();
-  const { colors, isDark } = useTheme();
+  const { isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const config = CLINIC_HOME_CONFIG[clinicType];
 
@@ -51,25 +287,51 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   const showAIPro = showBadge && hasAIPro === true;
 
   const heroAnim = useRef(new Animated.Value(0)).current;
-  const cardsAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const waveAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.sequence([
-      Animated.timing(heroAnim, {
+    Animated.timing(heroAnim, {
+      toValue: 1,
+      duration: 520,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [heroAnim]);
+
+  useEffect(() => {
+    const loop = Animated.loop(
+      Animated.timing(waveAnim, {
         toValue: 1,
-        duration: 520,
-        easing: Easing.out(Easing.cubic),
+        duration: 3000,
+        easing: Easing.inOut(Easing.sin),
         useNativeDriver: true,
-      }),
-      Animated.timing(cardsAnim, {
-        toValue: 1,
-        duration: 460,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-    ]).start();
-  }, [heroAnim, cardsAnim]);
+      })
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      waveAnim.setValue(0);
+    };
+  }, [waveAnim]);
+
+  const nameLetters = useMemo(() => {
+    const source = config.name || 'Clinic';
+    return Array.from(source).map((ch, i) => {
+      if (ch === ' ') return { ch, transform: null };
+      const phase = i * 0.027;
+      const value = Animated.modulo(Animated.add(waveAnim, phase), 1);
+      const translateY = value.interpolate({
+        inputRange: [0, 0.25, 0.5, 0.75, 1],
+        outputRange: [0, -2.5, -3.5, -2.5, 0],
+      });
+      const rotate = value.interpolate({
+        inputRange: [0, 0.25, 0.5, 0.75, 1],
+        outputRange: ['0deg', '-3.2deg', '-4.5deg', '-3.2deg', '0deg'],
+      });
+      return { ch, transform: { translateY, rotate } };
+    });
+  }, [config.name, waveAnim]);
 
   useEffect(() => {
     if (!showAIPro) {
@@ -144,12 +406,6 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   // Force LTR visual flow regardless of global I18nManager direction.
   const ltrRow: 'row' | 'row-reverse' = I18nManager.isRTL ? 'row-reverse' : 'row';
 
-  // Dark mode card surface
-  const cardBg = isDark ? 'rgba(30,42,60,0.78)' : '#FFFFFF';
-  const cardBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.05)';
-  const cardTitleColor = isDark ? '#F0F2F5' : '#1A2B3F';
-  const cardSubColor = isDark ? '#9AA8BE' : '#64748B';
-  const chevronColor = isDark ? '#5B6B82' : '#C7CDD6';
   const quickActionsLabelColor = isDark ? '#9AA8BE' : '#64748B';
 
   return (
@@ -268,9 +524,33 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                 </View>
                 <View style={styles.identityText}>
                   <Text style={styles.kicker}>Welcome to your</Text>
-                  <Text style={styles.clinicName} numberOfLines={1}>
-                    {config.name}
-                  </Text>
+                  <View style={styles.clinicNameRow}>
+                    {nameLetters.map((letter, i) => {
+                      if (letter.ch === ' ' || !letter.transform) {
+                        return (
+                          <Text key={`s-${i}`} style={styles.clinicName}>
+                            {letter.ch}
+                          </Text>
+                        );
+                      }
+                      return (
+                        <Animated.Text
+                          key={`c-${i}`}
+                          style={[
+                            styles.clinicName,
+                            {
+                              transform: [
+                                { translateY: letter.transform.translateY },
+                                { rotate: letter.transform.rotate },
+                              ],
+                            },
+                          ]}
+                        >
+                          {letter.ch}
+                        </Animated.Text>
+                      );
+                    })}
+                  </View>
                 </View>
               </View>
 
@@ -280,20 +560,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
           </Animated.View>
 
           {/* ── QUICK ACTIONS ── */}
-          <Animated.View
-            style={{
-              opacity: cardsAnim,
-              transform: [
-                {
-                  translateY: cardsAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [18, 0],
-                  }),
-                },
-              ],
-              marginTop: 22,
-            }}
-          >
+          <View style={{ marginTop: 22 }}>
             <Text
               style={[
                 styles.quickActionsLabel,
@@ -304,50 +571,22 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
             </Text>
 
             <View style={styles.grid}>
-              {actions.map((a) => (
-                <TouchableOpacity
+              {actions.map((a, idx) => (
+                <HomeCard
                   key={a.title}
-                  activeOpacity={0.9}
+                  action={a}
+                  index={idx}
+                  isDark={isDark}
                   onPress={() => router.push(a.route as any)}
-                  style={[
-                    styles.actionCard,
-                    {
-                      backgroundColor: cardBg,
-                      borderColor: cardBorder,
-                      shadowColor: isDark ? '#000' : '#0F172A',
-                    },
-                  ]}
-                >
-                  <Ionicons
-                    name="chevron-forward"
-                    size={18}
-                    color={chevronColor}
-                    style={styles.cardChevron}
-                  />
-                  <LinearGradient
-                    colors={a.tile}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={[styles.tile, { shadowColor: a.shadow }]}
-                  >
-                    <Ionicons name={a.icon} size={26} color="#FFFFFF" />
-                  </LinearGradient>
-                  <Text
-                    style={[styles.cardTitle, { color: cardTitleColor }]}
-                    numberOfLines={1}
-                  >
-                    {a.title}
-                  </Text>
-                  <Text
-                    style={[styles.cardSubtitle, { color: cardSubColor }]}
-                    numberOfLines={1}
-                  >
-                    {a.subtitle}
-                  </Text>
-                </TouchableOpacity>
+                />
               ))}
             </View>
-          </Animated.View>
+          </View>
+
+          <AIProBanner
+            hasAIPro={hasAIPro === true}
+            onUpgrade={() => router.push('/clinic/upgrade' as any)}
+          />
         </ScrollView>
       </View>
     </View>
@@ -506,6 +745,12 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     writingDirection: 'ltr',
   },
+  clinicNameRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-end',
+    marginTop: 2,
+  },
   heroSubtitle: {
     color: 'rgba(255,255,255,0.82)',
     fontSize: 13,
@@ -530,22 +775,42 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 13,
   },
-  actionCard: {
+  cardWrap: {
     width: '47.5%',
-    borderRadius: 22,
+    borderRadius: 24,
+    shadowOffset: { width: 0, height: 18 },
+    shadowOpacity: 0.10,
+    shadowRadius: 24,
+    elevation: 6,
+  },
+  cardClip: {
+    borderRadius: 24,
+    overflow: 'hidden',
+  },
+  actionCard: {
+    borderRadius: 24,
     padding: 18,
     borderWidth: 1,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
-    elevation: 4,
-    minHeight: 144,
+    minHeight: 150,
   },
-  cardChevron: {
+  cardCornerTint: {
     position: 'absolute',
-    top: 14,
-    right: 14,
-    opacity: 0.85,
+    width: 150,
+    height: 150,
+    borderRadius: 999,
+    top: -60,
+    right: -50,
+    opacity: 0.14,
+  },
+  chevronWrap: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   tile: {
     width: 52,
@@ -571,5 +836,124 @@ const styles = StyleSheet.create({
     marginTop: 3,
     textAlign: 'left',
     writingDirection: 'ltr',
+  },
+
+  // ── AI Pro banner ──
+  bannerStatus: {
+    marginTop: 22,
+    borderRadius: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F3E0B4',
+  },
+  bannerUpsellWrap: {
+    marginTop: 22,
+    borderRadius: 22,
+    shadowColor: '#5546FF',
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.28,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  bannerUpsellClip: {
+    borderRadius: 22,
+    overflow: 'hidden',
+  },
+  bannerUpsell: {
+    borderRadius: 22,
+    padding: 18,
+  },
+  bannerGoldOrb: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,210,77,0.18)',
+    top: -60,
+    right: -50,
+  },
+  bannerHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  bannerTile: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+    shadowColor: '#F5A300',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  bannerHeaderText: {
+    flex: 1,
+  },
+  bannerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  bannerStatusTitle: {
+    color: '#1B2542',
+    fontSize: 15,
+    fontWeight: '800',
+    marginRight: 8,
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  bannerActivePill: {
+    backgroundColor: '#F5A300',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 999,
+  },
+  bannerActivePillText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
+  bannerStatusBody: {
+    color: '#7A6A45',
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  bannerUpsellTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 4,
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  bannerUpsellBody: {
+    color: 'rgba(255,255,255,0.88)',
+    fontSize: 12.5,
+    lineHeight: 18,
+    textAlign: 'left',
+    writingDirection: 'ltr',
+  },
+  bannerCta: {
+    paddingVertical: 11,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    alignSelf: 'flex-start',
+    shadowColor: '#F5A300',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 4,
+  },
+  bannerCtaText: {
+    color: '#6B4400',
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
 });
