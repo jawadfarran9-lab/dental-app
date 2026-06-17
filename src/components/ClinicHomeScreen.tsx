@@ -1,5 +1,7 @@
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { useAIProStatus } from '@/src/hooks/useAIProStatus';
 import {
   CLINIC_HOME_CONFIG,
   ClinicTypeKey,
@@ -43,8 +45,14 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   const insets = useSafeAreaInsets();
   const config = CLINIC_HOME_CONFIG[clinicType];
 
+  const { isSubscribed } = useAuth();
+  const { hasAIPro } = useAIProStatus();
+  const showBadge = isSubscribed === true;
+  const showAIPro = showBadge && hasAIPro === true;
+
   const heroAnim = useRef(new Animated.Value(0)).current;
   const cardsAnim = useRef(new Animated.Value(0)).current;
+  const glowAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.sequence([
@@ -62,6 +70,34 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
       }),
     ]).start();
   }, [heroAnim, cardsAnim]);
+
+  useEffect(() => {
+    if (!showAIPro) {
+      glowAnim.setValue(0);
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(glowAnim, {
+          toValue: 1,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(glowAnim, {
+          toValue: 0,
+          duration: 1200,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    loop.start();
+    return () => {
+      loop.stop();
+      glowAnim.setValue(0);
+    };
+  }, [showAIPro, glowAnim]);
 
   const goHome = () => router.push(HOME_FEED_ROUTE as any);
   const goSettings = () => router.push('/clinic/settings' as any);
@@ -195,14 +231,34 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                 <View style={styles.brandPill}>
                   <Text style={styles.brandPillText}>BeSmile AI</Text>
                 </View>
-                <LinearGradient
-                  colors={['#FFE08A', '#F5B021']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.proPill}
-                >
-                  <Text style={styles.proPillText}>PRO</Text>
-                </LinearGradient>
+                {showAIPro ? (
+                  <LinearGradient
+                    colors={['#FFEDA0', '#FFD24D', '#F5A300']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.aiProPill}
+                  >
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[
+                        styles.aiProGlow,
+                        {
+                          opacity: glowAnim.interpolate({
+                            inputRange: [0, 1],
+                            outputRange: [0, 0.55],
+                          }),
+                        },
+                      ]}
+                    />
+                    <Ionicons
+                      name="sparkles"
+                      size={11}
+                      color="#6B4400"
+                      style={styles.aiProIcon}
+                    />
+                    <Text style={styles.aiProPillText}>AI PRO</Text>
+                  </LinearGradient>
+                ) : null}
               </View>
 
               {/* Row 3: Emoji tile + kicker + name */}
@@ -384,13 +440,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.3,
   },
-  proPill: {
+  aiProPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
+    overflow: 'hidden',
+    shadowColor: '#F5A300',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 4,
   },
-  proPillText: {
-    color: '#5A3A00',
+  aiProGlow: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.55)',
+  },
+  aiProIcon: {
+    marginRight: 4,
+  },
+  aiProPillText: {
+    color: '#6B4400',
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.8,
