@@ -223,7 +223,9 @@ export default function ClinicSettingsScreen() {
                   )}
 
                   <Pressable
-                    onPress={() => {}}
+                    onPress={() => {
+                      if (row.id === 'upgrade-subscription') router.push('/clinic/upgrade');
+                    }}
                     style={({ pressed }) => [
                       styles.row,
                       {
