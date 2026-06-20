@@ -113,11 +113,10 @@ export default function ClinicSettingsScreen() {
         },
         {
           id: 'doctor-email',
-          title: 'Create doctor email',
-          subtitle: 'Set up a professional email',
-          icon: 'mail-outline',
+          title: 'Doctors',
+          subtitle: 'Add and manage your doctors',
+          icon: 'people-outline',
           iconColor: '#EC4899',
-          hasSoon: true,
         },
       ],
     },
@@ -225,6 +224,7 @@ export default function ClinicSettingsScreen() {
                   <Pressable
                     onPress={() => {
                       if (row.id === 'upgrade-subscription') router.push('/clinic/upgrade');
+                      else if (row.id === 'doctor-email') router.push('/clinic/team');
                     }}
                     style={({ pressed }) => [
                       styles.row,

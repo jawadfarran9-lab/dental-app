@@ -12,20 +12,20 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, doc, getDoc, getDocs, orderBy, query } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Animated,
-  Dimensions,
-  Easing,
-  FlatList,
-  I18nManager,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Animated,
+    Dimensions,
+    Easing,
+    FlatList,
+    I18nManager,
+    Image,
+    Pressable,
+    RefreshControl,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -314,11 +314,13 @@ export default function ClinicDashboard() {
     icon,
     label,
     isActive,
+    locked,
     onPress,
   }: {
     icon: keyof typeof Ionicons.glyphMap;
     label: string;
     isActive?: boolean;
+    locked?: boolean;
     onPress: () => void;
   }) => {
     const inner = (
@@ -329,7 +331,11 @@ export default function ClinicDashboard() {
       />
     );
     return (
-      <TouchableOpacity style={styles.tabButton} onPress={onPress} activeOpacity={0.75}>
+      <TouchableOpacity
+        style={[styles.tabButton, locked && { opacity: 0.5 }]}
+        onPress={locked ? () => {} : onPress}
+        activeOpacity={locked ? 1 : 0.75}
+      >
         {isActive ? (
           <LinearGradient
             colors={['#4D9DFF', '#1668E3']}
@@ -340,7 +346,14 @@ export default function ClinicDashboard() {
             {inner}
           </LinearGradient>
         ) : (
-          <View style={styles.tabIconCircle}>{inner}</View>
+          <View style={styles.tabIconCircle}>
+            {inner}
+            {locked && (
+              <View style={styles.tabLockBadge}>
+                <Ionicons name="lock-closed" size={9} color="#FFFFFF" />
+              </View>
+            )}
+          </View>
         )}
         <Text
           style={[
@@ -604,9 +617,10 @@ export default function ClinicDashboard() {
             onPress={toggleSearch}
           />
           <TabButton
-            icon="people"
-            label="Team"
-            onPress={() => router.push('/clinic/team')}
+            icon="chatbubble-ellipses-outline"
+            label="Chat"
+            locked
+            onPress={() => {}}
           />
           <TabButton
             icon="settings-outline"
@@ -996,5 +1010,18 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '600',
     letterSpacing: 0.2,
+  },
+  tabLockBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(91,107,130,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(18,24,46,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
