@@ -134,6 +134,51 @@ export async function listClinicMembers(clinicId: string): Promise<ClinicMember[
     .filter((member) => member.status !== 'REMOVED');
 }
 
+// PHASE G9: Prototype helper to create a doctor seat from the Team page.
+// Writes the same shape as addClinicMemberInternal PLUS a plain-text password
+// field on both the member doc and the user doc (intentional for prototype).
+export async function createDoctorMember(
+  clinicId: string,
+  email: string,
+  password: string
+): Promise<ClinicMember> {
+  const normalizedEmail = normalizeEmail(email);
+  const localPart = normalizedEmail.split('@')[0] || 'doctor';
+  const displayName = localPart.charAt(0).toUpperCase() + localPart.slice(1);
+  const now = serverTimestamp();
+
+  const memberRef = doc(membersCollection(clinicId));
+  const memberId = memberRef.id;
+
+  const newMember: ClinicMember & { password: string } = {
+    id: memberId,
+    clinicId,
+    displayName,
+    email: normalizedEmail,
+    role: 'doctor',
+    status: 'ACTIVE',
+    password,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await setDoc(memberRef, newMember, { merge: true });
+
+  const userProfile: UserClinicProfile & { password: string } = {
+    clinicId,
+    role: 'doctor',
+    status: 'ACTIVE',
+    email: normalizedEmail,
+    displayName,
+    password,
+    lastLoginAt: null,
+  };
+
+  await setDoc(doc(usersCollection, memberId), userProfile, { merge: true });
+
+  return newMember;
+}
+
 export async function addClinicMember(params: {
   clinicId: string;
   actingRole: string;

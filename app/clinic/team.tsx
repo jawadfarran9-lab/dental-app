@@ -1,15 +1,16 @@
 import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { listClinicMembers } from '@/src/services/clinicMembersService';
+import { createDoctorMember, listClinicMembers } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Dimensions,
   Modal,
   Pressable,
@@ -85,6 +86,17 @@ export default function ClinicTeamScreen() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function refreshMembers() {
+    if (!clinicId) return;
+    try {
+      const data = await listClinicMembers(clinicId);
+      setMembers(data);
+    } catch (err) {
+      console.error('[TEAM] refresh error', err);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -166,9 +178,59 @@ export default function ClinicTeamScreen() {
     setSheetOpen(false);
   };
 
-  // Placeholder — no backend wiring yet
-  const handleSubmit = () => {
-    closeSheet();
+  // Create a doctor (prototype: Firestore records only — no real auth or payment).
+  const handleSubmit = async () => {
+    if (submitting) return;
+    if (formMode === 'edit') {
+      // Edit not wired yet — keep as placeholder.
+      closeSheet();
+      return;
+    }
+    if (!clinicId) {
+      Alert.alert('Error', 'Missing clinic session. Please reopen the page.');
+      return;
+    }
+
+    const trimmedEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      Alert.alert('Invalid email', 'Please enter a valid email address.');
+      return;
+    }
+    if (password.length < 8) {
+      Alert.alert('Password too short', 'Password must be at least 8 characters.');
+      return;
+    }
+    if (password !== confirmPassword) {
+      Alert.alert('Passwords do not match', 'Please re-enter the same password in both fields.');
+      return;
+    }
+    const duplicate = members.some(
+      (m) => (m.email || '').toLowerCase() === trimmedEmail && m.status !== 'REMOVED'
+    );
+    if (duplicate) {
+      Alert.alert('Email already in use', 'A member of this clinic already uses this email.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await createDoctorMember(clinicId, trimmedEmail, password);
+      await refreshMembers();
+      closeSheet();
+      setEmail('');
+      setPassword('');
+      setConfirmPassword('');
+      Alert.alert(
+        'Doctor created',
+        'They can now log in with this email and password.'
+      );
+    } catch (err: any) {
+      console.error('[TEAM] create doctor failed', err);
+      Alert.alert('Could not create doctor', err?.message || 'Please try again.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Placeholder — no backend wiring yet

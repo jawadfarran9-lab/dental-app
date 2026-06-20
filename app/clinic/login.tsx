@@ -2,7 +2,7 @@ import { auth, db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
+import { ensureOwnerMembership, findUserByEmailAndPassword } from '@/src/services/clinicMembersService';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,8 +12,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -217,98 +217,154 @@ export default function ClinicLogin() {
 
   // ── Shared login logic (used by manual + biometric flows) ──
   const performLogin = async (loginEmail: string, loginPassword: string) => {
-    const userCredential = await signInWithEmailAndPassword(
-      auth,
-      loginEmail,
-      loginPassword
-    );
-    const firebaseUid = userCredential.user.uid;
+    // Try OWNER first (Firebase Auth + ownerUid lookup). If this path fails
+    // (auth error OR no clinic matched), fall through to the DOCTOR branch
+    // before surfacing any error.
+    let ownerError: any = null;
 
-    const q = query(
-      collection(db, 'clinics'),
-      where('ownerUid', '==', firebaseUid)
-    );
-    const snapshot = await getDocs(q);
+    try {
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        loginEmail,
+        loginPassword
+      );
+      const firebaseUid = userCredential.user.uid;
 
-    if (snapshot.empty) {
-      Alert.alert(t('common.error'), t('auth.invalidCredentials'));
-      return;
-    }
+      const q = query(
+        collection(db, 'clinics'),
+        where('ownerUid', '==', firebaseUid)
+      );
+      const snapshot = await getDocs(q);
 
-    const clinicDoc = snapshot.docs[0];
-    const clinicId = clinicDoc.id;
-    const clinicData = clinicDoc.data();
-    const isSubscribed = hasActiveSubscription(clinicData);
-    const clinicPlan = clinicData.subscriptionPlan || '';
-    const clinicType = clinicData.clinicType || null;
+      if (!snapshot.empty) {
+        const clinicDoc = snapshot.docs[0];
+        const clinicId = clinicDoc.id;
+        const clinicData = clinicDoc.data();
+        const isSubscribed = hasActiveSubscription(clinicData);
+        const clinicPlan = clinicData.subscriptionPlan || '';
+        const clinicType = clinicData.clinicType || null;
 
-    const ownerMember = await ensureOwnerMembership(clinicId, loginEmail);
+        const ownerMember = await ensureOwnerMembership(clinicId, loginEmail);
 
-    await AsyncStorage.setItem('clinicUserEmail', loginEmail);
-    await AsyncStorage.setItem('clinicSubscriptionPlan', clinicPlan ? String(clinicPlan) : '');
+        await AsyncStorage.setItem('clinicUserEmail', loginEmail);
+        await AsyncStorage.setItem('clinicSubscriptionPlan', clinicPlan ? String(clinicPlan) : '');
 
-    await setClinicAuth({
-      clinicId,
-      memberId: ownerMember.id,
-      role: ownerMember.role,
-      status: ownerMember.status,
-    });
-
-    // Biometric opt-in: prompt user after first successful login
-    const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
-    if (biometricFlag === null) {
-      // First login — check if device supports biometrics before asking
-      const hasHw = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (hasHw && isEnrolled) {
-        await new Promise<void>((resolve) => {
-          Alert.alert(
-            'Enable Face ID',
-            'Enable Face ID / Fingerprint for faster login?',
-            [
-              {
-                text: 'Not now',
-                style: 'cancel',
-                onPress: async () => {
-                  await SecureStore.setItemAsync('biometric_enabled', 'false');
-                  resolve();
-                },
-              },
-              {
-                text: 'Enable',
-                onPress: async () => {
-                  await SecureStore.setItemAsync('biometric_enabled', 'true');
-                  await SecureStore.setItemAsync(
-                    'clinic_credentials',
-                    JSON.stringify({ email: loginEmail, password: loginPassword })
-                  );
-                  resolve();
-                },
-              },
-            ],
-            { cancelable: false }
-          );
+        await setClinicAuth({
+          clinicId,
+          memberId: ownerMember.id,
+          role: ownerMember.role,
+          status: ownerMember.status,
         });
+
+        // Biometric opt-in: prompt user after first successful login
+        const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
+        if (biometricFlag === null) {
+          // First login — check if device supports biometrics before asking
+          const hasHw = await LocalAuthentication.hasHardwareAsync();
+          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+          if (hasHw && isEnrolled) {
+            await new Promise<void>((resolve) => {
+              Alert.alert(
+                'Enable Face ID',
+                'Enable Face ID / Fingerprint for faster login?',
+                [
+                  {
+                    text: 'Not now',
+                    style: 'cancel',
+                    onPress: async () => {
+                      await SecureStore.setItemAsync('biometric_enabled', 'false');
+                      resolve();
+                    },
+                  },
+                  {
+                    text: 'Enable',
+                    onPress: async () => {
+                      await SecureStore.setItemAsync('biometric_enabled', 'true');
+                      await SecureStore.setItemAsync(
+                        'clinic_credentials',
+                        JSON.stringify({ email: loginEmail, password: loginPassword })
+                      );
+                      resolve();
+                    },
+                  },
+                ],
+                { cancelable: false }
+              );
+            });
+          }
+        } else if (biometricFlag === 'true') {
+          // Already opted in — update stored credentials
+          await SecureStore.setItemAsync(
+            'clinic_credentials',
+            JSON.stringify({ email: loginEmail, password: loginPassword })
+          );
+        }
+
+        if (!isSubscribed) {
+          Alert.alert(
+            t('common.attention'),
+            t('common.subscriptionInactive'),
+            [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
+          );
+          return;
+        }
+
+        const homeRoute = getHomeRoute(clinicType);
+        router.replace(homeRoute as any);
+        return;
       }
-    } else if (biometricFlag === 'true') {
-      // Already opted in — update stored credentials
-      await SecureStore.setItemAsync(
-        'clinic_credentials',
-        JSON.stringify({ email: loginEmail, password: loginPassword })
-      );
+      // Firebase Auth succeeded but no clinic matched ownerUid — fall through
+      // to the doctor branch. Sign out so the unrelated Firebase Auth user
+      // does not linger as auth.currentUser.
+      try { await signOut(auth); } catch {}
+    } catch (err) {
+      // Owner Firebase Auth failed — try doctor before surfacing this error.
+      ownerError = err;
     }
 
-    if (!isSubscribed) {
-      Alert.alert(
-        t('common.attention'),
-        t('common.subscriptionInactive'),
-        [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
-      );
+    // ── DOCTOR fallback (Firestore-only session, no Firebase Auth) ──
+    const doctorRecord = await findUserByEmailAndPassword(loginEmail, loginPassword);
+    if (doctorRecord && doctorRecord.profile.role === 'doctor') {
+      const { memberId, profile } = doctorRecord;
+
+      if (profile.status !== 'ACTIVE') {
+        Alert.alert(
+          t('common.attention'),
+          'This account has been disabled. Please contact the clinic owner.'
+        );
+        return;
+      }
+
+      // Resolve clinic data for routing + subscription gate.
+      const clinicSnap = await getDoc(doc(db, 'clinics', profile.clinicId));
+      const clinicData = clinicSnap.exists() ? clinicSnap.data() : null;
+      const clinicType = clinicData?.clinicType || null;
+      const isSubscribed = clinicData ? hasActiveSubscription(clinicData) : false;
+
+      await setClinicAuth({
+        clinicId: profile.clinicId,
+        memberId,
+        role: 'doctor',
+        status: profile.status,
+      });
+
+      if (!isSubscribed) {
+        Alert.alert(
+          t('common.attention'),
+          t('common.subscriptionInactive'),
+          [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
+        );
+        return;
+      }
+
+      const homeRoute = getHomeRoute(clinicType);
+      router.replace(homeRoute as any);
       return;
     }
 
-    const homeRoute = getHomeRoute(clinicType);
-    router.replace(homeRoute as any);
+    // Neither owner nor doctor matched.
+    if (ownerError) throw ownerError;
+    Alert.alert(t('common.error'), t('auth.invalidCredentials'));
   };
 
   // ── Biometric auto-login handler ──
