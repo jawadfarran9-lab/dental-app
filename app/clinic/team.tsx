@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { createDoctorMember, listClinicMembers, removeMember } from '@/src/services/clinicMembersService';
+import { createDoctorMember, listClinicMembers, removeMember, updateDoctorPassword } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -80,6 +80,7 @@ export default function ClinicTeamScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [sheetStep, setSheetStep] = useState<SheetStep>('paywall');
   const [formMode, setFormMode] = useState<FormMode>('create');
+  const [editingMember, setEditingMember] = useState<ClinicMember | null>(null);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -154,6 +155,7 @@ export default function ClinicTeamScreen() {
 
   const openSheetForCreate = () => {
     setFormMode('create');
+    setEditingMember(null);
     setEmail('');
     setPassword('');
     setConfirmPassword('');
@@ -165,6 +167,7 @@ export default function ClinicTeamScreen() {
 
   const openSheetForEdit = (member: ClinicMember) => {
     setFormMode('edit');
+    setEditingMember(member);
     setEmail(member.email || '');
     setPassword('');
     setConfirmPassword('');
@@ -176,14 +179,39 @@ export default function ClinicTeamScreen() {
 
   const closeSheet = () => {
     setSheetOpen(false);
+    setEditingMember(null);
   };
 
   // Create a doctor (prototype: Firestore records only — no real auth or payment).
   const handleSubmit = async () => {
     if (submitting) return;
     if (formMode === 'edit') {
-      // Edit not wired yet — keep as placeholder.
-      closeSheet();
+      if (!editingMember || !clinicId) return;
+      if (password.length < 8) {
+        Alert.alert('Password too short', 'Password must be at least 8 characters.');
+        return;
+      }
+      if (password !== confirmPassword) {
+        Alert.alert("Passwords don't match", 'Please make sure both passwords match.');
+        return;
+      }
+      try {
+        setSubmitting(true);
+        await updateDoctorPassword(clinicId, editingMember.id, password);
+        closeSheet();
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
+        Alert.alert(
+          'Password updated',
+          'The doctor can now log in with the new password.'
+        );
+      } catch (err: any) {
+        console.error('[TEAM] update password failed', err);
+        Alert.alert("Couldn't update password", 'Please try again.');
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
     if (!clinicId) {
@@ -626,7 +654,7 @@ function FormStep(p: SheetProps) {
       <Text style={styles.formTitle}>{title}</Text>
 
       <FieldLabel text="Email" />
-      <View style={styles.field}>
+      <View style={[styles.field, p.mode === 'edit' && { opacity: 0.6 }]}>
         <Ionicons name="mail-outline" size={18} color={C.muted} style={styles.fieldIcon} />
         <TextInput
           value={p.email}
@@ -636,6 +664,7 @@ function FormStep(p: SheetProps) {
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="email-address"
+          editable={p.mode !== 'edit'}
           style={styles.fieldInput}
         />
       </View>

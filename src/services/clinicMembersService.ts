@@ -134,6 +134,21 @@ export async function listClinicMembers(clinicId: string): Promise<ClinicMember[
     .filter((member) => member.status !== 'REMOVED');
 }
 
+// PHASE G9: Prototype helper to update a doctor's password from the Team page.
+// Writes ONLY { password, updatedAt } with merge:true to both the member doc
+// and the user doc (intentional for prototype; plain-text password).
+export async function updateDoctorPassword(
+  clinicId: string,
+  memberId: string,
+  newPassword: string
+): Promise<void> {
+  const update = { password: newPassword, updatedAt: serverTimestamp() };
+  await Promise.all([
+    setDoc(doc(membersCollection(clinicId), memberId), update, { merge: true }),
+    setDoc(doc(usersCollection, memberId), update, { merge: true }),
+  ]);
+}
+
 // PHASE G9: Prototype helper to create a doctor seat from the Team page.
 // Writes the same shape as addClinicMemberInternal PLUS a plain-text password
 // field on both the member doc and the user doc (intentional for prototype).
