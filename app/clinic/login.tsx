@@ -556,6 +556,33 @@ export default function ClinicLogin() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
+
+          <View
+            style={[
+              styles.reassuranceCard,
+              {
+                backgroundColor: isDark ? 'rgba(61,158,255,0.08)' : 'rgba(61,158,255,0.06)',
+                borderColor: isDark ? 'rgba(61,158,255,0.22)' : 'rgba(61,158,255,0.18)',
+              },
+            ]}
+          >
+            <LinearGradient
+              colors={['#54ACFF', '#1E6FD9']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.reassuranceIconTile}
+            >
+              <Ionicons name="shield-checkmark" size={20} color="#FFFFFF" />
+            </LinearGradient>
+            <View style={styles.reassuranceTextWrap}>
+              <Text style={[styles.reassuranceTitle, { color: colors.textPrimary }]}>
+                Your subscription is safe with your account
+              </Text>
+              <Text style={[styles.reassuranceBody, { color: colors.textSecondary }]}>
+                Switch devices or reinstall anytime.{'\n'}Sign in to restore your plan instantly — no new payment.
+              </Text>
+            </View>
+          </View>
           </Animated.View>
         </KeyboardAvoidingView>
       </SafeAreaView>
@@ -723,6 +750,42 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 3,
+  },
+  reassuranceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+  },
+  reassuranceIconTile: {
+    width: 38,
+    height: 38,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#2E7CE0',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.28,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  reassuranceTextWrap: {
+    flex: 1,
+  },
+  reassuranceTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: -0.1,
+    marginBottom: 3,
+  },
+  reassuranceBody: {
+    fontSize: 12.5,
+    lineHeight: 17,
+    fontWeight: '400',
   },
   title: {
     fontSize: 22,
