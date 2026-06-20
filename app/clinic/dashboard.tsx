@@ -134,7 +134,7 @@ export default function ClinicDashboard() {
   useClinicGuard();
   const router = useRouter();
   const { isDark } = useTheme();
-  const { clinicId } = useAuth();
+  const { clinicId, clinicRole } = useAuth();
   const { hasAIPro } = useAIProStatus();
   const insets = useSafeAreaInsets();
 
@@ -625,6 +625,7 @@ export default function ClinicDashboard() {
           <TabButton
             icon="settings-outline"
             label="Settings"
+            locked={clinicRole !== 'owner'}
             onPress={() => router.push('/clinic/settings')}
           />
           <TabButton

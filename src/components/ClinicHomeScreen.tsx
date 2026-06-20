@@ -3,23 +3,23 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useAIProStatus } from '@/src/hooks/useAIProStatus';
 import {
-  CLINIC_HOME_CONFIG,
-  ClinicTypeKey,
+    CLINIC_HOME_CONFIG,
+    ClinicTypeKey,
 } from '@/src/utils/clinicTypeConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
-  Animated,
-  Easing,
-  I18nManager,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    Animated,
+    Easing,
+    I18nManager,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -45,12 +45,14 @@ function HomeCard({
   index,
   isDark,
   hasAIPro,
+  locked = false,
   onPress,
 }: {
   action: QuickActionDef;
   index: number;
   isDark: boolean;
   hasAIPro: boolean;
+  locked?: boolean;
   onPress: () => void;
 }) {
   const enter = useRef(new Animated.Value(0)).current;
@@ -101,7 +103,7 @@ function HomeCard({
         styles.cardWrap,
         {
           shadowColor: isDark ? '#000' : '#0F172A',
-          opacity: enter,
+          opacity: locked ? 0.5 : enter,
           transform: [
             {
               translateY: enter.interpolate({
@@ -115,9 +117,9 @@ function HomeCard({
       ]}
     >
       <Pressable
-        onPress={onPress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPress={locked ? () => {} : onPress}
+        onPressIn={locked ? undefined : handlePressIn}
+        onPressOut={locked ? undefined : handlePressOut}
         android_ripple={null}
       >
         <View style={styles.cardClip}>
@@ -159,6 +161,15 @@ function HomeCard({
             >
               {action.subtitle}
             </Text>
+
+            {locked && (
+              <View
+                style={[styles.homeLockBadge, styles.homeLockBadgeOnCard]}
+                pointerEvents="none"
+              >
+                <Ionicons name="lock-closed" size={9} color="#FFFFFF" />
+              </View>
+            )}
           </LinearGradient>
         </View>
       </Pressable>
@@ -285,10 +296,11 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   const insets = useSafeAreaInsets();
   const config = CLINIC_HOME_CONFIG[clinicType];
 
-  const { isSubscribed } = useAuth();
+  const { isSubscribed, clinicRole } = useAuth();
   const { hasAIPro } = useAIProStatus();
   const showBadge = isSubscribed === true;
   const showAIPro = showBadge && hasAIPro === true;
+  const isDoctor = clinicRole !== 'owner';
 
   const heroAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -480,12 +492,17 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                     <Ionicons name="home" size={20} color="#FFFFFF" />
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={goSettings}
-                    style={styles.frostedIconBtn}
+                    onPress={isDoctor ? () => {} : goSettings}
+                    style={[styles.frostedIconBtn, isDoctor && { opacity: 0.5 }]}
                     hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                    activeOpacity={0.85}
+                    activeOpacity={isDoctor ? 1 : 0.85}
                   >
                     <Ionicons name="settings" size={20} color="#FFFFFF" />
+                    {isDoctor && (
+                      <View style={styles.homeLockBadge} pointerEvents="none">
+                        <Ionicons name="lock-closed" size={9} color="#FFFFFF" />
+                      </View>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -592,6 +609,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                   index={idx}
                   isDark={isDark}
                   hasAIPro={hasAIPro === true}
+                  locked={isDoctor && a.route === '/clinic/settings'}
                   onPress={() => router.push(a.route as any)}
                 />
               ))}
@@ -673,6 +691,24 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  homeLockBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(91,107,130,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(18,24,46,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  homeLockBadgeOnCard: {
+    top: 14,
+    right: undefined,
+    left: 14,
   },
 
   pillRow: {
