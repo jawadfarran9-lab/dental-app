@@ -11,6 +11,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
+    Alert,
     Animated,
     Easing,
     I18nManager,
@@ -296,7 +297,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   const insets = useSafeAreaInsets();
   const config = CLINIC_HOME_CONFIG[clinicType];
 
-  const { isSubscribed, clinicRole } = useAuth();
+  const { isSubscribed, clinicRole, logout } = useAuth();
   const { hasAIPro } = useAIProStatus();
   const showBadge = isSubscribed === true;
   const showAIPro = showBadge && hasAIPro === true;
@@ -388,6 +389,24 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
     else goHome();
   };
 
+  const handleLogout = () => {
+    Alert.alert(
+      'Log out',
+      'Are you sure you want to log out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Log out',
+          style: 'destructive',
+          onPress: async () => {
+            await logout();
+            router.replace('/clinic/login' as any);
+          },
+        },
+      ]
+    );
+  };
+
   const actions: QuickActionDef[] = [
     {
       title: config.patientsLabel,
@@ -473,14 +492,18 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
 
               {/* Row 1: Back  |  Home + Settings */}
               <View style={[styles.heroRow, { flexDirection: ltrRow }]}>
-                <TouchableOpacity
-                  onPress={goBack}
-                  style={styles.frostedIconBtn}
-                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  activeOpacity={0.85}
-                >
-                  <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
-                </TouchableOpacity>
+                {!isDoctor ? (
+                  <TouchableOpacity
+                    onPress={goBack}
+                    style={styles.frostedIconBtn}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="chevron-back" size={22} color="#FFFFFF" />
+                  </TouchableOpacity>
+                ) : (
+                  <View style={styles.frostedIconBtnPlaceholder} />
+                )}
 
                 <View style={[styles.heroRightCluster, { flexDirection: ltrRow }]}>
                   <TouchableOpacity
@@ -620,6 +643,35 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
             hasAIPro={hasAIPro === true}
             onUpgrade={() => router.push('/clinic/upgrade' as any)}
           />
+
+          {isDoctor && (
+            <TouchableOpacity
+              onPress={handleLogout}
+              activeOpacity={0.75}
+              style={[
+                styles.logoutBtn,
+                {
+                  borderColor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.12)',
+                  backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.55)',
+                },
+              ]}
+            >
+              <Ionicons
+                name="log-out-outline"
+                size={18}
+                color={isDark ? '#E2E8F0' : '#475569'}
+                style={styles.logoutIcon}
+              />
+              <Text
+                style={[
+                  styles.logoutText,
+                  { color: isDark ? '#E2E8F0' : '#475569' },
+                ]}
+              >
+                Log out
+              </Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </View>
     </View>
@@ -691,6 +743,10 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.28)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  frostedIconBtnPlaceholder: {
+    width: 40,
+    height: 40,
   },
   homeLockBadge: {
     position: 'absolute',
@@ -1006,5 +1062,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.4,
+  },
+
+  // ── Log out ──
+  logoutBtn: {
+    marginTop: 22,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  logoutIcon: {
+    marginRight: 8,
+  },
+  logoutText: {
+    fontSize: 14,
+    fontWeight: '600',
+    letterSpacing: 0.2,
   },
 });
