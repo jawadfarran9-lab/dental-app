@@ -1,8 +1,8 @@
 import { useTheme } from '@/src/context/ThemeContext';
+import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
-import React from 'react';
 import {
   Pressable,
   ScrollView,
@@ -27,6 +27,7 @@ interface SettingsSection {
 }
 
 export default function ClinicSettingsScreen() {
+  useClinicRoleGuard(['owner']);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
