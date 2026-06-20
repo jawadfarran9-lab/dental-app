@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { createDoctorMember, listClinicMembers } from '@/src/services/clinicMembersService';
+import { createDoctorMember, listClinicMembers, removeMember } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -233,9 +233,32 @@ export default function ClinicTeamScreen() {
     }
   };
 
-  // Placeholder — no backend wiring yet
-  const handleRemoveDoctor = (_member: ClinicMember) => {
-    // no-op for now
+  const handleRemoveDoctor = (member: ClinicMember) => {
+    if (!clinicId) return;
+    Alert.alert(
+      'Remove doctor',
+      `${member.displayName || 'This doctor'} will no longer be able to log in.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await removeMember({
+                clinicId,
+                actingRole: 'owner',
+                memberId: member.id,
+              });
+              await refreshMembers();
+            } catch (err) {
+              console.error('[TEAM] remove doctor failed', err);
+              Alert.alert("Couldn't remove doctor", 'Please try again.');
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (

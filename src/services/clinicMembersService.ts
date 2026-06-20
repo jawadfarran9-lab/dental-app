@@ -328,7 +328,7 @@ export async function setMemberStatus(params: {
   await writeAuditLog({
     clinicId,
     actorId: params.actorId || 'owner',
-    actorName: params.actorName,
+    ...(params.actorName !== undefined && { actorName: params.actorName }),
     action: auditAction as any,
     targetId: memberId,
     details: { status },
