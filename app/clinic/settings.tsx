@@ -57,7 +57,6 @@ export default function ClinicSettingsScreen() {
           subtitle: 'End or pause your plan',
           icon: 'close-circle-outline',
           iconColor: '#F43F5E',
-          hasSoon: true,
         },
       ],
     },
@@ -224,6 +223,7 @@ export default function ClinicSettingsScreen() {
                   <Pressable
                     onPress={() => {
                       if (row.id === 'upgrade-subscription') router.push('/clinic/upgrade');
+                      else if (row.id === 'cancel-subscription') router.push('/clinic/cancel-subscription');
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                     }}
                     style={({ pressed }) => [
