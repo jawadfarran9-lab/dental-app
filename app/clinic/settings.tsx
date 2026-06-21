@@ -224,6 +224,7 @@ export default function ClinicSettingsScreen() {
                     onPress={() => {
                       if (row.id === 'upgrade-subscription') router.push('/clinic/upgrade');
                       else if (row.id === 'cancel-subscription') router.push('/clinic/cancel-subscription');
+                      else if (row.id === 'clinic-details') router.push('/clinic/clinic-details');
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                     }}
                     style={({ pressed }) => [

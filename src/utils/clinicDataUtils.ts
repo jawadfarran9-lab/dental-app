@@ -14,6 +14,7 @@ export type ClinicData = {
   email?: string;
   phone?: string;
   clinicPhone?: string;
+  businessNumber?: string;
   imageUrl?: string;
   profileImageUrl?: string;
   countryCode?: string;
@@ -55,6 +56,7 @@ export const fetchClinicData = async (clinicId: string): Promise<ClinicData | nu
       email: data?.email,
       phone: data?.phone,
       clinicPhone: data?.clinicPhone,
+      businessNumber: data?.businessNumber,
       imageUrl: data?.imageUrl,
       profileImageUrl: data?.profileImageUrl,
       countryCode: data?.countryCode,
