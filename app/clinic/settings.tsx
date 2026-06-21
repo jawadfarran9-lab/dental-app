@@ -226,6 +226,7 @@ export default function ClinicSettingsScreen() {
                       else if (row.id === 'cancel-subscription') router.push('/clinic/cancel-subscription');
                       else if (row.id === 'clinic-details') router.push('/clinic/clinic-details');
                       else if (row.id === 'clinic-location') router.push('/clinic/clinic-location');
+                      else if (row.id === 'working-hours') router.push('/clinic/working-hours');
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                     }}
                     style={({ pressed }) => [
