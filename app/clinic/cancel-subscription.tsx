@@ -9,13 +9,13 @@ import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Alert,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
