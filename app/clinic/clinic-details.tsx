@@ -79,7 +79,7 @@ export default function ClinicDetailsScreen() {
   };
 
   const handleChangePassword = () => {
-    Alert.alert('Coming soon', 'Password changes will be available soon.');
+    router.push('/clinic/change-password' as any);
   };
 
   const handleSave = async () => {
