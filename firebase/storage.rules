@@ -9,6 +9,12 @@ service firebase.storage {
       allow write: if true; // Allow uploads without auth (app-level validation)
     }
 
+    // Owner-uploaded clinic profile photo (fixed filename, overwrites on update)
+    match /clinics/{clinicId}/profile.jpg {
+      allow read: if true;                     // public-readable (Explore, public profile, dashboard)
+      allow write: if isClinicOwner(clinicId); // owner-only upload/replace
+    }
+
     // Allow access to files under clinics/{clinicId}/patients/{patientId}/...
     match /clinics/{clinicId}/patients/{patientId}/{allPaths=**} {
       allow read: if isClinicOwner(clinicId) || isPatientOwner(patientId);

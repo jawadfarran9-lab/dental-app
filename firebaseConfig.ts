@@ -9,7 +9,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyCyei5KZ_ROWZfBbMClSY02tgVHgtGblag",
   authDomain: "dental-jawad.firebaseapp.com",
   projectId: "dental-jawad",
-  storageBucket: "dental-jawad.appspot.com",
+  storageBucket: "dental-jawad.firebasestorage.app",
   messagingSenderId: "256500365668",
   appId: "1:256500365668:web:9410f076de32a7bc51e271",
 };
