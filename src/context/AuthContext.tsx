@@ -36,7 +36,7 @@ type ClinicAuthPayload = {
 
 interface AuthContextType extends AuthState {
   setClinicAuth: (payload: ClinicAuthPayload) => Promise<void>;
-  setPatientAuth: (patientId: string) => Promise<void>;
+  setPatientAuth: (patientId: string, clinicId?: string) => Promise<void>;
   logout: () => Promise<void>;
   checkAuthState: () => Promise<void>;
 }
@@ -62,9 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const CLINIC_ROLE_KEY = 'clinicRole';
   const CLINIC_STATUS_KEY = 'clinicMemberStatus';
   const PATIENT_ID_KEY = 'patientId';
+  const PATIENT_CLINIC_ID_KEY = 'patientClinicId';
 
   /** All auth-related storage keys — single source of truth for deterministic cleanup */
-  const ALL_AUTH_KEYS = [CLINIC_ID_KEY, CLINIC_MEMBER_ID_KEY, CLINIC_ROLE_KEY, CLINIC_STATUS_KEY, PATIENT_ID_KEY];
+  const ALL_AUTH_KEYS = [CLINIC_ID_KEY, CLINIC_MEMBER_ID_KEY, CLINIC_ROLE_KEY, CLINIC_STATUS_KEY, PATIENT_ID_KEY, PATIENT_CLINIC_ID_KEY];
 
   /**
    * Check subscription status for clinic
@@ -110,6 +111,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const storedRole = await AsyncStorage.getItem(CLINIC_ROLE_KEY);
       const storedStatus = await AsyncStorage.getItem(CLINIC_STATUS_KEY);
       const patientId = await AsyncStorage.getItem(PATIENT_ID_KEY);
+      const patientClinicId = await AsyncStorage.getItem(PATIENT_CLINIC_ID_KEY);
 
       // ── Unified clinicId path: subscription check runs identically on Web & Native ──
       // If clinicId exists in storage, ALWAYS run checkClinicSubscription first.
@@ -195,7 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setAuthState({
           userRole: 'patient',
           userId: patientId,
-          clinicId: null,
+          clinicId: patientClinicId ?? null,
           memberId: null,
           clinicRole: null,
           memberStatus: null,
@@ -339,11 +341,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Set patient authentication after login
    */
-  const setPatientAuth = async (patientId: string) => {
+  const setPatientAuth = async (patientId: string, clinicId?: string) => {
     try {
       setAuthState((prev) => ({ ...prev, loading: true }));
 
       await AsyncStorage.setItem(PATIENT_ID_KEY, patientId);
+      if (clinicId) {
+        await AsyncStorage.setItem(PATIENT_CLINIC_ID_KEY, clinicId);
+      } else {
+        await AsyncStorage.removeItem(PATIENT_CLINIC_ID_KEY);
+      }
       // Clear clinic session if switching to patient
       await AsyncStorage.multiRemove([
         CLINIC_ID_KEY,
@@ -355,7 +362,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setAuthState({
         userRole: 'patient',
         userId: patientId,
-        clinicId: null,
+        clinicId: clinicId ?? null,
         memberId: null,
         clinicRole: null,
         memberStatus: null,
