@@ -579,10 +579,10 @@ export default function ClinicDashboard() {
         )}
       />
 
-      {/* Floating + FAB (unwired) */}
+      {/* Floating + FAB: Create patient */}
       <TouchableOpacity
         activeOpacity={0.9}
-        onPress={() => {}}
+        onPress={() => router.push('/clinic/create')}
         style={[styles.fabWrap, { bottom: insets.bottom + 96 }]}
       >
         <LinearGradient
@@ -631,7 +631,8 @@ export default function ClinicDashboard() {
           <TabButton
             icon="time-outline"
             label="Session"
-            onPress={() => router.push('/clinic/create')}
+            locked
+            onPress={() => {}}
           />
           <TabButton
             icon="person"
