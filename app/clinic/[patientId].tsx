@@ -8,9 +8,9 @@ import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -55,6 +55,23 @@ export default function PatientDetails() {
   const [sessions, setSessions] = useState<SessionDoc[]>([]);
   const [copied, setCopied] = useState(false);
 
+  const loadPatient = useCallback(() => {
+    if (!clinicId || !patientId) return;
+    const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
+    getDoc(pRef)
+      .then((snap) => {
+        if (snap.exists()) setPatient({ id: snap.id, ...(snap.data() as any) });
+        else setPatient(null);
+      })
+      .catch((e) => console.error('[patient] fetch error', e));
+  }, [clinicId, patientId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPatient();
+    }, [loadPatient])
+  );
+
   useEffect(() => {
     if (!clinicUser) {
       router.replace('/clinic/login' as any);
@@ -62,12 +79,6 @@ export default function PatientDetails() {
     }
     if (!patientId) return;
     if (!clinicId) return;
-
-    const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
-    getDoc(pRef).then((snap) => {
-      if (snap.exists()) setPatient({ id: snap.id, ...(snap.data() as any) });
-      else setPatient(null);
-    });
 
     const q = query(
       collection(db, `clinics/${clinicId}/patients/${patientId}/sessions`),

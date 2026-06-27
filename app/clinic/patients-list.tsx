@@ -6,9 +6,9 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Pressable,
@@ -59,19 +59,21 @@ export default function PatientsListScreen() {
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadPatients = useCallback(async () => {
     if (!clinicUser) {
       router.replace('/clinic/login' as any);
       return;
     }
-    if (!clinicId) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const ref = collection(db, 'clinics', clinicId, 'patients');
-        const snap = await getDocs(query(ref, orderBy('createdAt', 'desc')));
-        const list: PatientRow[] = snap.docs.map((d) => {
+    if (!clinicId) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const ref = collection(db, 'clinics', clinicId, 'patients');
+      const snap = await getDocs(query(ref, orderBy('createdAt', 'desc')));
+      const list: PatientRow[] = snap.docs
+        .filter((d) => (d.data() as any).archived !== true)
+        .map((d) => {
           const data = d.data() as any;
           return {
             id: d.id,
@@ -79,18 +81,19 @@ export default function PatientsListScreen() {
             code: data.code,
           };
         });
-        if (!cancelled) setPatients(list);
-      } catch (err) {
-        console.error('[patients-list] fetch error', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
+      setPatients(list);
+    } catch (err) {
+      console.error('[patients-list] fetch error', err);
+    } finally {
+      setLoading(false);
+    }
   }, [clinicId, clinicUser, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPatients();
+    }, [loadPatients])
+  );
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();

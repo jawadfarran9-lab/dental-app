@@ -219,6 +219,7 @@ export default function ClinicDashboard() {
       const patientsList: Patient[] = [];
       patientsSnap.forEach((docSnap) => {
         const data = docSnap.data();
+        if (data.archived === true) return;
         patientsList.push({
           id: docSnap.id,
           name: data.name || data.patientName || 'Unnamed',

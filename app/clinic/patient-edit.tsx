@@ -71,6 +71,7 @@ export default function PatientEditScreen() {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -192,6 +193,39 @@ export default function PatientEditScreen() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleRemove = () => {
+    if (!clinicId || !patientId) return;
+    Alert.alert(
+      t('patient.removeTitle', { defaultValue: 'Remove patient?' }),
+      t('patient.removeMessage', {
+        defaultValue:
+          "This patient will be hidden from your clinic's lists. Their records will not be shown anywhere in the app. You can ask support to restore them later.",
+      }),
+      [
+        { text: t('common.cancel', { defaultValue: 'Cancel' }), style: 'cancel' },
+        {
+          text: t('patient.remove', { defaultValue: 'Remove Patient' }),
+          style: 'destructive',
+          onPress: async () => {
+            setArchiving(true);
+            try {
+              const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
+              await updateDoc(pRef, {
+                archived: true,
+                archivedAt: serverTimestamp(),
+              });
+              router.back();
+            } catch (err: any) {
+              console.error('[patient-edit] archive error', err);
+              Alert.alert(t('common.error'), err?.message || 'Failed to remove patient');
+              setArchiving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Theme tokens (mirror create.tsx)
@@ -865,6 +899,48 @@ export default function PatientEditScreen() {
                 )}
               </LinearGradient>
             </Pressable>
+
+            {/* DANGER ZONE */}
+            <Text style={[styles.eyebrow, styles.dangerEyebrow]}>DANGER ZONE</Text>
+            <View
+              style={[
+                styles.dangerCard,
+                {
+                  backgroundColor: isDark ? 'rgba(239,68,68,0.08)' : 'rgba(239,68,68,0.06)',
+                  borderColor: isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.30)',
+                },
+              ]}
+            >
+              <Text style={[styles.dangerDesc, { color: textSecondary }]}>
+                {t('patient.removeMessage', {
+                  defaultValue:
+                    "This patient will be hidden from your clinic's lists. Their records will not be shown anywhere in the app. You can ask support to restore them later.",
+                })}
+              </Text>
+              <Pressable
+                onPress={handleRemove}
+                disabled={archiving || saving}
+                style={({ pressed }) => [
+                  styles.dangerBtn,
+                  {
+                    backgroundColor: isDark ? 'rgba(239,68,68,0.18)' : 'rgba(239,68,68,0.12)',
+                    borderColor: '#EF4444',
+                    opacity: archiving || saving ? 0.6 : pressed ? 0.85 : 1,
+                  },
+                ]}
+              >
+                {archiving ? (
+                  <ActivityIndicator color="#EF4444" />
+                ) : (
+                  <>
+                    <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                    <Text style={styles.dangerBtnText}>
+                      {t('patient.remove', { defaultValue: 'Remove Patient' })}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
           </ScrollView>
         )}
       </KeyboardAvoidingView>
@@ -1228,6 +1304,34 @@ const styles = StyleSheet.create({
   primaryBtnText: {
     color: '#FFFFFF',
     fontSize: 15.5,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+
+  dangerEyebrow: { color: '#EF4444' },
+  dangerCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  dangerDesc: {
+    fontSize: 12.5,
+    lineHeight: 18,
+  },
+  dangerBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingVertical: 12,
+  },
+  dangerBtnText: {
+    color: '#EF4444',
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
