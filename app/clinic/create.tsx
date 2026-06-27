@@ -57,6 +57,9 @@ export default function CreatePatientScreen() {
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactRelationship, setEmergencyContactRelationship] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
+  const [referralSource, setReferralSource] = useState('');
+  const [insuranceProvider, setInsuranceProvider] = useState('');
+  const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { t } = useTranslation();
@@ -116,6 +119,9 @@ export default function CreatePatientScreen() {
         emergencyContactName: emergencyContactName || null,
         emergencyContactRelationship: emergencyContactRelationship || null,
         emergencyContactPhone: emergencyContactPhone || null,
+        referralSource: referralSource || null,
+        insuranceProvider: insuranceProvider || null,
+        insurancePolicyNumber: insurancePolicyNumber || null,
         createdAt: serverTimestamp(),
       });
 
@@ -643,6 +649,99 @@ export default function CreatePatientScreen() {
             </View>
           </View>
 
+          {/* HOW THEY FOUND US */}
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>
+            HOW THEY FOUND US
+          </Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={[styles.fieldBlock, { marginBottom: 0 }]}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Referral source
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="megaphone-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={referralSource}
+                  onChangeText={setReferralSource}
+                  placeholder="Instagram, friend, Google…"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+          </View>
+
+          {/* INSURANCE (optional) */}
+          <View style={styles.eyebrowRow}>
+            <Text style={[styles.eyebrow, { color: textSecondary, marginTop: 0, marginBottom: 0 }]}>
+              INSURANCE
+            </Text>
+            <View
+              style={[
+                styles.optionalBadge,
+                {
+                  backgroundColor: isDark ? 'rgba(20,184,166,0.20)' : 'rgba(20,184,166,0.14)',
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.optionalBadgeText,
+                  { color: isDark ? '#2DD4BF' : '#0E9384' },
+                ]}
+              >
+                OPTIONAL
+              </Text>
+            </View>
+          </View>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Insurance provider
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="shield-checkmark-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={insuranceProvider}
+                  onChangeText={setInsuranceProvider}
+                  placeholder="Company name (leave empty if none)"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+            <View style={[styles.fieldBlock, { marginBottom: 0 }]}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Policy / member number
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="card-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={insurancePolicyNumber}
+                  onChangeText={setInsurancePolicyNumber}
+                  placeholder="Policy or membership no."
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+          </View>
+
           {/* ADDITIONAL NOTES */}
           <Text style={[styles.eyebrow, { color: textSecondary }]}>
             ADDITIONAL NOTES
@@ -879,6 +978,23 @@ const styles = StyleSheet.create({
     letterSpacing: 1.2,
     marginTop: 12,
     marginBottom: 8,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  optionalBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  optionalBadgeText: {
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.6,
   },
 
   card: {

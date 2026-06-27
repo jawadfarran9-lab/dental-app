@@ -29,6 +29,9 @@ export interface Patient {
   emergencyContactName: string | null;
   emergencyContactRelationship: string | null;
   emergencyContactPhone: string | null;
+  referralSource: string | null;
+  insuranceProvider: string | null;
+  insurancePolicyNumber: string | null;
   imageUrl?: string;                // optional, not written today
   createdAt: Timestamp;
 }
