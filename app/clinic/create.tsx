@@ -4,6 +4,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { generateUniquePatientCode, reservePatientCode } from '@/src/services/patientCodeService';
+import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +46,12 @@ export default function CreatePatientScreen() {
   const [regularMedicationDetails, setRegularMedicationDetails] = useState('');
   const [hasAllergy, setHasAllergy] = useState(false);
   const [allergyDetails, setAllergyDetails] = useState('');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
+  const [bloodType, setBloodType] = useState<BloodType>(null);
+  const [hasChronicConditions, setHasChronicConditions] = useState(false);
+  const [chronicConditionsDetails, setChronicConditionsDetails] = useState('');
+  const [isPregnant, setIsPregnant] = useState(false);
   const [address, setAddress] = useState('');
   const [occupation, setOccupation] = useState('');
   const [emergencyContactName, setEmergencyContactName] = useState('');
@@ -94,10 +101,16 @@ export default function CreatePatientScreen() {
         notes: notes || null,
         dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : null,
         gender,
+        heightCm: height ? Number(height) : null,
+        weightKg: weight ? Number(weight) : null,
+        bloodType,
         hasRegularMedication,
         regularMedicationDetails: hasRegularMedication ? regularMedicationDetails : null,
         hasAllergy,
         allergyDetails: hasAllergy ? allergyDetails : null,
+        hasChronicConditions,
+        chronicConditionsDetails: hasChronicConditions ? chronicConditionsDetails : null,
+        isPregnant: gender === 'female' ? isPregnant : null,
         address: address || null,
         occupation: occupation || null,
         emergencyContactName: emergencyContactName || null,
@@ -368,8 +381,67 @@ export default function CreatePatientScreen() {
             MEDICAL INFORMATION
           </Text>
           <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {/* Height + Weight (two columns) */}
+            <View style={styles.twoCol}>
+              <View style={styles.twoColItem}>
+                <Text style={[styles.fieldLabel, styles.twoColLabel, { color: textSecondary }]}>
+                  Height (cm)
+                </Text>
+                <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                  <Ionicons name="resize-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                  <TextInput
+                    value={height}
+                    onChangeText={setHeight}
+                    placeholder="e.g. 170"
+                    placeholderTextColor={textMuted}
+                    keyboardType="numeric"
+                    editable={!loading}
+                    style={[styles.fieldInput, { color: textPrimary, textAlign: 'left', writingDirection: 'ltr' }]}
+                  />
+                </View>
+              </View>
+              <View style={styles.twoColItem}>
+                <Text style={[styles.fieldLabel, styles.twoColLabel, { color: textSecondary }]}>
+                  Weight (kg)
+                </Text>
+                <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                  <Ionicons name="barbell-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                  <TextInput
+                    value={weight}
+                    onChangeText={setWeight}
+                    placeholder="e.g. 65"
+                    placeholderTextColor={textMuted}
+                    keyboardType="numeric"
+                    editable={!loading}
+                    style={[styles.fieldInput, { color: textPrimary, textAlign: 'left', writingDirection: 'ltr' }]}
+                  />
+                </View>
+              </View>
+            </View>
+
+            {/* Blood type */}
+            <View style={[styles.fieldBlock, { marginTop: 14 }]}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Blood type
+              </Text>
+              <View style={styles.bloodChips}>
+                {(['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'] as const).map((bt) => (
+                  <BloodChip
+                    key={bt}
+                    label={bt}
+                    active={bloodType === bt}
+                    onPress={() => setBloodType(bloodType === bt ? null : bt)}
+                    disabled={loading}
+                    fieldBg={fieldBg}
+                    fieldBorder={fieldBorder}
+                    textMuted={textMuted}
+                  />
+                ))}
+              </View>
+            </View>
+
             {/* Regular Medication */}
-            <View style={styles.toggleRow}>
+            <View style={[styles.toggleRow, { marginTop: 14 }]}>
               <Text style={[styles.toggleLabel, { color: textPrimary }]}>
                 {t('createPatient.regularMedication')}
               </Text>
@@ -441,6 +513,63 @@ export default function CreatePatientScreen() {
                     ]}
                   />
                 </View>
+              </View>
+            )}
+
+            {/* Chronic conditions */}
+            <View style={[styles.toggleRow, { marginTop: 14 }]}>
+              <Text style={[styles.toggleLabel, { color: textPrimary }]}>
+                Has chronic conditions?
+              </Text>
+              <YesNoPill
+                value={hasChronicConditions}
+                onChange={setHasChronicConditions}
+                disabled={loading}
+                yes={t('common.yes')}
+                no={t('common.no')}
+                segmentBg={segmentBg}
+                segmentBorder={segmentBorder}
+                textMuted={textMuted}
+              />
+            </View>
+            {hasChronicConditions && (
+              <View style={{ marginTop: 12 }}>
+                <View style={[styles.field, styles.fieldTextarea, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                  <Ionicons name="pulse-outline" size={18} color={textMuted} style={[styles.fieldIcon, styles.fieldIconTop]} />
+                  <TextInput
+                    value={chronicConditionsDetails}
+                    onChangeText={setChronicConditionsDetails}
+                    placeholder="Chronic conditions details"
+                    placeholderTextColor={textMuted}
+                    multiline
+                    editable={!loading}
+                    style={[
+                      styles.fieldInput,
+                      styles.fieldInputMultiline,
+                      { color: textPrimary },
+                      isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                    ]}
+                  />
+                </View>
+              </View>
+            )}
+
+            {/* Pregnancy — female only */}
+            {gender === 'female' && (
+              <View style={[styles.toggleRow, { marginTop: 14 }]}>
+                <Text style={[styles.toggleLabel, { color: textPrimary }]}>
+                  Currently pregnant?
+                </Text>
+                <YesNoPill
+                  value={isPregnant}
+                  onChange={setIsPregnant}
+                  disabled={loading}
+                  yes={t('common.yes')}
+                  no={t('common.no')}
+                  segmentBg={segmentBg}
+                  segmentBorder={segmentBorder}
+                  textMuted={textMuted}
+                />
               </View>
             )}
           </View>
@@ -664,6 +793,48 @@ function YesNoSeg({
   );
 }
 
+function BloodChip({
+  label,
+  active,
+  onPress,
+  disabled,
+  fieldBg,
+  fieldBorder,
+  textMuted,
+}: {
+  label: string;
+  active: boolean;
+  onPress: () => void;
+  disabled: boolean;
+  fieldBg: string;
+  fieldBorder: string;
+  textMuted: string;
+}) {
+  if (active) {
+    return (
+      <Pressable onPress={onPress} disabled={disabled} style={styles.bloodChip}>
+        <LinearGradient
+          colors={[ACCENT_LIGHT, ACCENT_DARK] as any}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.bloodChipActiveFill}
+        >
+          <Text style={styles.bloodChipTextActive}>{label}</Text>
+        </LinearGradient>
+      </Pressable>
+    );
+  }
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={[styles.bloodChip, styles.bloodChipInactive, { backgroundColor: fieldBg, borderColor: fieldBorder }]}
+    >
+      <Text style={[styles.bloodChipText, { color: textMuted }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -815,6 +986,44 @@ const styles = StyleSheet.create({
   },
   yesNoSegText: { fontSize: 12.5, fontWeight: '700' },
   yesNoSegTextActive: { fontSize: 12.5, fontWeight: '800', color: '#FFFFFF' },
+
+  twoCol: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  twoColItem: {
+    flex: 1,
+  },
+  twoColLabel: {
+    marginBottom: 6,
+  },
+
+  bloodChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  bloodChip: {
+    minWidth: 56,
+    height: 36,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+  },
+  bloodChipInactive: {
+    borderWidth: 1,
+  },
+  bloodChipActiveFill: {
+    width: '100%',
+    height: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+  },
+  bloodChipText: { fontSize: 13, fontWeight: '700' },
+  bloodChipTextActive: { fontSize: 13, fontWeight: '800', color: '#FFFFFF' },
 
   primaryBtnWrap: {
     borderRadius: 16,
