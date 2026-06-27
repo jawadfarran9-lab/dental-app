@@ -229,6 +229,7 @@ export default function ClinicSettingsScreen() {
                       else if (row.id === 'working-hours') router.push('/clinic/working-hours');
                       else if (row.id === 'clinic-status') router.push('/clinic/clinic-status');
                       else if (row.id === 'clinic-profile-photo') router.push('/clinic/clinic-profile-photo');
+                      else if (row.id === 'patient-form-fields') router.push('/clinic/patients-list' as any);
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                     }}
                     style={({ pressed }) => [

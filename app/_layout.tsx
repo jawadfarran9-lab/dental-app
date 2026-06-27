@@ -48,6 +48,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/usage" options={{ title: 'Usage & Trial', headerShown: true }} />
       <Stack.Screen name="clinic/audit" options={{ title: 'Audit Log', headerShown: true }} />
       <Stack.Screen name="clinic/[patientId]" options={{ title: 'Patient Details', headerShown: true }} />
+      <Stack.Screen name="clinic/patients-list" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/media" options={{ title: 'Patient Media', headerShown: false }} />
       <Stack.Screen name="clinic/upgrade" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/archive" options={{ headerShown: false }} />
