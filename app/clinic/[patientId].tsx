@@ -116,7 +116,6 @@ export default function PatientDetails() {
   const backBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)';
   const backBgPressed = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(27, 37, 66, 0.1)';
   const backIconColor = isDark ? '#FFFFFF' : '#1B2542';
-  const lockedIconColor = isDark ? 'rgba(255,255,255,0.85)' : '#1B2542';
 
   const patientName = patient?.name || '';
   const palette =
@@ -155,11 +154,19 @@ export default function PatientDetails() {
           >
             <Ionicons name="settings-outline" size={20} color={backIconColor} />
           </Pressable>
-          <LockedHeaderButton
-            icon="chatbubble-ellipses-outline"
-            backBg={backBg}
-            iconColor={lockedIconColor}
-          />
+          <Pressable
+            onPress={() =>
+              router.push(
+                `/clinic/conversation?patientId=${patientId}&name=${encodeURIComponent(patientName)}` as any
+              )
+            }
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? backBgPressed : backBg },
+            ]}
+          >
+            <Ionicons name="chatbubble-ellipses-outline" size={20} color={backIconColor} />
+          </Pressable>
         </View>
       </View>
 
@@ -242,28 +249,6 @@ export default function PatientDetails() {
   );
 }
 
-function LockedHeaderButton({
-  icon,
-  backBg,
-  iconColor,
-}: {
-  icon: keyof typeof Ionicons.glyphMap;
-  backBg: string;
-  iconColor: string;
-}) {
-  return (
-    <Pressable
-      onPress={() => {}}
-      style={[styles.headerBtn, styles.headerBtnLocked, { backgroundColor: backBg }]}
-    >
-      <Ionicons name={icon} size={20} color={iconColor} />
-      <View style={styles.lockBadge}>
-        <Ionicons name="lock-closed" size={9} color="#FFFFFF" />
-      </View>
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
@@ -284,27 +269,11 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  headerBtnLocked: {
-    opacity: 0.5,
-  },
   headerText: { flex: 1, paddingTop: 8 },
   headerTitle: { fontSize: 18, fontWeight: '800' },
   headerTrailing: {
     flexDirection: 'column',
     gap: 8,
-  },
-  lockBadge: {
-    position: 'absolute',
-    top: -3,
-    right: -3,
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: 'rgba(91,107,130,0.95)',
-    borderWidth: 1,
-    borderColor: 'rgba(18,24,46,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
