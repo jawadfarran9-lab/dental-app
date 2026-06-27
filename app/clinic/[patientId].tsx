@@ -44,7 +44,7 @@ type SessionDoc = { id: string; [k: string]: any };
 export default function PatientDetails() {
   useClinicGuard();
   const { patientId } = useLocalSearchParams();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, clinicUser, loading: clinicLoading } = useClinic();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
@@ -73,6 +73,7 @@ export default function PatientDetails() {
   );
 
   useEffect(() => {
+    if (clinicLoading) return;
     if (!clinicUser) {
       router.replace('/clinic/login' as any);
       return;
@@ -92,7 +93,7 @@ export default function PatientDetails() {
     return () => {
       unsubSessions();
     };
-  }, [patientId, clinicUser, router, clinicId]);
+  }, [patientId, clinicUser, clinicLoading, router, clinicId]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();

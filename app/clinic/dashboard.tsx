@@ -620,8 +620,7 @@ export default function ClinicDashboard() {
           <TabButton
             icon="chatbubble-ellipses-outline"
             label="Chat"
-            locked
-            onPress={() => {}}
+            onPress={() => router.push('/clinic/messages' as any)}
           />
           <TabButton
             icon="settings-outline"

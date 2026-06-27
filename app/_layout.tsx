@@ -43,7 +43,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/dashboard" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/index" options={{ title: 'Patients', headerShown: true }} />
       <Stack.Screen name="clinic/create" options={{ title: 'New Patient', headerShown: true }} />
-      <Stack.Screen name="clinic/messages" options={{ title: 'Messages', headerShown: true }} />
+      <Stack.Screen name="clinic/messages" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/team" options={{ title: 'Team', headerShown: true }} />
       <Stack.Screen name="clinic/usage" options={{ title: 'Usage & Trial', headerShown: true }} />
       <Stack.Screen name="clinic/audit" options={{ title: 'Audit Log', headerShown: true }} />
