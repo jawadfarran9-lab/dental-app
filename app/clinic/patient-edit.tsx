@@ -2,6 +2,7 @@ import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useClinic } from '@/src/context/ClinicContext';
+import { changePatientCode } from '@/src/services/patientCodeService';
 import { useTheme } from '@/src/context/ThemeContext';
 import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -72,6 +73,7 @@ export default function PatientEditScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [changingCode, setChangingCode] = useState(false);
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -139,6 +141,36 @@ export default function PatientEditScreen() {
     await Clipboard.setStringAsync(String(code));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleChangeCode = () => {
+    if (!clinicId || !patientId || changingCode) return;
+    Alert.alert(
+      'Generate a new code?',
+      'The current code will stop working immediately. The patient must use the NEW code to log in. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Generate new code',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setChangingCode(true);
+              const newCode = await changePatientCode(clinicId, patientId as string, code);
+              setCode(newCode);
+              await Clipboard.setStringAsync(String(newCode));
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+              Alert.alert('Code updated', 'The new code has been generated and copied to your clipboard.');
+            } catch (err: any) {
+              Alert.alert('Error', err?.message ?? 'Could not change the code. Please try again.');
+            } finally {
+              setChangingCode(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const onSubmit = async () => {
@@ -318,7 +350,7 @@ export default function PatientEditScreen() {
                 <Pressable
                   onPress={handleCopyCode}
                   hitSlop={8}
-                  disabled={!code}
+                  disabled={!code || changingCode}
                   style={({ pressed }) => [styles.copyBtn, pressed && { opacity: 0.6 }]}
                 >
                   <Ionicons
@@ -327,10 +359,28 @@ export default function PatientEditScreen() {
                     color={copied ? '#10B981' : ACCENT}
                   />
                 </Pressable>
-                <View style={styles.lockedPill}>
-                  <Ionicons name="lock-closed" size={10} color={textMuted} />
-                  <Text style={[styles.lockedPillText, { color: textMuted }]}>LOCKED</Text>
-                </View>
+                <Pressable
+                  onPress={handleChangeCode}
+                  hitSlop={8}
+                  disabled={changingCode}
+                  style={({ pressed }) => [
+                    styles.changeCodeBtn,
+                    {
+                      backgroundColor: isDark ? 'rgba(61,158,255,0.18)' : 'rgba(61,158,255,0.12)',
+                      borderColor: ACCENT,
+                      opacity: pressed && !changingCode ? 0.7 : 1,
+                    },
+                  ]}
+                >
+                  {changingCode ? (
+                    <ActivityIndicator size="small" color={ACCENT} />
+                  ) : (
+                    <>
+                      <Ionicons name="refresh-outline" size={12} color={ACCENT} />
+                      <Text style={[styles.changeCodeText, { color: ACCENT }]}>Change</Text>
+                    </>
+                  )}
+                </Pressable>
               </View>
             </View>
 
@@ -1161,6 +1211,22 @@ const styles = StyleSheet.create({
     fontSize: 9.5,
     fontWeight: '800',
     letterSpacing: 0.6,
+  },
+  changeCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    borderWidth: 1,
+    minWidth: 72,
+    justifyContent: 'center',
+  },
+  changeCodeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.4,
   },
 
   fieldBlock: { marginBottom: 14 },

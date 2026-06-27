@@ -1,5 +1,5 @@
 import { db } from '@/firebaseConfig';
-import { deleteDoc, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { deleteDoc, doc, getDoc, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 
 const MAX_ATTEMPTS = 10;
 
@@ -54,4 +54,43 @@ export async function lookupPatientByCode(
  */
 export async function releasePatientCode(code: string): Promise<void> {
   await deleteDoc(doc(db, 'patientCodes', code));
+}
+
+/**
+ * Regenerate a globally-unique patient code and persist it everywhere it must
+ * be consistent: reserve the new code, update the patient doc's `code` field,
+ * then release the old code. Ordering ensures the patient is never locked out
+ * mid-operation; the old code stays valid until the patient doc is updated.
+ * Returns the new code on success; throws on failure (after best-effort
+ * rollback of the new-code reservation).
+ */
+export async function changePatientCode(
+  clinicId: string,
+  patientId: string,
+  oldCode: string,
+): Promise<string> {
+  const newCode = await generateUniquePatientCode();
+
+  await reservePatientCode(newCode, clinicId, patientId);
+
+  try {
+    await updateDoc(doc(db, 'clinics', clinicId, 'patients', patientId), { code: newCode });
+  } catch (err) {
+    try {
+      await releasePatientCode(newCode);
+    } catch (rollbackErr) {
+      console.warn('[changePatientCode] failed to roll back new code', newCode, rollbackErr);
+    }
+    throw err;
+  }
+
+  if (oldCode && oldCode !== newCode) {
+    try {
+      await releasePatientCode(oldCode);
+    } catch (cleanupErr) {
+      console.warn('[changePatientCode] stale old code not released', oldCode, cleanupErr);
+    }
+  }
+
+  return newCode;
 }
