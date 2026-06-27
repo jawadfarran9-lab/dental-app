@@ -203,7 +203,7 @@ export default function PatientsListScreen() {
                 return (
                   <Pressable
                     key={p.id}
-                    onPress={() => {}}
+                    onPress={() => router.push(`/clinic/patient-edit?patientId=${p.id}` as any)}
                     style={({ pressed }) => [
                       styles.row,
                       {

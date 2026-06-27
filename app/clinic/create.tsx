@@ -463,7 +463,7 @@ export default function CreatePatientScreen() {
               />
             </View>
             {hasRegularMedication && (
-              <View style={{ marginTop: 12 }}>
+              <View style={{ marginTop: 14 }}>
                 <View style={[styles.field, styles.fieldTextarea, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
                   <Ionicons name="medkit-outline" size={18} color={textMuted} style={[styles.fieldIcon, styles.fieldIconTop]} />
                   <TextInput
@@ -501,7 +501,7 @@ export default function CreatePatientScreen() {
               />
             </View>
             {hasAllergy && (
-              <View style={{ marginTop: 12 }}>
+              <View style={{ marginTop: 14 }}>
                 <View style={[styles.field, styles.fieldTextarea, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
                   <Ionicons name="alert-circle-outline" size={18} color={textMuted} style={[styles.fieldIcon, styles.fieldIconTop]} />
                   <TextInput
@@ -539,7 +539,7 @@ export default function CreatePatientScreen() {
               />
             </View>
             {hasChronicConditions && (
-              <View style={{ marginTop: 12 }}>
+              <View style={{ marginTop: 14 }}>
                 <View style={[styles.field, styles.fieldTextarea, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
                   <Ionicons name="pulse-outline" size={18} color={textMuted} style={[styles.fieldIcon, styles.fieldIconTop]} />
                   <TextInput
@@ -1010,8 +1010,8 @@ const styles = StyleSheet.create({
   },
 
   fieldBlock: { marginBottom: 14 },
-  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  fieldLabel: { fontSize: 12, fontWeight: '700' },
+  labelRow: { flexDirection: 'row', alignItems: 'center' },
+  fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
   required: { color: '#EF4444', fontWeight: '700', fontSize: 12 },
 
   field: {
@@ -1110,9 +1110,7 @@ const styles = StyleSheet.create({
   twoColItem: {
     flex: 1,
   },
-  twoColLabel: {
-    marginBottom: 6,
-  },
+  twoColLabel: {},
 
   bloodChips: {
     flexDirection: 'row',

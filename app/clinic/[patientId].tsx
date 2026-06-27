@@ -134,11 +134,15 @@ export default function PatientDetails() {
         </View>
 
         <View style={styles.headerTrailing}>
-          <LockedHeaderButton
-            icon="settings-outline"
-            backBg={backBg}
-            iconColor={lockedIconColor}
-          />
+          <Pressable
+            onPress={() => router.push(`/clinic/patient-edit?patientId=${patientId}` as any)}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? backBgPressed : backBg },
+            ]}
+          >
+            <Ionicons name="settings-outline" size={20} color={backIconColor} />
+          </Pressable>
           <LockedHeaderButton
             icon="chatbubble-ellipses-outline"
             backBg={backBg}
