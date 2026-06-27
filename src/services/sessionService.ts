@@ -1,17 +1,17 @@
-import { doc, updateDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
-import { deriveKey, encryptText } from '@/src/utils/secure';
 import { SessionEditParams } from '@/src/types/session';
+import { deriveKey, encryptText } from '@/src/utils/secure';
+import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { writeAuditLog } from './auditLogService';
 
 /**
  * PHASE U: Edit a session/exam
  * Updates the session and logs the change in audit log
  */
-export async function editSession(params: SessionEditParams): Promise<void> {
-  const { patientId, sessionId, updates, editedBy, editedByName } = params;
-  
-  const sessionRef = doc(db, `patients/${patientId}/sessions`, sessionId);
+export async function editSession(params: SessionEditParams & { clinicId: string }): Promise<void> {
+  const { patientId, sessionId, updates, editedBy, editedByName, clinicId } = params;
+
+  const sessionRef = doc(db, `clinics/${clinicId}/patients/${patientId}/sessions`, sessionId);
   
   // Add edit tracking fields
   const updateData: any = {
@@ -67,8 +67,8 @@ export async function updateSessionStatus(
   doctorId: string,
   doctorName: string
 ): Promise<void> {
-  const sessionRef = doc(db, `patients/${patientId}/sessions`, sessionId);
-  
+  const sessionRef = doc(db, `clinics/${clinicId}/patients/${patientId}/sessions`, sessionId);
+
   const updateData = {
     status: newStatus,
     statusUpdatedAt: serverTimestamp(),

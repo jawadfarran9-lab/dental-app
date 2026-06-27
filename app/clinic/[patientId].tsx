@@ -59,7 +59,8 @@ export default function PatientDetails() {
     }
 
     if (!patientId) return;
-    const pRef = doc(db, 'patients', patientId as string);
+    if (!clinicId) return;
+    const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
     getDoc(pRef).then((snap) => {
       if (snap.exists()) setPatient({ id: snap.id, ...(snap.data() as any) });
       else setPatient(null);
@@ -70,13 +71,14 @@ export default function PatientDetails() {
       markThreadReadForClinic(clinicId, patientId as string);
     }
 
-    const q = query(collection(db, `patients/${patientId}/sessions`), orderBy('date', 'desc'));
+    const q = query(collection(db, `clinics/${clinicId}/patients/${patientId}/sessions`), orderBy('date', 'desc'));
     const unsubSessions = onSnapshot(q, (snap) => {
       const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
       setSessions(docs as Session[]);
       setLoading(false);
     });
 
+    // TODO(chat-migration): move to nested path when chat screen + messages rule are built.
     const mq = query(collection(db, `patients/${patientId}/messages`), orderBy('createdAt', 'asc'));
     const unsubMessages = onSnapshot(mq, (snap) => {
       const mdocs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
@@ -92,7 +94,7 @@ export default function PatientDetails() {
       Alert.alert(t('common.validation'), t('clinic.sessionTypeRequired'));
       return;
     }
-    const docRef = await addDoc(collection(db, `patients/${patientId}/sessions`), {
+    const docRef = await addDoc(collection(db, `clinics/${clinicId}/patients/${patientId}/sessions`), {
       date: serverTimestamp(),
       type: newType,
       description: newDesc || null,
@@ -114,6 +116,7 @@ export default function PatientDetails() {
     setMsgText('');
     
     // Add message to messages collection with sender info
+    // TODO(chat-migration): move to nested path when chat screen + messages rule are built.
     await addDoc(collection(db, `patients/${patientId}/messages`), {
       from: 'clinic',
       text,
@@ -195,7 +198,7 @@ export default function PatientDetails() {
           async () => {
             try {
               const url = await getDownloadURL(storageRef);
-              const sessionRef = doc(db, `patients/${patientId}/sessions`, sessionId);
+              const sessionRef = doc(db, `clinics/${clinicId}/patients/${patientId}/sessions`, sessionId);
               const snap = await getDoc(sessionRef);
               const current = snap.exists() ? (snap.data() as any).images || [] : [];
               await updateDoc(sessionRef, { images: [...current, url] });
@@ -245,6 +248,7 @@ export default function PatientDetails() {
       await editSession({
         patientId: patientId as string,
         sessionId: editingSessionId,
+        clinicId: clinicId || '',
         updates: {
           type: editType,
           description: editDesc || undefined,
