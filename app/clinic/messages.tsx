@@ -275,7 +275,11 @@ export default function ClinicMessagesScreen() {
                 return (
                   <Pressable
                     key={t.id}
-                    onPress={() => {}}
+                    onPress={() =>
+                      router.push(
+                        `/clinic/conversation?patientId=${t.patientId}&name=${encodeURIComponent(t.name)}` as any
+                      )
+                    }
                     style={({ pressed }) => [
                       styles.row,
                       {
