@@ -9,6 +9,8 @@ export interface Patient {
   name: string;
   phone: string | null;
   email: string | null;
+  address: string | null;
+  occupation: string | null;
   notes: string | null;
   dateOfBirth: string | null;       // "YYYY-MM-DD"
   gender: PatientGender;
@@ -16,6 +18,9 @@ export interface Patient {
   regularMedicationDetails: string | null;
   hasAllergy: boolean;
   allergyDetails: string | null;
+  emergencyContactName: string | null;
+  emergencyContactRelationship: string | null;
+  emergencyContactPhone: string | null;
   imageUrl?: string;                // optional, not written today
   createdAt: Timestamp;
 }

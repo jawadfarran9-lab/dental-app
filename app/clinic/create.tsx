@@ -45,6 +45,11 @@ export default function CreatePatientScreen() {
   const [regularMedicationDetails, setRegularMedicationDetails] = useState('');
   const [hasAllergy, setHasAllergy] = useState(false);
   const [allergyDetails, setAllergyDetails] = useState('');
+  const [address, setAddress] = useState('');
+  const [occupation, setOccupation] = useState('');
+  const [emergencyContactName, setEmergencyContactName] = useState('');
+  const [emergencyContactRelationship, setEmergencyContactRelationship] = useState('');
+  const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { t } = useTranslation();
@@ -93,6 +98,11 @@ export default function CreatePatientScreen() {
         regularMedicationDetails: hasRegularMedication ? regularMedicationDetails : null,
         hasAllergy,
         allergyDetails: hasAllergy ? allergyDetails : null,
+        address: address || null,
+        occupation: occupation || null,
+        emergencyContactName: emergencyContactName || null,
+        emergencyContactRelationship: emergencyContactRelationship || null,
+        emergencyContactPhone: emergencyContactPhone || null,
         createdAt: serverTimestamp(),
       });
 
@@ -279,7 +289,7 @@ export default function CreatePatientScreen() {
             </View>
 
             {/* Gender — segmented */}
-            <View style={[styles.fieldBlock, { marginBottom: 0 }]}>
+            <View style={styles.fieldBlock}>
               <Text style={[styles.fieldLabel, { color: textSecondary }]}>
                 {t('createPatient.gender')}
               </Text>
@@ -304,6 +314,50 @@ export default function CreatePatientScreen() {
                   onPress={() => setGender('other')}
                   disabled={loading}
                   textMuted={textMuted}
+                />
+              </View>
+            </View>
+
+            {/* Address */}
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Address
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="location-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={address}
+                  onChangeText={setAddress}
+                  placeholder="Street, city"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Occupation */}
+            <View style={[styles.fieldBlock, { marginBottom: 0 }]}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Occupation
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="briefcase-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={occupation}
+                  onChangeText={setOccupation}
+                  placeholder="e.g. Teacher"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
                 />
               </View>
             </View>
@@ -389,6 +443,75 @@ export default function CreatePatientScreen() {
                 </View>
               </View>
             )}
+          </View>
+
+          {/* EMERGENCY CONTACT */}
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>
+            EMERGENCY CONTACT
+          </Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {/* Contact name */}
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Contact name
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="person-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={emergencyContactName}
+                  onChangeText={setEmergencyContactName}
+                  placeholder="Full name"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Relationship */}
+            <View style={styles.fieldBlock}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Relationship
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="people-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={emergencyContactRelationship}
+                  onChangeText={setEmergencyContactRelationship}
+                  placeholder="e.g. Spouse"
+                  placeholderTextColor={textMuted}
+                  editable={!loading}
+                  style={[
+                    styles.fieldInput,
+                    { color: textPrimary },
+                    isRTL && { textAlign: 'right', writingDirection: 'rtl' },
+                  ]}
+                />
+              </View>
+            </View>
+
+            {/* Phone */}
+            <View style={[styles.fieldBlock, { marginBottom: 0 }]}>
+              <Text style={[styles.fieldLabel, { color: textSecondary }]}>
+                Phone
+              </Text>
+              <View style={[styles.field, { backgroundColor: fieldBg, borderColor: fieldBorder }]}>
+                <Ionicons name="call-outline" size={18} color={textMuted} style={styles.fieldIcon} />
+                <TextInput
+                  value={emergencyContactPhone}
+                  onChangeText={setEmergencyContactPhone}
+                  placeholder="Phone"
+                  placeholderTextColor={textMuted}
+                  keyboardType="phone-pad"
+                  editable={!loading}
+                  style={[styles.fieldInput, { color: textPrimary, textAlign: 'left', writingDirection: 'ltr' }]}
+                />
+              </View>
+            </View>
           </View>
 
           {/* ADDITIONAL NOTES */}
