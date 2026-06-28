@@ -14,6 +14,7 @@ import {
     FlatList,
     Keyboard,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Pressable,
     StyleSheet,
@@ -75,9 +76,13 @@ export default function ClinicConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachVisible, setAttachVisible] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
+
+  const openAttach = () => setAttachVisible(true);
+  const closeAttach = () => setAttachVisible(false);
 
   useEffect(() => {
     if (clinicLoading) return;
@@ -166,6 +171,12 @@ export default function ClinicConversationScreen() {
   const inputBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.95)';
   const inputBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)';
   const inputPlaceholder = isDark ? 'rgba(255,255,255,0.45)' : 'rgba(27,37,66,0.42)';
+
+  const attachBtnBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(120,140,170,0.12)';
+  const attachBtnIcon = isDark ? '#FFFFFF' : '#1B2542';
+  const sheetDivider = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(27,37,66,0.08)';
+  const tileBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.7)';
+  const tileBorder = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.85)';
 
   const palette = AVATAR_PALETTE[hashName(patientName) % AVATAR_PALETTE.length];
 
@@ -323,6 +334,13 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
+            <Pressable
+              onPress={openAttach}
+              style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
+              hitSlop={6}
+            >
+              <Ionicons name="add" size={24} color={attachBtnIcon} />
+            </Pressable>
             <View
               style={[
                 styles.input,
@@ -359,6 +377,92 @@ export default function ClinicConversationScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={attachVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeAttach}
+      >
+        <Pressable style={styles.attachBackdrop} onPress={closeAttach} />
+        <View
+          style={[
+            styles.attachSheet,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
+        >
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.attachHandle} />
+          <View style={[styles.attachHead, { borderBottomColor: sheetDivider }]}>
+            <Text style={[styles.attachTitle, { color: textPrimary }]}>
+              Send attachment
+            </Text>
+          </View>
+          <View style={styles.attachOpts}>
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {}}
+            >
+              <LinearGradient
+                colors={['#4DA3FF', '#1668E3']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="image" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Photo
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {}}
+            >
+              <LinearGradient
+                colors={['#A989FF', '#7C3AED']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="camera" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Camera
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {}}
+            >
+              <LinearGradient
+                colors={['#34DDB0', '#0EA37A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="document" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Files
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -516,5 +620,69 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+
+  attachBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  attachSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 0,
+    overflow: 'hidden',
+  },
+  attachHandle: {
+    width: 38,
+    height: 5,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginTop: 10,
+    backgroundColor: 'rgba(150,150,150,0.4)',
+  },
+  attachHead: {
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+  },
+  attachTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  attachOpts: {
+    flexDirection: 'row',
+    gap: 12,
+    padding: 18,
+  },
+  attachOpt: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 11,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingVertical: 20,
+    paddingHorizontal: 8,
+  },
+  attachOptIco: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  attachOptLabel: {
+    fontSize: 14.5,
+    fontWeight: '700',
   },
 });
