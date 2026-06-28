@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -11,10 +11,28 @@ import {
     Text,
     View,
 } from 'react-native';
+import {
+    Gesture,
+    GestureDetector,
+    GestureHandlerRootView,
+} from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
+
+const MAX_ZOOM_RATIO = 5;
+const MAX_CAMERA_ZOOM = 0.5; // cap so we never hit the device's extreme hardware max
+const safeZoom = (z: number) => Math.max(0, Math.min(MAX_CAMERA_ZOOM, z));
+const mapZoomToCamera = (t: number) =>
+  safeZoom((Math.max(t, 1) - 1) / (MAX_ZOOM_RATIO - 1));
+const ZOOM_PRESET_VALUES = [
+  { label: '1', value: mapZoomToCamera(1) },
+  { label: '2', value: mapZoomToCamera(2) },
+  { label: '3', value: mapZoomToCamera(3) },
+] as const;
+const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
 
 export default function ChatCameraScreen() {
   const router = useRouter();
@@ -30,12 +48,45 @@ export default function ChatCameraScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [ready, setReady] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
+  const [activePreset, setActivePreset] = useState(0);
+  const zoomAtPinchStartRef = useRef(0);
+
+  const onPinchStart = useCallback(() => {
+    zoomAtPinchStartRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  const onPinchUpdate = useCallback((delta: number) => {
+    setZoomLevel(safeZoom(zoomAtPinchStartRef.current + delta));
+    setActivePreset(-1);
+  }, []);
+
+  const pinchGesture = useMemo(
+    () =>
+      Gesture.Pinch()
+        .onStart(() => {
+          'worklet';
+          runOnJS(onPinchStart)();
+        })
+        .onUpdate((e) => {
+          'worklet';
+          runOnJS(onPinchUpdate)((e.scale - 1) * 0.3);
+        })
+        .onFinalize(() => {
+          'worklet';
+        }),
+    [onPinchStart, onPinchUpdate],
+  );
 
   useEffect(() => {
     if (!permission?.granted) requestPermission();
   }, [permission, requestPermission]);
 
-  const flipCamera = () => setFacing((f) => (f === 'front' ? 'back' : 'front'));
+  const flipCamera = () => {
+    setFacing((f) => (f === 'front' ? 'back' : 'front'));
+    setZoomLevel(ZOOM_1X);
+    setActivePreset(0);
+  };
 
   const handleClose = () => {
     if (router.canGoBack()) router.back();
@@ -71,19 +122,19 @@ export default function ChatCameraScreen() {
 
   if (!permission) {
     return (
-      <View style={styles.root}>
+      <GestureHandlerRootView style={styles.root}>
         <Stack.Screen options={{ headerShown: false }} />
         <StatusBar barStyle="light-content" />
         <View style={styles.center}>
           <ActivityIndicator color="#FFFFFF" />
         </View>
-      </View>
+      </GestureHandlerRootView>
     );
   }
 
   if (!permission.granted) {
     return (
-      <View style={styles.root}>
+      <GestureHandlerRootView style={styles.root}>
         <Stack.Screen options={{ headerShown: false }} />
         <StatusBar barStyle="light-content" />
         <View style={styles.center}>
@@ -101,12 +152,12 @@ export default function ChatCameraScreen() {
             </Pressable>
           </View>
         </View>
-      </View>
+      </GestureHandlerRootView>
     );
   }
 
   return (
-    <View style={styles.root}>
+    <GestureHandlerRootView style={styles.root}>
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle="light-content" />
 
@@ -116,8 +167,13 @@ export default function ChatCameraScreen() {
         style={StyleSheet.absoluteFill}
         facing={facing}
         mode="picture"
+        zoom={zoomLevel}
         onCameraReady={() => setReady(true)}
       />
+
+      <GestureDetector gesture={pinchGesture}>
+        <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
+      </GestureDetector>
 
       <Pressable
         onPress={handleClose}
@@ -136,6 +192,30 @@ export default function ChatCameraScreen() {
       </Pressable>
 
       <View
+        style={[styles.zoomRow, { bottom: insets.bottom + 124 }]}
+        pointerEvents="box-none"
+      >
+        {ZOOM_PRESET_VALUES.map((preset, index) => {
+          const active = index === activePreset;
+          return (
+            <Pressable
+              key={preset.label}
+              onPress={() => {
+                setZoomLevel(preset.value);
+                setActivePreset(index);
+              }}
+              style={[styles.zoomPill, active && styles.zoomPillActive]}
+              hitSlop={6}
+            >
+              <Text style={[styles.zoomPillText, active && styles.zoomPillTextActive]}>
+                {preset.label}x
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <View
         style={[styles.captureButtonContainer, { bottom: insets.bottom + 28 }]}
         pointerEvents="box-none"
       >
@@ -145,7 +225,7 @@ export default function ChatCameraScreen() {
           </View>
         </Pressable>
       </View>
-    </View>
+    </GestureHandlerRootView>
   );
 }
 
@@ -198,6 +278,37 @@ const styles = StyleSheet.create({
     height: CAPTURE_INNER,
     borderRadius: CAPTURE_INNER / 2,
     backgroundColor: '#FFFFFF',
+  },
+
+  zoomRow: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignSelf: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    zIndex: 10,
+  },
+  zoomPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: 40,
+  },
+  zoomPillActive: {
+    backgroundColor: 'rgba(255,255,255,0.95)',
+  },
+  zoomPillText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 13,
+  },
+  zoomPillTextActive: {
+    color: '#000000',
   },
 
   permCard: {
