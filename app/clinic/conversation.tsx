@@ -12,12 +12,14 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
+    Keyboard,
     KeyboardAvoidingView,
     Platform,
     Pressable,
     StyleSheet,
     Text,
     TextInput,
+    TouchableWithoutFeedback,
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -213,7 +215,7 @@ export default function ClinicConversationScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
+        keyboardVerticalOffset={0}
       >
         <View style={{ flex: 1, paddingTop: insets.top + 6 }}>
           {/* Header */}
@@ -251,58 +253,64 @@ export default function ClinicConversationScreen() {
           </View>
 
           {/* Body */}
-          {loading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={textSecondary} />
-            </View>
-          ) : messages.length === 0 ? (
-            <View style={styles.center}>
-              <View
-                style={[
-                  styles.emptyCard,
-                  {
-                    backgroundColor: isDark
-                      ? 'rgba(255,255,255,0.015)'
-                      : 'rgba(255,255,255,0.18)',
-                    borderColor: isDark
-                      ? 'rgba(255,255,255,0.06)'
-                      : 'rgba(255,255,255,0.45)',
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.emptyIconWrap,
-                    { backgroundColor: 'rgba(61,158,255,0.16)' },
-                  ]}
-                >
-                  <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={26}
-                    color="#3D9EFF"
-                  />
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+            <View style={{ flex: 1 }}>
+              {loading ? (
+                <View style={styles.center}>
+                  <ActivityIndicator color={textSecondary} />
                 </View>
-                <Text style={[styles.emptyTitle, { color: textPrimary }]}>
-                  No messages yet
-                </Text>
-                <Text style={[styles.emptySub, { color: textMuted }]}>
-                  Send the first message to start the conversation.
-                </Text>
-              </View>
+              ) : messages.length === 0 ? (
+                <View style={styles.center}>
+                  <View
+                    style={[
+                      styles.emptyCard,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(255,255,255,0.015)'
+                          : 'rgba(255,255,255,0.18)',
+                        borderColor: isDark
+                          ? 'rgba(255,255,255,0.06)'
+                          : 'rgba(255,255,255,0.45)',
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.emptyIconWrap,
+                        { backgroundColor: 'rgba(61,158,255,0.16)' },
+                      ]}
+                    >
+                      <Ionicons
+                        name="chatbubble-ellipses-outline"
+                        size={26}
+                        color="#3D9EFF"
+                      />
+                    </View>
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>
+                      No messages yet
+                    </Text>
+                    <Text style={[styles.emptySub, { color: textMuted }]}>
+                      Send the first message to start the conversation.
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <FlatList
+                  ref={listRef}
+                  data={messages}
+                  keyExtractor={(m) => m.id}
+                  renderItem={renderItem}
+                  contentContainerStyle={styles.listContent}
+                  showsVerticalScrollIndicator={false}
+                  keyboardDismissMode="on-drag"
+                  keyboardShouldPersistTaps="handled"
+                  onContentSizeChange={() =>
+                    listRef.current?.scrollToEnd({ animated: false })
+                  }
+                />
+              )}
             </View>
-          ) : (
-            <FlatList
-              ref={listRef}
-              data={messages}
-              keyExtractor={(m) => m.id}
-              renderItem={renderItem}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              onContentSizeChange={() =>
-                listRef.current?.scrollToEnd({ animated: false })
-              }
-            />
-          )}
+          </TouchableWithoutFeedback>
 
           {/* Composer */}
           <View
