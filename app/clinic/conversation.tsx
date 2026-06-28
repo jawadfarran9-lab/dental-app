@@ -426,7 +426,12 @@ export default function ClinicConversationScreen() {
                 styles.attachOpt,
                 { backgroundColor: tileBg, borderColor: tileBorder },
               ]}
-              onPress={() => {}}
+              onPress={() => {
+                closeAttach();
+                router.push(
+                  `/clinic/chat-camera?patientId=${patientId}&name=${encodeURIComponent(patientName)}&clinicId=${clinicId ?? ''}` as any,
+                );
+              }}
             >
               <LinearGradient
                 colors={['#A989FF', '#7C3AED']}
