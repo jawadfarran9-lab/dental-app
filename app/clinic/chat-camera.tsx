@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Dimensions,
     Pressable,
     StatusBar,
     StyleSheet,
@@ -18,6 +19,7 @@ import {
 } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { G, Line, Text as SvgText } from 'react-native-svg';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
@@ -33,6 +35,59 @@ const ZOOM_PRESET_VALUES = [
   { label: '3', value: mapZoomToCamera(3) },
 ] as const;
 const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const DIAL_WIDTH = SCREEN_WIDTH * 0.85;
+const DIAL_HEIGHT = 48;
+const DIAL_ARC_RADIUS = SCREEN_WIDTH * 1.2;
+const DIAL_CENTER_Y = DIAL_ARC_RADIUS;
+const DIAL_STOPS = [
+  { label: '1', zoom: mapZoomToCamera(1) },
+  { label: '2', zoom: mapZoomToCamera(2) },
+  { label: '3', zoom: mapZoomToCamera(3) },
+] as const;
+const DIAL_TOTAL_ANGLE = 60;
+const zoomToAngle = (z: number): number =>
+  -DIAL_TOTAL_ANGLE / 2 + z * DIAL_TOTAL_ANGLE;
+
+type TickMark = {
+  angle: number;
+  height: number;
+  isLabel: boolean;
+  label?: string;
+  zoom: number;
+};
+const generateDialTicks = (): TickMark[] => {
+  const numTicks = 61;
+  const step = MAX_CAMERA_ZOOM / numTicks;
+  const stopIndexToLabel = new Map<number, string>();
+  DIAL_STOPS.forEach((s) => {
+    const bestIndex = Math.round(s.zoom / step);
+    stopIndexToLabel.set(bestIndex, s.label);
+  });
+  const ticks: TickMark[] = [];
+  for (let i = 0; i <= numTicks; i++) {
+    const zoom = (i / numTicks) * MAX_CAMERA_ZOOM;
+    const angle = zoomToAngle(zoom);
+    const label = stopIndexToLabel.get(i);
+    const isMajor = i % 10 === 0;
+    ticks.push({
+      angle,
+      height: label ? 14 : isMajor ? 10 : 6,
+      isLabel: !!label,
+      label,
+      zoom,
+    });
+  }
+  return ticks;
+};
+const DIAL_TICKS = generateDialTicks();
+
+const zoomToDisplayLabel = (z: number): string => {
+  const multiplier = Math.max(z, 0) * (MAX_ZOOM_RATIO - 1) + 1;
+  if (multiplier >= 10) return Math.round(multiplier).toString();
+  return multiplier.toFixed(1);
+};
 
 export default function ChatCameraScreen() {
   const router = useRouter();
@@ -51,6 +106,11 @@ export default function ChatCameraScreen() {
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
+  const zoomLevelRef = useRef(zoomLevel);
+  useEffect(() => {
+    zoomLevelRef.current = zoomLevel;
+  }, [zoomLevel]);
+  const dialZoomAtDragStartRef = useRef(0);
 
   const onPinchStart = useCallback(() => {
     zoomAtPinchStartRef.current = zoomLevel;
@@ -76,6 +136,50 @@ export default function ChatCameraScreen() {
           'worklet';
         }),
     [onPinchStart, onPinchUpdate],
+  );
+
+  const onDialDragStart = useCallback(() => {
+    dialZoomAtDragStartRef.current = zoomLevel;
+  }, [zoomLevel]);
+
+  const onDialDragUpdate = useCallback((translationX: number) => {
+    const linearDelta = translationX / DIAL_WIDTH;
+    const startZoom = dialZoomAtDragStartRef.current;
+    const linearTarget = startZoom + linearDelta;
+    const clamped = Math.max(0, Math.min(MAX_CAMERA_ZOOM, linearTarget));
+    const eased =
+      clamped < startZoom
+        ? clamped
+        : startZoom + (clamped - startZoom) * (1 + clamped * 0.4);
+    setZoomLevel(safeZoom(eased));
+    setActivePreset(-1);
+  }, []);
+
+  const onDialDragEnd = useCallback(() => {
+    for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
+      if (Math.abs(zoomLevelRef.current - ZOOM_PRESET_VALUES[i].value) < 0.02) {
+        setActivePreset(i);
+        return;
+      }
+    }
+  }, []);
+
+  const dialPanGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .onStart(() => {
+          'worklet';
+          runOnJS(onDialDragStart)();
+        })
+        .onUpdate((e) => {
+          'worklet';
+          runOnJS(onDialDragUpdate)(e.translationX);
+        })
+        .onEnd(() => {
+          'worklet';
+          runOnJS(onDialDragEnd)();
+        }),
+    [onDialDragStart, onDialDragUpdate, onDialDragEnd],
   );
 
   useEffect(() => {
@@ -192,27 +296,101 @@ export default function ChatCameraScreen() {
       </Pressable>
 
       <View
-        style={[styles.zoomRow, { bottom: insets.bottom + 124 }]}
+        style={[styles.dialContainer, { bottom: insets.bottom + 150 }]}
         pointerEvents="box-none"
       >
-        {ZOOM_PRESET_VALUES.map((preset, index) => {
-          const active = index === activePreset;
-          return (
-            <Pressable
-              key={preset.label}
-              onPress={() => {
-                setZoomLevel(preset.value);
-                setActivePreset(index);
-              }}
-              style={[styles.zoomPill, active && styles.zoomPillActive]}
-              hitSlop={6}
+        <View style={styles.dialReadout}>
+          <Text style={styles.dialReadoutText}>
+            {zoomToDisplayLabel(zoomLevel)}x
+          </Text>
+        </View>
+
+        <View style={styles.dialIndicator} pointerEvents="none">
+          <View style={styles.trailGlow} />
+          <Svg width={12} height={10} viewBox="0 0 12 10">
+            <SvgText
+              x={6}
+              y={9}
+              fontSize={10}
+              fill="#FFD700"
+              textAnchor="middle"
             >
-              <Text style={[styles.zoomPillText, active && styles.zoomPillTextActive]}>
-                {preset.label}x
-              </Text>
-            </Pressable>
-          );
-        })}
+              ▼
+            </SvgText>
+          </Svg>
+        </View>
+
+        <GestureDetector gesture={dialPanGesture}>
+          <View style={styles.dialTrack}>
+            <Svg
+              width={DIAL_WIDTH}
+              height={DIAL_ARC_RADIUS * 2}
+              viewBox={`${-DIAL_WIDTH / 2} 0 ${DIAL_WIDTH} ${DIAL_ARC_RADIUS * 2}`}
+              style={{ position: 'absolute', top: 0 }}
+            >
+              <G rotation={-zoomToAngle(zoomLevel)} origin={`0,${DIAL_CENTER_Y}`}>
+                {DIAL_TICKS.map((tick, idx) => (
+                  <G
+                    key={idx}
+                    rotation={tick.angle}
+                    origin={`0,${DIAL_CENTER_Y}`}
+                  >
+                    <Line
+                      x1={0}
+                      y1={0}
+                      x2={0}
+                      y2={tick.height}
+                      stroke={tick.isLabel ? '#FFD700' : '#FFFFFF'}
+                      strokeWidth={tick.isLabel ? 2 : 1}
+                      opacity={tick.isLabel ? 1 : 0.6}
+                    />
+                    {tick.isLabel && tick.label && (
+                      <SvgText
+                        x={0}
+                        y={tick.height + 12}
+                        fontSize={10}
+                        fill="#FFD700"
+                        textAnchor="middle"
+                        fontWeight="700"
+                      >
+                        {tick.label}
+                      </SvgText>
+                    )}
+                  </G>
+                ))}
+              </G>
+            </Svg>
+          </View>
+        </GestureDetector>
+
+        <View style={styles.zoomPresetsRow}>
+          {ZOOM_PRESET_VALUES.map((preset, index) => {
+            const active = index === activePreset;
+            return (
+              <Pressable
+                key={preset.label}
+                onPress={() => {
+                  setZoomLevel(preset.value);
+                  setActivePreset(index);
+                }}
+                style={[
+                  styles.zoomPresetButton,
+                  active && styles.zoomPresetButtonActive,
+                ]}
+                hitSlop={6}
+              >
+                <Text
+                  style={[
+                    styles.zoomPresetText,
+                    active && styles.zoomPresetTextActive,
+                  ]}
+                >
+                  {preset.label}x
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
 
       <View
@@ -280,35 +458,77 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
   },
 
-  zoomRow: {
+  dialContainer: {
     position: 'absolute',
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    alignSelf: 'center',
-    justifyContent: 'center',
-    gap: 8,
+    alignItems: 'center',
     zIndex: 10,
   },
-  zoomPill: {
+  dialReadout: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    minWidth: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dialReadoutText: {
+    color: '#FFD700',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  dialIndicator: {
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    height: 14,
+    marginBottom: -2,
+  },
+  trailGlow: {
+    position: 'absolute',
+    bottom: -2,
+    width: 2,
+    height: 8,
+    borderRadius: 1,
+    backgroundColor: '#FFD700',
+    opacity: 0.5,
+  },
+  dialTrack: {
+    width: DIAL_WIDTH,
+    height: DIAL_HEIGHT,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  zoomPresetsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 10,
+  },
+  zoomPresetButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+    minWidth: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 40,
   },
-  zoomPillActive: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
+  zoomPresetButtonActive: {
+    borderColor: '#FFD700',
   },
-  zoomPillText: {
+  zoomPresetText: {
     color: '#FFFFFF',
     fontWeight: '700',
     fontSize: 13,
   },
-  zoomPillTextActive: {
-    color: '#000000',
+  zoomPresetTextActive: {
+    color: '#FFD700',
   },
 
   permCard: {
