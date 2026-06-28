@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -183,8 +184,61 @@ export default function ChatCameraScreen() {
     }, 1500);
     return () => {
       if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+      if (momentumAnimRef.current !== null) {
+        cancelAnimationFrame(momentumAnimRef.current);
+        momentumAnimRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const lastCrossedPresetRef = useRef(-1);
+  const hapticTap = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
+  const hapticTickIfCrossed = useCallback((zoom: number) => {
+    for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
+      if (Math.abs(zoom - ZOOM_PRESET_VALUES[i].value) < 0.015) {
+        if (lastCrossedPresetRef.current !== i) {
+          lastCrossedPresetRef.current = i;
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        }
+        return;
+      }
+    }
+    lastCrossedPresetRef.current = -1;
+  }, []);
+
+  const MAGNETIC_RANGE = 0.025;
+  const MAGNETIC_STRENGTH = 0.45;
+  const applyMagneticSnap = useCallback((zoom: number): number => {
+    for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
+      const dist = Math.abs(zoom - ZOOM_PRESET_VALUES[i].value);
+      if (dist < MAGNETIC_RANGE && dist > 0.001) {
+        return zoom + (ZOOM_PRESET_VALUES[i].value - zoom) * MAGNETIC_STRENGTH;
+      }
+    }
+    return zoom;
+  }, []);
+
+  const PRESET_SNAP_TOLERANCE = 0.02;
+  const syncPresetHighlight = useCallback((zoom: number) => {
+    for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
+      if (Math.abs(zoom - ZOOM_PRESET_VALUES[i].value) < PRESET_SNAP_TOLERANCE) {
+        setActivePreset(i);
+        return;
+      }
+    }
+    setActivePreset(-1);
+  }, []);
+
+  const momentumAnimRef = useRef<number | null>(null);
+  const momentumZoomRef = useRef(0);
+  const cancelMomentum = useCallback(() => {
+    if (momentumAnimRef.current !== null) {
+      cancelAnimationFrame(momentumAnimRef.current);
+      momentumAnimRef.current = null;
+    }
   }, []);
 
   const onPinchStart = useCallback(() => {
@@ -197,9 +251,10 @@ export default function ChatCameraScreen() {
   }, []);
 
   const onPinchInteractStart = useCallback(() => {
+    cancelMomentum();
     isInteractingRef.current = true;
     showAndHold();
-  }, [showAndHold]);
+  }, [showAndHold, cancelMomentum]);
 
   const onPinchInteractEnd = useCallback(() => {
     isInteractingRef.current = false;
@@ -226,10 +281,11 @@ export default function ChatCameraScreen() {
   );
 
   const onDialDragStart = useCallback(() => {
+    cancelMomentum();
     dialZoomAtDragStartRef.current = zoomLevel;
     isInteractingRef.current = true;
     showAndHold();
-  }, [zoomLevel, showAndHold]);
+  }, [zoomLevel, showAndHold, cancelMomentum]);
 
   const onDialDragUpdate = useCallback((translationX: number) => {
     const linearDelta = translationX / DIAL_WIDTH;
@@ -240,20 +296,64 @@ export default function ChatCameraScreen() {
       clamped < startZoom
         ? clamped
         : startZoom + (clamped - startZoom) * (1 + clamped * 0.4);
-    setZoomLevel(safeZoom(eased));
+    const raw = safeZoom(eased);
+    const newZoom = applyMagneticSnap(raw);
+    setZoomLevel(newZoom);
+    hapticTickIfCrossed(newZoom);
     setActivePreset(-1);
-  }, []);
+  }, [applyMagneticSnap, hapticTickIfCrossed]);
 
-  const onDialDragEnd = useCallback(() => {
+  const onDialDragEnd = useCallback((velocityX: number) => {
+    lastCrossedPresetRef.current = -1;
+    const SNAP_THRESHOLD = 0.03;
+    const settle = (z: number) => {
+      for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
+        if (Math.abs(z - ZOOM_PRESET_VALUES[i].value) < SNAP_THRESHOLD) {
+          setZoomLevel(ZOOM_PRESET_VALUES[i].value);
+          setActivePreset(i);
+          isInteractingRef.current = false;
+          scheduleHide();
+          return;
+        }
+      }
+      syncPresetHighlight(z);
+      isInteractingRef.current = false;
+      scheduleHide();
+    };
     for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
-      if (Math.abs(zoomLevelRef.current - ZOOM_PRESET_VALUES[i].value) < 0.02) {
+      if (Math.abs(zoomLevelRef.current - ZOOM_PRESET_VALUES[i].value) < SNAP_THRESHOLD) {
+        setZoomLevel(ZOOM_PRESET_VALUES[i].value);
         setActivePreset(i);
-        break;
+        isInteractingRef.current = false;
+        scheduleHide();
+        return;
       }
     }
-    isInteractingRef.current = false;
-    scheduleHide();
-  }, [scheduleHide]);
+    const VELOCITY_SCALE = 0.00004;
+    const FRICTION = 0.92;
+    const MIN_VELOCITY = 0.0001;
+    let vel = velocityX * VELOCITY_SCALE;
+    momentumZoomRef.current = zoomLevelRef.current;
+    isInteractingRef.current = true;
+    const tick = () => {
+      vel *= FRICTION;
+      if (Math.abs(vel) < MIN_VELOCITY) {
+        momentumAnimRef.current = null;
+        settle(momentumZoomRef.current);
+        return;
+      }
+      const next = safeZoom(momentumZoomRef.current + vel);
+      momentumZoomRef.current = next;
+      setZoomLevel(next);
+      hapticTickIfCrossed(next);
+      momentumAnimRef.current = requestAnimationFrame(tick);
+    };
+    if (Math.abs(vel) > MIN_VELOCITY) {
+      momentumAnimRef.current = requestAnimationFrame(tick);
+    } else {
+      settle(zoomLevelRef.current);
+    }
+  }, [scheduleHide, syncPresetHighlight, hapticTickIfCrossed]);
 
   const dialPanGesture = useMemo(
     () =>
@@ -266,9 +366,9 @@ export default function ChatCameraScreen() {
           'worklet';
           runOnJS(onDialDragUpdate)(e.translationX);
         })
-        .onEnd(() => {
+        .onEnd((e) => {
           'worklet';
-          runOnJS(onDialDragEnd)();
+          runOnJS(onDialDragEnd)(e.velocityX);
         }),
     [onDialDragStart, onDialDragUpdate, onDialDragEnd],
   );
@@ -278,6 +378,7 @@ export default function ChatCameraScreen() {
   }, [permission, requestPermission]);
 
   const flipCamera = () => {
+    cancelMomentum();
     setFacing((f) => (f === 'front' ? 'back' : 'front'));
     setZoomLevel(ZOOM_1X);
     setActivePreset(0);
@@ -464,6 +565,7 @@ export default function ChatCameraScreen() {
                 onPress={() => {
                   setZoomLevel(preset.value);
                   setActivePreset(index);
+                  hapticTap();
                   onZoomInteraction();
                 }}
                 style={[
