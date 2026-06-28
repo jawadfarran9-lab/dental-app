@@ -17,7 +17,14 @@ import {
     GestureDetector,
     GestureHandlerRootView,
 } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
+import Animated, {
+    runOnJS,
+    useAnimatedStyle,
+    useSharedValue,
+    withSequence,
+    withSpring,
+    withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { G, Line, Text as SvgText } from 'react-native-svg';
 
@@ -112,6 +119,74 @@ export default function ChatCameraScreen() {
   }, [zoomLevel]);
   const dialZoomAtDragStartRef = useRef(0);
 
+  const zoomUiOpacity = useSharedValue(1);
+  const zoomTextScale = useSharedValue(1);
+  const zoomTextOpacity = useSharedValue(1);
+  const arrowBounce = useSharedValue(0);
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const zoomUiAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: zoomUiOpacity.value,
+  }));
+  const zoomTextAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: zoomTextScale.value }],
+    opacity: zoomTextOpacity.value,
+  }));
+  const arrowAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: arrowBounce.value }],
+  }));
+
+  const isInteractingRef = useRef(false);
+
+  const scheduleHide = useCallback(() => {
+    if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    autoHideTimerRef.current = setTimeout(() => {
+      if (!isInteractingRef.current) {
+        zoomUiOpacity.value = withTiming(0, { duration: 400 });
+      }
+    }, 1500);
+  }, [zoomUiOpacity]);
+
+  const showAndHold = useCallback(() => {
+    zoomUiOpacity.value = 1;
+    zoomTextScale.value = withSequence(
+      withTiming(1.15, { duration: 80 }),
+      withSpring(1, { damping: 12, stiffness: 200 }),
+    );
+    arrowBounce.value = withSequence(
+      withTiming(3, { duration: 60 }),
+      withSpring(0, { damping: 10, stiffness: 300 }),
+    );
+    if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+  }, [zoomUiOpacity, zoomTextScale, arrowBounce]);
+
+  const onZoomInteraction = useCallback(() => {
+    zoomUiOpacity.value = 1;
+    zoomTextScale.value = withSequence(
+      withTiming(1.15, { duration: 80 }),
+      withSpring(1, { damping: 12, stiffness: 200 }),
+    );
+    zoomTextOpacity.value = withSequence(
+      withTiming(1, { duration: 50 }),
+      withTiming(1, { duration: 150 }),
+    );
+    arrowBounce.value = withSequence(
+      withTiming(3, { duration: 60 }),
+      withSpring(0, { damping: 10, stiffness: 300 }),
+    );
+    scheduleHide();
+  }, [zoomUiOpacity, zoomTextScale, zoomTextOpacity, arrowBounce, scheduleHide]);
+
+  useEffect(() => {
+    autoHideTimerRef.current = setTimeout(() => {
+      zoomUiOpacity.value = withTiming(0, { duration: 400 });
+    }, 1500);
+    return () => {
+      if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onPinchStart = useCallback(() => {
     zoomAtPinchStartRef.current = zoomLevel;
   }, [zoomLevel]);
@@ -121,12 +196,23 @@ export default function ChatCameraScreen() {
     setActivePreset(-1);
   }, []);
 
+  const onPinchInteractStart = useCallback(() => {
+    isInteractingRef.current = true;
+    showAndHold();
+  }, [showAndHold]);
+
+  const onPinchInteractEnd = useCallback(() => {
+    isInteractingRef.current = false;
+    scheduleHide();
+  }, [scheduleHide]);
+
   const pinchGesture = useMemo(
     () =>
       Gesture.Pinch()
         .onStart(() => {
           'worklet';
           runOnJS(onPinchStart)();
+          runOnJS(onPinchInteractStart)();
         })
         .onUpdate((e) => {
           'worklet';
@@ -134,13 +220,16 @@ export default function ChatCameraScreen() {
         })
         .onFinalize(() => {
           'worklet';
+          runOnJS(onPinchInteractEnd)();
         }),
-    [onPinchStart, onPinchUpdate],
+    [onPinchStart, onPinchUpdate, onPinchInteractStart, onPinchInteractEnd],
   );
 
   const onDialDragStart = useCallback(() => {
     dialZoomAtDragStartRef.current = zoomLevel;
-  }, [zoomLevel]);
+    isInteractingRef.current = true;
+    showAndHold();
+  }, [zoomLevel, showAndHold]);
 
   const onDialDragUpdate = useCallback((translationX: number) => {
     const linearDelta = translationX / DIAL_WIDTH;
@@ -159,10 +248,12 @@ export default function ChatCameraScreen() {
     for (let i = 0; i < ZOOM_PRESET_VALUES.length; i++) {
       if (Math.abs(zoomLevelRef.current - ZOOM_PRESET_VALUES[i].value) < 0.02) {
         setActivePreset(i);
-        return;
+        break;
       }
     }
-  }, []);
+    isInteractingRef.current = false;
+    scheduleHide();
+  }, [scheduleHide]);
 
   const dialPanGesture = useMemo(
     () =>
@@ -190,6 +281,7 @@ export default function ChatCameraScreen() {
     setFacing((f) => (f === 'front' ? 'back' : 'front'));
     setZoomLevel(ZOOM_1X);
     setActivePreset(0);
+    onZoomInteraction();
   };
 
   const handleClose = () => {
@@ -295,17 +387,17 @@ export default function ChatCameraScreen() {
         <Ionicons name="camera-reverse" size={26} color="#FFFFFF" />
       </Pressable>
 
-      <View
-        style={[styles.dialContainer, { bottom: insets.bottom + 150 }]}
+      <Animated.View
+        style={[styles.dialContainer, zoomUiAnimatedStyle, { bottom: insets.bottom + 150 }]}
         pointerEvents="box-none"
       >
-        <View style={styles.dialReadout}>
+        <Animated.View style={[styles.dialReadout, zoomTextAnimatedStyle]}>
           <Text style={styles.dialReadoutText}>
             {zoomToDisplayLabel(zoomLevel)}x
           </Text>
-        </View>
+        </Animated.View>
 
-        <View style={styles.dialIndicator} pointerEvents="none">
+        <Animated.View style={[styles.dialIndicator, arrowAnimatedStyle]} pointerEvents="none">
           <View style={styles.trailGlow} />
           <Svg width={12} height={10} viewBox="0 0 12 10">
             <SvgText
@@ -318,7 +410,7 @@ export default function ChatCameraScreen() {
               ▼
             </SvgText>
           </Svg>
-        </View>
+        </Animated.View>
 
         <GestureDetector gesture={dialPanGesture}>
           <View style={styles.dialTrack}>
@@ -372,6 +464,7 @@ export default function ChatCameraScreen() {
                 onPress={() => {
                   setZoomLevel(preset.value);
                   setActivePreset(index);
+                  onZoomInteraction();
                 }}
                 style={[
                   styles.zoomPresetButton,
@@ -391,7 +484,7 @@ export default function ChatCameraScreen() {
             );
           })}
         </View>
-      </View>
+      </Animated.View>
 
       <View
         style={[styles.captureButtonContainer, { bottom: insets.bottom + 28 }]}
