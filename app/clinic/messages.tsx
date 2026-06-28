@@ -9,12 +9,17 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
+import { useWindowDimensions } from 'react-native';
 import {
     ActivityIndicator,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -74,10 +79,16 @@ export default function ClinicMessagesScreen() {
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { clinicId, clinicUser, loading: clinicLoading } = useClinic();
+  const { height: windowHeight } = useWindowDimensions();
+  const SHEET_HEIGHT = Math.round(windowHeight * 0.75);
 
   const [tab, setTab] = useState<'patients' | 'people'>('patients');
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [allPatients, setAllPatients] = useState<{ id: string; name: string }[]>([]);
+  const [patientsLoading, setPatientsLoading] = useState(false);
+  const [search, setSearch] = useState('');
 
   const loadThreads = useCallback(async () => {
     if (clinicLoading) return;
@@ -125,6 +136,34 @@ export default function ClinicMessagesScreen() {
     else router.replace('/clinic/dashboard' as any);
   };
 
+  const loadAllPatients = useCallback(async () => {
+    if (!clinicId) return;
+    try {
+      setPatientsLoading(true);
+      const ref = collection(db, 'clinics', clinicId, 'patients');
+      const snap = await getDocs(query(ref, orderBy('createdAt', 'desc')));
+      const list = snap.docs
+        .filter((d) => (d.data() as any).archived !== true)
+        .map((d) => {
+          const data = d.data() as any;
+          return { id: d.id, name: data.name || data.patientName || 'Unnamed' };
+        });
+      setAllPatients(list);
+    } catch (e) {
+      console.error('[messages] loadAllPatients error', e);
+    } finally {
+      setPatientsLoading(false);
+    }
+  }, [clinicId]);
+
+  const openPicker = () => { setSearch(''); setPickerVisible(true); loadAllPatients(); };
+  const closePicker = () => { setPickerVisible(false); setSearch(''); };
+
+  const pickPatient = (p: { id: string; name: string }) => {
+    closePicker();
+    router.push(`/clinic/conversation?patientId=${p.id}&name=${encodeURIComponent(p.name)}` as any);
+  };
+
   const textPrimary = colors.textPrimary;
   const textSecondary = colors.textSecondary;
   const textMuted = colors.textTertiary;
@@ -141,6 +180,17 @@ export default function ClinicMessagesScreen() {
   const segBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.7)';
   const segInactiveText = isDark ? 'rgba(255,255,255,0.78)' : '#1B2542';
   const segCountBg = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)';
+
+  const sheetBg = isDark ? '#141C2F' : '#F7FAFF';
+  const sheetHandleColor = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(27,37,66,0.12)';
+  const sheetSearchBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.05)';
+  const sheetSearchBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)';
+  const sheetInputPlaceholder = isDark ? 'rgba(255,255,255,0.40)' : 'rgba(27,37,66,0.35)';
+  const sheetDivider = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(27,37,66,0.06)';
+
+  const filteredPatients = search.trim()
+    ? allPatients.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
+    : allPatients;
 
   const renderTab = (key: 'patients' | 'people', label: string, count: number) => {
     const active = tab === key;
@@ -215,7 +265,15 @@ export default function ClinicMessagesScreen() {
           <View style={styles.headerText}>
             <Text style={[styles.headerTitle, { color: textPrimary }]}>Messages</Text>
           </View>
-          <View style={styles.headerSpacer} />
+          <Pressable
+            onPress={openPicker}
+            style={({ pressed }) => [
+              styles.headerBtn,
+              { backgroundColor: pressed ? backBgPressed : backBg },
+            ]}
+          >
+            <Ionicons name="create-outline" size={22} color={backIconColor} />
+          </Pressable>
         </View>
 
         {/* Tabs */}
@@ -361,6 +419,74 @@ export default function ClinicMessagesScreen() {
           </View>
         )}
       </View>
+
+      {/* New conversation picker */}
+      <Modal
+        visible={pickerVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closePicker}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={closePicker} />
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.sheetKav}
+          pointerEvents="box-none"
+        >
+          <View style={[styles.sheet, { height: SHEET_HEIGHT, backgroundColor: sheetBg, paddingBottom: insets.bottom + 16 }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: sheetHandleColor }]} />
+            <Text style={[styles.sheetTitle, { color: textPrimary }]}>New conversation</Text>
+
+            <View style={[styles.searchBox, { backgroundColor: sheetSearchBg, borderColor: sheetSearchBorder }]}>
+              <Ionicons name="search-outline" size={18} color={textSecondary} />
+              <TextInput
+                value={search}
+                onChangeText={setSearch}
+                placeholder="Search patients…"
+                placeholderTextColor={sheetInputPlaceholder}
+                style={[styles.searchInput, { color: textPrimary }]}
+                autoCorrect={false}
+              />
+            </View>
+
+            <ScrollView style={styles.sheetList} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+              {patientsLoading ? (
+                <ActivityIndicator style={{ marginTop: 24 }} color={textSecondary} />
+              ) : filteredPatients.length === 0 ? (
+                <Text style={[styles.sheetEmpty, { color: textSecondary }]}>
+                  {allPatients.length === 0 ? 'No patients yet' : 'No patients found'}
+                </Text>
+              ) : (
+                filteredPatients.map((p) => {
+                  const pal = AVATAR_PALETTE[hashName(p.name) % AVATAR_PALETTE.length];
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => pickPatient(p)}
+                      style={({ pressed }) => [
+                        styles.pickRow,
+                        { borderBottomColor: sheetDivider, opacity: pressed ? 0.75 : 1 },
+                      ]}
+                    >
+                      <LinearGradient
+                        colors={pal as any}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={styles.pickAvatar}
+                      >
+                        <Text style={styles.pickAvatarText}>{initialsOf(p.name)}</Text>
+                      </LinearGradient>
+                      <Text style={[styles.pickName, { color: textPrimary }]} numberOfLines={1}>
+                        {p.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -387,7 +513,6 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1 },
   headerTitle: { fontSize: 22, fontWeight: '800' },
-  headerSpacer: { width: 40, height: 40 },
 
   segWrap: {
     paddingHorizontal: 16,
@@ -528,5 +653,89 @@ const styles = StyleSheet.create({
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 18,
+  },
+
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  sheetKav: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    borderTopLeftRadius: 26,
+    borderTopRightRadius: 26,
+    paddingTop: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  sheetHandle: {
+    width: 38,
+    height: 5,
+    borderRadius: 3,
+    alignSelf: 'center',
+    marginBottom: 12,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+  },
+  searchBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    height: 48,
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    padding: 0,
+    margin: 0,
+  },
+  sheetList: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  pickRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 13,
+    paddingVertical: 11,
+    paddingHorizontal: 8,
+    borderBottomWidth: 1,
+  },
+  pickAvatar: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickAvatarText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
+    fontSize: 16,
+    letterSpacing: 0.3,
+  },
+  pickName: {
+    flex: 1,
+    fontSize: 15.5,
+    fontWeight: '700',
+  },
+  sheetEmpty: {
+    textAlign: 'center',
+    marginTop: 24,
+    fontSize: 14,
   },
 });
