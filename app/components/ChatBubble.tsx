@@ -1,8 +1,7 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
 import i18n from '@/i18n';
-import { localizeDate } from '@/utils/localization';
 import { useTheme } from '@/src/context/ThemeContext';
+import { localizeDate } from '@/utils/localization';
+import { Image, StyleSheet, Text, View } from 'react-native';
 
 type ChatBubbleProps = {
   text: string;
@@ -11,15 +10,31 @@ type ChatBubbleProps = {
   senderName?: string;
   senderRole?: string;
   createdAt?: number | Date;
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 };
 
-export default function ChatBubble({ text, isSender, senderName, senderRole, createdAt }: ChatBubbleProps) {
+export default function ChatBubble({
+  text,
+  isSender,
+  senderName,
+  senderRole,
+  createdAt,
+  imageUrl,
+  imageWidth,
+  imageHeight,
+}: ChatBubbleProps) {
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
   const { colors } = useTheme();
   const localizedTimestamp = createdAt
     ? localizeDate(createdAt, { hour: '2-digit', minute: '2-digit' })
     : '';
-  
+
+  const BUBBLE_MAX_W = 220;
+  const ratio = imageWidth && imageHeight ? imageHeight / imageWidth : 1;
+  const imgH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
+
   return (
     <View style={[styles.bubble, isSender ? [styles.senderBubble, { backgroundColor: colors.buttonBackground }] : styles.receiverBubble]}>
       {senderName && (
@@ -30,13 +45,23 @@ export default function ChatBubble({ text, isSender, senderName, senderRole, cre
           {senderName}{senderRole ? ` (${senderRole})` : ''}
         </Text>
       )}
-      <Text style={[
-        styles.text, 
-        isSender ? [styles.senderText, { color: colors.buttonText }] : styles.receiverText,
-        isRTL && { writingDirection: 'rtl', textAlign: 'right' }
-      ]}>
-        {text}
-      </Text>
+      {imageUrl ? (
+        <Image
+          source={{ uri: imageUrl }}
+          style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 12 }}
+          resizeMode="cover"
+        />
+      ) : null}
+      {text ? (
+        <Text style={[
+          styles.text,
+          isSender ? [styles.senderText, { color: colors.buttonText }] : styles.receiverText,
+          isRTL && { writingDirection: 'rtl', textAlign: 'right' },
+          imageUrl ? { marginTop: 6 } : null,
+        ]}>
+          {text}
+        </Text>
+      ) : null}
       {createdAt && (
         <Text style={[
           styles.timestamp,

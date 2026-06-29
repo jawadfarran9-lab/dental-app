@@ -19,6 +19,12 @@ type Message = {
   from: 'patient' | 'clinic';
   text: string;
   createdAt?: any;
+  senderName?: string;
+  senderRole?: string;
+  type?: 'image';
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
 };
 
 export default function PatientView() {
@@ -283,6 +289,9 @@ export default function PatientView() {
                   senderName={item.senderName}
                   senderRole={item.senderRole}
                   createdAt={item.createdAt}
+                  imageUrl={item.imageUrl}
+                  imageWidth={item.imageWidth}
+                  imageHeight={item.imageHeight}
                 />
               )}
               style={{ flex: 1, marginVertical: 8 }}
