@@ -1,7 +1,12 @@
+import { db, storage } from '@/firebaseConfig';
+import { compressImage } from '@/src/utils/imageCompress';
+import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { addDoc, collection } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -391,27 +396,44 @@ export default function ChatCameraScreen() {
 
   const handleTakePhoto = async () => {
     if (!cameraRef.current || !ready || taking) return;
+    if (!clinicId || !patientId) {
+      Alert.alert('Error', 'Missing conversation context.');
+      return;
+    }
     setTaking(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-      if (photo?.uri) {
-        console.log(
-          '[chat-camera] captured',
-          photo.uri,
-          photo.width,
-          photo.height,
-          'for patientId=',
-          patientId,
-          'name=',
-          name,
-          'clinicId=',
-          clinicId,
-        );
-        Alert.alert('Photo captured', 'Upload will be wired next (cam-2).');
-      }
+      if (!photo?.uri) return;
+      const compressed = await compressImage(photo.uri, { maxWidth: 1600, quality: 0.7 });
+      const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.jpg`;
+      const blob = await (await fetch(compressed.uri)).blob();
+      const snap = await uploadBytes(ref(storage, storagePath), blob, {
+        contentType: 'image/jpeg',
+      });
+      const imageUrl = await getDownloadURL(snap.ref);
+      await addDoc(collection(db, `patients/${patientId}/messages`), {
+        from: 'clinic',
+        text: '',
+        type: 'image',
+        imageUrl,
+        imageWidth: compressed.width,
+        imageHeight: compressed.height,
+        storagePath,
+        senderName: 'Clinic',
+        createdAt: Date.now(),
+      });
+      await updateThreadOnMessage(
+        clinicId as string,
+        patientId as string,
+        (name as string) ?? '',
+        'Photo',
+        'clinic',
+      );
+      router.back();
     } catch (err) {
-      console.error('[chat-camera] takePictureAsync error', err);
-      Alert.alert('Error', 'Could not take the photo.');
+      console.error('[chat-camera] upload error', err);
+      Alert.alert('Upload failed', 'Please try again.');
     } finally {
       setTaking(false);
     }

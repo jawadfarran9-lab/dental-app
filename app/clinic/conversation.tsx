@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     FlatList,
+    Image,
     Keyboard,
     KeyboardAvoidingView,
     Modal,
@@ -62,6 +63,11 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
+  type?: 'image';
+  imageUrl?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+  storagePath?: string;
 };
 
 export default function ClinicConversationScreen() {
@@ -183,6 +189,41 @@ export default function ClinicConversationScreen() {
   const renderItem = ({ item }: { item: Message }) => {
     const sent = item.from === 'clinic';
     const time = formatBubbleTime(item.createdAt);
+    if (item.type === 'image' && item.imageUrl) {
+      const BUBBLE_MAX_W = 220;
+      const ratio =
+        item.imageWidth && item.imageHeight
+          ? item.imageHeight / item.imageWidth
+          : 1;
+      const imgH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
+      return (
+        <View style={[styles.bubbleRow, sent ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+              resizeMode="cover"
+            />
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
+        </View>
+      );
+    }
     if (sent) {
       return (
         <View style={[styles.bubbleRow, styles.bubbleRowRight]}>
@@ -563,6 +604,26 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     fontWeight: '600',
     marginTop: 3,
+    alignSelf: 'flex-end',
+  },
+
+  imageBubble: {
+    padding: 4,
+    borderRadius: 18,
+    maxWidth: '78%',
+  },
+  imageBubbleSent: {
+    backgroundColor: 'rgba(30,111,217,0.18)',
+    borderBottomRightRadius: 6,
+  },
+  imageBubbleRecv: {
+    borderBottomLeftRadius: 6,
+  },
+  imageBubbleTime: {
+    fontSize: 10.5,
+    fontWeight: '600',
+    marginTop: 4,
+    marginRight: 4,
     alignSelf: 'flex-end',
   },
 
