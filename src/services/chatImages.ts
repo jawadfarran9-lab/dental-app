@@ -1,8 +1,8 @@
-import { addDoc, collection } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 import { db, storage } from '@/firebaseConfig';
 import { compressImage } from '@/src/utils/imageCompress';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
+import { addDoc, collection } from 'firebase/firestore';
+import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 export async function sendImageMessage(params: {
   clinicId: string;
