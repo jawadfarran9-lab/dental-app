@@ -2,15 +2,18 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { sendImageMessage } from '@/src/services/chatImages';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     Image,
     Keyboard,
@@ -83,12 +86,47 @@ export default function ClinicConversationScreen() {
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
+
+  const handlePickAndSendImage = async () => {
+    if (!clinicId || !patientId) {
+      Alert.alert('Missing info', 'Cannot send right now.');
+      return;
+    }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo access to send an image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return;
+      setAttachBusy(true);
+      await sendImageMessage({
+        clinicId: clinicId as string,
+        patientId: patientId as string,
+        patientName: patientName ?? '',
+        localUri: uri,
+      });
+    } catch (err) {
+      console.error('[conversation] pick/send image error', err);
+      Alert.alert('Upload failed', 'Please try again.');
+    } finally {
+      setAttachBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (clinicLoading) return;
@@ -447,7 +485,10 @@ export default function ClinicConversationScreen() {
                 styles.attachOpt,
                 { backgroundColor: tileBg, borderColor: tileBorder },
               ]}
-              onPress={() => {}}
+              onPress={() => {
+                closeAttach();
+                setTimeout(handlePickAndSendImage, 250);
+              }}
             >
               <LinearGradient
                 colors={['#4DA3FF', '#1668E3']}
