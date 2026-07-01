@@ -7,9 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -47,6 +47,28 @@ export default function ClinicContactInfoScreen() {
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [media, setMedia] = useState<{ id: string; imageUrl: string }[]>([]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    const qy = query(
+      collection(db, `patients/${patientId}/messages`),
+      orderBy('createdAt', 'asc'),
+    );
+    const unsub = onSnapshot(
+      qy,
+      (snap) => {
+        const imgs = snap.docs
+          .map((d) => ({ id: d.id, ...(d.data() as any) }))
+          .filter((m) => m.type === 'image' && m.imageUrl)
+          .map((m) => ({ id: m.id, imageUrl: m.imageUrl as string }))
+          .reverse();
+        setMedia(imgs);
+      },
+      (e) => console.error('[contact-info] media sub error', e),
+    );
+    return () => unsub();
+  }, [patientId]);
 
   useEffect(() => {
     if (!clinicId || !patientId) {
@@ -104,6 +126,11 @@ export default function ClinicContactInfoScreen() {
   const dob: string | undefined = patient?.dateOfBirth || undefined;
 
   const hasContact = !!(phone || email);
+
+  const MEDIA_H_PADDING = 16;
+  const MEDIA_GAP = 6;
+  const mediaCellSize =
+    (Dimensions.get('window').width - MEDIA_H_PADDING * 2 - MEDIA_GAP * 2) / 3;
 
   const renderRow = (opts: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -296,6 +323,48 @@ export default function ClinicContactInfoScreen() {
               ));
             })()}
           </View>
+
+          <View style={styles.mediaHeaderRow}>
+            <Text style={[styles.eyebrow, styles.mediaEyebrow, { color: textSecondary }]}>
+              MEDIA
+            </Text>
+            <Text style={[styles.mediaCount, { color: textSecondary }]}>
+              {media.length}
+            </Text>
+          </View>
+          {media.length === 0 ? (
+            <View
+              style={[
+                styles.mediaEmpty,
+                { backgroundColor: cardBg, borderColor: cardBorder },
+              ]}
+            >
+              <Ionicons name="images-outline" size={22} color={chevronColor} />
+              <Text style={[styles.mediaEmptyText, { color: textSecondary }]}>
+                No media shared yet
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.mediaGrid}>
+              {media.slice(0, 12).map((m) => (
+                <Pressable
+                  key={m.id}
+                  onPress={() => Linking.openURL(m.imageUrl)}
+                  style={({ pressed }) => [
+                    styles.mediaCell,
+                    { width: mediaCellSize, height: mediaCellSize },
+                    pressed && { opacity: 0.8 },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: m.imageUrl }}
+                    style={styles.mediaImage}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+              ))}
+            </View>
+          )}
         </ScrollView>
       )}
     </View>
@@ -429,5 +498,49 @@ const styles = StyleSheet.create({
   divider: {
     height: 1,
     marginLeft: 62,
+  },
+
+  mediaHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  mediaEyebrow: {
+    marginTop: 0,
+    marginBottom: 0,
+    paddingHorizontal: 0,
+  },
+  mediaCount: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  mediaEmpty: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  mediaEmptyText: {
+    fontSize: 13.5,
+    fontWeight: '600',
+  },
+  mediaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  mediaCell: {
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  mediaImage: {
+    width: '100%',
+    height: '100%',
   },
 });
