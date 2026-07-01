@@ -320,26 +320,36 @@ export default function ClinicConversationScreen() {
               <Ionicons name="chevron-back" size={22} color={backIconColor} />
             </Pressable>
 
-            <LinearGradient
-              colors={palette as any}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.headerAvatar}
+            <Pressable
+              onPress={() =>
+                router.push(
+                  `/clinic/contact-info?patientId=${patientId}&name=${encodeURIComponent(patientName)}` as any,
+                )
+              }
+              style={styles.headerTapArea}
+              hitSlop={4}
             >
-              <Text style={styles.headerAvatarText}>{initialsOf(patientName)}</Text>
-            </LinearGradient>
-
-            <View style={styles.headerText}>
-              <Text
-                style={[styles.headerTitle, { color: textPrimary }]}
-                numberOfLines={1}
+              <LinearGradient
+                colors={palette as any}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.headerAvatar}
               >
-                {patientName}
-              </Text>
-              <Text style={[styles.headerSub, { color: textSecondary }]} numberOfLines={1}>
-                Patient
-              </Text>
-            </View>
+                <Text style={styles.headerAvatarText}>{initialsOf(patientName)}</Text>
+              </LinearGradient>
+
+              <View style={styles.headerText}>
+                <Text
+                  style={[styles.headerTitle, { color: textPrimary }]}
+                  numberOfLines={1}
+                >
+                  {patientName}
+                </Text>
+                <Text style={[styles.headerSub, { color: textSecondary }]} numberOfLines={1}>
+                  Patient
+                </Text>
+              </View>
+            </Pressable>
           </View>
 
           {/* Body */}
@@ -590,6 +600,12 @@ const styles = StyleSheet.create({
   headerText: { flex: 1 },
   headerTitle: { fontSize: 17, fontWeight: '800' },
   headerSub: { fontSize: 12, fontWeight: '600', marginTop: 1 },
+  headerTapArea: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
 

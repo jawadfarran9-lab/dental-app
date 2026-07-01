@@ -45,6 +45,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/create" options={{ title: 'New Patient', headerShown: true }} />
       <Stack.Screen name="clinic/messages" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/conversation" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/contact-info" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="clinic/team" options={{ title: 'Team', headerShown: true }} />
       <Stack.Screen name="clinic/usage" options={{ title: 'Usage & Trial', headerShown: true }} />
