@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -87,6 +87,68 @@ export default function ClinicContactInfoScreen() {
   const pillBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.7)';
   const pillBorder = isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.85)';
 
+  const cardBg = isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.55)';
+  const cardBorder = isDark ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.75)';
+  const rowIconBg = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(61,158,255,0.14)';
+  const rowIconColor = '#3D9EFF';
+  const dividerColor = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(27,37,66,0.06)';
+  const chevronColor = isDark ? 'rgba(255,255,255,0.35)' : 'rgba(27,37,66,0.35)';
+
+  const phone: string | undefined = patient?.phone || undefined;
+  const email: string | undefined = patient?.email || undefined;
+  const address: string | undefined = patient?.address || undefined;
+  const genderRaw: string | undefined = patient?.gender || undefined;
+  const genderDisplay = genderRaw
+    ? genderRaw.charAt(0).toUpperCase() + genderRaw.slice(1).toLowerCase()
+    : undefined;
+  const dob: string | undefined = patient?.dateOfBirth || undefined;
+
+  const hasContact = !!(phone || email);
+
+  const renderRow = (opts: {
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    value: string;
+    onPress?: () => void;
+    showChevron?: boolean;
+    isLast?: boolean;
+  }) => {
+    const { icon, label, value, onPress, showChevron, isLast } = opts;
+    const body = (
+      <View style={styles.rowInner}>
+        <View style={[styles.rowIconWrap, { backgroundColor: rowIconBg }]}>
+          <Ionicons name={icon} size={18} color={rowIconColor} />
+        </View>
+        <View style={styles.rowBody}>
+          <Text style={[styles.rowLabel, { color: textSecondary }]}>{label}</Text>
+          <Text style={[styles.rowValue, { color: textPrimary }]} numberOfLines={2}>
+            {value}
+          </Text>
+        </View>
+        {showChevron ? (
+          <Ionicons name="chevron-forward" size={18} color={chevronColor} />
+        ) : null}
+      </View>
+    );
+    return (
+      <View>
+        {onPress ? (
+          <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}
+          >
+            {body}
+          </Pressable>
+        ) : (
+          <View style={styles.row}>{body}</View>
+        )}
+        {!isLast ? (
+          <View style={[styles.divider, { backgroundColor: dividerColor }]} />
+        ) : null}
+      </View>
+    );
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -112,44 +174,129 @@ export default function ClinicContactInfoScreen() {
           <ActivityIndicator color={textSecondary} />
         </View>
       ) : (
-        <View style={styles.hero}>
-          <LinearGradient
-            colors={palette as any}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.avatar}
-          >
-            <Text style={styles.avatarInitials}>{initialsOf(displayName)}</Text>
-          </LinearGradient>
-
-          <Text style={[styles.name, { color: textPrimary }]} numberOfLines={2}>
-            {displayName}
-          </Text>
-
-          {code ? (
-            <Pressable
-              onPress={handleCopyCode}
-              style={({ pressed }) => [
-                styles.codePill,
-                { backgroundColor: pillBg, borderColor: pillBorder },
-                pressed && { opacity: 0.75 },
-              ]}
-              hitSlop={6}
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: insets.bottom + 32 },
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.hero}>
+            <LinearGradient
+              colors={palette as any}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.avatar}
             >
-              <Text style={[styles.codeText, { color: textSecondary }]}>
-                Code · {String(code)}
-              </Text>
-              <Ionicons
-                name={copied ? 'checkmark-outline' : 'copy-outline'}
-                size={16}
-                color={copied ? '#10B981' : '#3D9EFF'}
-              />
-              {copied ? (
-                <Text style={[styles.copiedLabel, { color: '#10B981' }]}>Copied</Text>
-              ) : null}
-            </Pressable>
+              <Text style={styles.avatarInitials}>{initialsOf(displayName)}</Text>
+            </LinearGradient>
+
+            <Text style={[styles.name, { color: textPrimary }]} numberOfLines={2}>
+              {displayName}
+            </Text>
+
+            {code ? (
+              <Pressable
+                onPress={handleCopyCode}
+                style={({ pressed }) => [
+                  styles.codePill,
+                  { backgroundColor: pillBg, borderColor: pillBorder },
+                  pressed && { opacity: 0.75 },
+                ]}
+                hitSlop={6}
+              >
+                <Text style={[styles.codeText, { color: textSecondary }]}>
+                  Code · {String(code)}
+                </Text>
+                <Ionicons
+                  name={copied ? 'checkmark-outline' : 'copy-outline'}
+                  size={16}
+                  color={copied ? '#10B981' : '#3D9EFF'}
+                />
+                {copied ? (
+                  <Text style={[styles.copiedLabel, { color: '#10B981' }]}>Copied</Text>
+                ) : null}
+              </Pressable>
+            ) : null}
+          </View>
+
+          {hasContact ? (
+            <>
+              <Text style={[styles.eyebrow, { color: textSecondary }]}>CONTACT</Text>
+              <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+                {phone
+                  ? renderRow({
+                      icon: 'call-outline',
+                      label: 'Phone',
+                      value: phone,
+                      onPress: () => Linking.openURL(`tel:${phone}`),
+                      showChevron: true,
+                      isLast: !email,
+                    })
+                  : null}
+                {email
+                  ? renderRow({
+                      icon: 'mail-outline',
+                      label: 'Email',
+                      value: email,
+                      onPress: () => Linking.openURL(`mailto:${email}`),
+                      showChevron: true,
+                      isLast: true,
+                    })
+                  : null}
+              </View>
+            </>
           ) : null}
-        </View>
+
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>DETAILS</Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {(() => {
+              const rows: React.ReactNode[] = [];
+              const push = (node: React.ReactNode) => rows.push(node);
+              if (dob) {
+                push(
+                  renderRow({
+                    icon: 'calendar-outline',
+                    label: 'Date of birth',
+                    value: dob,
+                  }),
+                );
+              }
+              if (genderDisplay) {
+                push(
+                  renderRow({
+                    icon: 'person-outline',
+                    label: 'Gender',
+                    value: genderDisplay,
+                  }),
+                );
+              }
+              if (address) {
+                push(
+                  renderRow({
+                    icon: 'location-outline',
+                    label: 'Address',
+                    value: address,
+                  }),
+                );
+              }
+              push(
+                renderRow({
+                  icon: 'person-circle-outline',
+                  label: 'Profile',
+                  value: 'View full profile',
+                  onPress: () => router.push(`/clinic/${patientId}` as any),
+                  showChevron: true,
+                  isLast: true,
+                }),
+              );
+              return rows.map((r, i) => (
+                <View key={i}>{r}</View>
+              ));
+            })()}
+          </View>
+        </ScrollView>
       )}
     </View>
   );
@@ -225,5 +372,62 @@ const styles = StyleSheet.create({
   copiedLabel: {
     fontSize: 11.5,
     fontWeight: '700',
+  },
+
+  scroll: { flex: 1 },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    gap: 8,
+  },
+
+  eyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+    marginTop: 14,
+    marginBottom: 6,
+    paddingHorizontal: 4,
+  },
+  card: {
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  row: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  rowInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  rowIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowBody: { flex: 1 },
+  rowLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  rowValue: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  divider: {
+    height: 1,
+    marginLeft: 62,
   },
 });
