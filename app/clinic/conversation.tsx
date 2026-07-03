@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -87,9 +87,17 @@ export default function ClinicConversationScreen() {
   const [sending, setSending] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
+
+  const displayedMessages = useMemo(() => {
+    const qq = searchQuery.trim().toLowerCase();
+    if (!searchOpen || qq === '') return messages;
+    return messages.filter((m) => (m.text || '').toLowerCase().includes(qq));
+  }, [messages, searchOpen, searchQuery]);
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
@@ -350,7 +358,63 @@ export default function ClinicConversationScreen() {
                 </Text>
               </View>
             </Pressable>
+
+            <Pressable
+              onPress={() => {
+                setSearchOpen((v) => {
+                  const next = !v;
+                  if (!next) setSearchQuery('');
+                  return next;
+                });
+              }}
+              style={({ pressed }) => [
+                styles.headerBtn,
+                { backgroundColor: pressed ? backBgPressed : backBg },
+              ]}
+            >
+              <Ionicons
+                name={searchOpen ? 'close' : 'search-outline'}
+                size={20}
+                color={backIconColor}
+              />
+            </Pressable>
           </View>
+
+          {searchOpen && (
+            <View style={styles.searchBarRow}>
+              <View
+                style={[
+                  styles.searchBar,
+                  { backgroundColor: inputBg, borderColor: inputBorder },
+                ]}
+              >
+                <Ionicons name="search" size={16} color={inputPlaceholder} />
+                <TextInput
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder="Search in chat"
+                  placeholderTextColor={inputPlaceholder}
+                  style={[styles.searchInput, { color: textPrimary }]}
+                  autoFocus
+                  returnKeyType="search"
+                />
+                {searchQuery.length > 0 && (
+                  <Pressable onPress={() => setSearchQuery('')} hitSlop={6}>
+                    <Ionicons name="close-circle" size={18} color={inputPlaceholder} />
+                  </Pressable>
+                )}
+              </View>
+              <Pressable
+                onPress={() => {
+                  setSearchOpen(false);
+                  setSearchQuery('');
+                }}
+                hitSlop={6}
+              >
+                <Text style={[styles.searchCancel, { color: textSecondary }]}>Cancel</Text>
+              </Pressable>
+            </View>
+          )}
 
           {/* Body */}
           <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
@@ -358,6 +422,37 @@ export default function ClinicConversationScreen() {
               {loading ? (
                 <View style={styles.center}>
                   <ActivityIndicator color={textSecondary} />
+                </View>
+              ) : searchOpen && searchQuery.trim() !== '' && displayedMessages.length === 0 ? (
+                <View style={styles.center}>
+                  <View
+                    style={[
+                      styles.emptyCard,
+                      {
+                        backgroundColor: isDark
+                          ? 'rgba(255,255,255,0.015)'
+                          : 'rgba(255,255,255,0.18)',
+                        borderColor: isDark
+                          ? 'rgba(255,255,255,0.06)'
+                          : 'rgba(255,255,255,0.45)',
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[
+                        styles.emptyIconWrap,
+                        { backgroundColor: 'rgba(61,158,255,0.16)' },
+                      ]}
+                    >
+                      <Ionicons name="search-outline" size={26} color="#3D9EFF" />
+                    </View>
+                    <Text style={[styles.emptyTitle, { color: textPrimary }]}>
+                      No matches
+                    </Text>
+                    <Text style={[styles.emptySub, { color: textMuted }]}>
+                      No messages match "{searchQuery.trim()}".
+                    </Text>
+                  </View>
                 </View>
               ) : messages.length === 0 ? (
                 <View style={styles.center}>
@@ -397,16 +492,16 @@ export default function ClinicConversationScreen() {
               ) : (
                 <FlatList
                   ref={listRef}
-                  data={messages}
+                  data={displayedMessages}
                   keyExtractor={(m) => m.id}
                   renderItem={renderItem}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
                   keyboardDismissMode="on-drag"
                   keyboardShouldPersistTaps="handled"
-                  onContentSizeChange={() =>
-                    listRef.current?.scrollToEnd({ animated: false })
-                  }
+                  onContentSizeChange={() => {
+                    if (!searchOpen) listRef.current?.scrollToEnd({ animated: false });
+                  }}
                 />
               )}
             </View>
@@ -605,6 +700,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+  },
+
+  searchBarRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingBottom: 10,
+    gap: 10,
+  },
+  searchBar: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: Platform.OS === 'ios' ? 10 : 6,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    padding: 0,
+    margin: 0,
+  },
+  searchCancel: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
