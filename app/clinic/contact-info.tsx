@@ -2,14 +2,15 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { clearChatForClinic } from '@/src/services/chatClear';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -47,7 +48,9 @@ export default function ClinicContactInfoScreen() {
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [media, setMedia] = useState<{ id: string; imageUrl: string }[]>([]);
+  const [media, setMedia] = useState<{ id: string; imageUrl: string; createdAt?: number }[]>([]);
+  const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     if (!patientId) return;
@@ -61,7 +64,11 @@ export default function ClinicContactInfoScreen() {
         const imgs = snap.docs
           .map((d) => ({ id: d.id, ...(d.data() as any) }))
           .filter((m) => m.type === 'image' && m.imageUrl)
-          .map((m) => ({ id: m.id, imageUrl: m.imageUrl as string }))
+          .map((m) => ({
+            id: m.id,
+            imageUrl: m.imageUrl as string,
+            createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+          }))
           .reverse();
         setMedia(imgs);
       },
@@ -69,6 +76,24 @@ export default function ClinicContactInfoScreen() {
     );
     return () => unsub();
   }, [patientId]);
+
+  useEffect(() => {
+    if (!clinicId || !patientId) return;
+    const unsub = onSnapshot(
+      doc(db, 'threads', `${clinicId}_${patientId}`),
+      (snap) => {
+        const v = snap.exists() ? (snap.data() as any).clearedForClinicAt : 0;
+        setClearedForClinicAt(typeof v === 'number' ? v : 0);
+      },
+      (e) => console.error('[contact-info] thread marker sub error', e),
+    );
+    return () => unsub();
+  }, [clinicId, patientId]);
+
+  const shownMedia = useMemo(
+    () => media.filter((m) => (m.createdAt ?? 0) > (clearedForClinicAt ?? 0)),
+    [media, clearedForClinicAt],
+  );
 
   useEffect(() => {
     if (!clinicId || !patientId) {
@@ -97,6 +122,36 @@ export default function ClinicContactInfoScreen() {
     await Clipboard.setStringAsync(String(code));
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
+  };
+
+  const handleClearChat = () => {
+    if (!clinicId || !patientId || clearing) return;
+    Alert.alert(
+      'Clear chat?',
+      'This hides all current messages in this conversation on your side. The patient still sees their copy. New messages after this will show normally.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setClearing(true);
+              await clearChatForClinic({
+                clinicId: clinicId as string,
+                patientId: patientId as string,
+              });
+              if (router.canGoBack()) router.back();
+            } catch (e) {
+              console.error('[contact-info] clear chat error', e);
+              Alert.alert('Could not clear', 'Please try again.');
+            } finally {
+              setClearing(false);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const textPrimary = colors.textPrimary;
@@ -329,10 +384,10 @@ export default function ClinicContactInfoScreen() {
               MEDIA
             </Text>
             <Text style={[styles.mediaCount, { color: textSecondary }]}>
-              {media.length}
+              {shownMedia.length}
             </Text>
           </View>
-          {media.length === 0 ? (
+          {shownMedia.length === 0 ? (
             <View
               style={[
                 styles.mediaEmpty,
@@ -346,7 +401,7 @@ export default function ClinicContactInfoScreen() {
             </View>
           ) : (
             <View style={styles.mediaGrid}>
-              {media.slice(0, 12).map((m) => (
+              {shownMedia.slice(0, 12).map((m) => (
                 <Pressable
                   key={m.id}
                   onPress={() => Linking.openURL(m.imageUrl)}
@@ -365,6 +420,49 @@ export default function ClinicContactInfoScreen() {
               ))}
             </View>
           )}
+
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>DANGER ZONE</Text>
+          <View
+            style={[
+              styles.card,
+              { backgroundColor: cardBg, borderColor: cardBorder },
+            ]}
+          >
+            <Pressable
+              onPress={handleClearChat}
+              disabled={clearing}
+              style={({ pressed }) => [
+                styles.row,
+                pressed && !clearing && { opacity: 0.7 },
+                clearing && { opacity: 0.5 },
+              ]}
+            >
+              <View style={styles.rowInner}>
+                <View
+                  style={[
+                    styles.rowIconWrap,
+                    { backgroundColor: 'rgba(239,68,68,0.14)' },
+                  ]}
+                >
+                  <Ionicons name="trash-outline" size={18} color="#EF4444" />
+                </View>
+                <View style={styles.rowBody}>
+                  <Text style={[styles.rowLabel, { color: textSecondary }]}>
+                    CLEAR CHAT
+                  </Text>
+                  <Text
+                    style={[styles.rowValue, { color: '#EF4444' }]}
+                    numberOfLines={2}
+                  >
+                    Only hides messages on your side. The patient keeps their copy.
+                  </Text>
+                </View>
+                {clearing ? (
+                  <ActivityIndicator size="small" color="#EF4444" />
+                ) : null}
+              </View>
+            </Pressable>
+          </View>
         </ScrollView>
       )}
     </View>

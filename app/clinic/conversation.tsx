@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -89,15 +89,21 @@ export default function ClinicConversationScreen() {
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
 
+  const baseMessages = useMemo(
+    () => messages.filter((m) => (m.createdAt ?? 0) > (clearedForClinicAt ?? 0)),
+    [messages, clearedForClinicAt],
+  );
+
   const displayedMessages = useMemo(() => {
     const qq = searchQuery.trim().toLowerCase();
-    if (!searchOpen || qq === '') return messages;
-    return messages.filter((m) => (m.text || '').toLowerCase().includes(qq));
-  }, [messages, searchOpen, searchQuery]);
+    if (!searchOpen || qq === '') return baseMessages;
+    return baseMessages.filter((m) => (m.text || '').toLowerCase().includes(qq));
+  }, [baseMessages, searchOpen, searchQuery]);
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
@@ -172,6 +178,19 @@ export default function ClinicConversationScreen() {
 
     return () => unsub();
   }, [clinicId, clinicUser, clinicLoading, patientId, router]);
+
+  useEffect(() => {
+    if (!clinicId || !patientId) return;
+    const unsub = onSnapshot(
+      doc(db, 'threads', `${clinicId}_${patientId}`),
+      (snap) => {
+        const v = snap.exists() ? (snap.data() as any).clearedForClinicAt : 0;
+        setClearedForClinicAt(typeof v === 'number' ? v : 0);
+      },
+      (e) => console.error('[conversation] thread marker sub error', e),
+    );
+    return () => unsub();
+  }, [clinicId, patientId]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -454,7 +473,7 @@ export default function ClinicConversationScreen() {
                     </Text>
                   </View>
                 </View>
-              ) : messages.length === 0 ? (
+              ) : baseMessages.length === 0 ? (
                 <View style={styles.center}>
                   <View
                     style={[
