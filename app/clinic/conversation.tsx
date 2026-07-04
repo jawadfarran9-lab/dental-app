@@ -413,58 +413,64 @@ export default function ClinicConversationScreen() {
           : 1;
       const imgH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
       return (
-        <View
-          style={[
-            styles.imageBubble,
-            sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
-            !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
-          ]}
-        >
-          <Image
-            source={{ uri: item.imageUrl }}
-            style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
-            resizeMode="cover"
-          />
-          {!!time && (
-            <Text
-              style={[
-                styles.imageBubbleTime,
-                { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
-              ]}
-            >
-              {time}
-            </Text>
-          )}
+        <View style={{ position: 'relative' }}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <Image
+              source={{ uri: item.imageUrl }}
+              style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+              resizeMode="cover"
+            />
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
           {reactionBadge}
         </View>
       );
     }
     if (sent) {
       return (
-        <LinearGradient
-          colors={['#4DA3FF', '#1E6FD9']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.bubble, styles.bubbleSent]}
-        >
-          <Text style={styles.bubbleSentText}>{item.text}</Text>
-          {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+        <View style={{ position: 'relative' }}>
+          <LinearGradient
+            colors={['#4DA3FF', '#1E6FD9']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.bubble, styles.bubbleSent]}
+          >
+            <Text style={styles.bubbleSentText}>{item.text}</Text>
+            {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+          </LinearGradient>
           {reactionBadge}
-        </LinearGradient>
+        </View>
       );
     }
     return (
-      <View
-        style={[
-          styles.bubble,
-          styles.bubbleRecv,
-          { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder },
-        ]}
-      >
-        <Text style={[styles.bubbleRecvText, { color: recvText }]}>{item.text}</Text>
-        {!!time && (
-          <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>
-        )}
+      <View style={{ position: 'relative' }}>
+        <View
+          style={[
+            styles.bubble,
+            styles.bubbleRecv,
+            { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder },
+          ]}
+        >
+          <Text style={[styles.bubbleRecvText, { color: recvText }]}>{item.text}</Text>
+          {!!time && (
+            <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>
+          )}
+        </View>
         {reactionBadge}
       </View>
     );
@@ -997,7 +1003,7 @@ const styles = StyleSheet.create({
   listContent: {
     paddingHorizontal: 14,
     paddingTop: 4,
-    paddingBottom: 12,
+    paddingBottom: 20,
     gap: 6,
   },
 
@@ -1242,14 +1248,21 @@ const styles = StyleSheet.create({
   },
   reactionBadge: {
     position: 'absolute',
-    bottom: 2,
-    borderRadius: 10,
-    paddingHorizontal: 4,
-    paddingVertical: 1,
-    backgroundColor: 'rgba(0,0,0,0.18)',
+    bottom: -14,
+    borderRadius: 999,
+    paddingHorizontal: 5,
+    paddingVertical: 2,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.20,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   reactionBadgeRight: { right: 6 },
-  reactionBadgeLeft: { left: 6 },
+  reactionBadgeLeft: { left: 10 },
   reactionBadgeText: {
     fontSize: 13,
   },
