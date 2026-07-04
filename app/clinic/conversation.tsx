@@ -6,6 +6,7 @@ import { sendImageMessage } from '@/src/services/chatImages';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,6 +15,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
+    Dimensions,
     FlatList,
     Image,
     Keyboard,
@@ -73,6 +75,28 @@ type Message = {
   storagePath?: string;
 };
 
+type MessageBubbleProps = {
+  item: Message;
+  children: React.ReactNode;
+  onOpen: (item: Message, rect: { x: number; y: number; w: number; h: number }) => void;
+};
+const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
+  const ref = useRef<View>(null);
+  const handleLongPress = () => {
+    Keyboard.dismiss();
+    requestAnimationFrame(() => {
+      ref.current?.measureInWindow((x, y, w, h) => {
+        onOpen(item, { x, y, w, h });
+      });
+    });
+  };
+  return (
+    <Pressable ref={ref} onLongPress={handleLongPress} delayLongPress={350}>
+      {children}
+    </Pressable>
+  );
+};
+
 export default function ClinicConversationScreen() {
   useClinicGuard();
   const router = useRouter();
@@ -90,6 +114,10 @@ export default function ClinicConversationScreen() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
+  const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -107,6 +135,81 @@ export default function ClinicConversationScreen() {
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
+
+  type ActionItem = {
+    key: string;
+    label: string;
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    danger?: boolean;
+  };
+  const getActionsFor = (m: Message | null): ActionItem[] => {
+    if (!m) return [];
+    const isOwn = m.from === 'clinic';
+    const isImage = m.type === 'image';
+    if (isOwn && isImage) {
+      return [
+        { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
+        { key: 'info', label: 'Info', icon: 'information-circle-outline' },
+        { key: 'star', label: 'Star', icon: 'star-outline' },
+        { key: 'remove', label: 'Remove', icon: 'trash-outline', danger: true },
+      ];
+    }
+    if (isOwn) {
+      return [
+        { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
+        { key: 'copy', label: 'Copy', icon: 'copy-outline' },
+        { key: 'edit', label: 'Edit', icon: 'create-outline' },
+        { key: 'info', label: 'Info', icon: 'information-circle-outline' },
+        { key: 'star', label: 'Star', icon: 'star-outline' },
+        { key: 'remove', label: 'Remove', icon: 'trash-outline', danger: true },
+      ];
+    }
+    if (isImage) {
+      return [
+        { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
+        { key: 'info', label: 'Info', icon: 'information-circle-outline' },
+        { key: 'star', label: 'Star', icon: 'star-outline' },
+      ];
+    }
+    return [
+      { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
+      { key: 'copy', label: 'Copy', icon: 'copy-outline' },
+      { key: 'info', label: 'Info', icon: 'information-circle-outline' },
+      { key: 'star', label: 'Star', icon: 'star-outline' },
+    ];
+  };
+
+  const openActionMenu = (m: Message, rect: { x: number; y: number; w: number; h: number }) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const { height: screenH, width: screenW } = Dimensions.get('window');
+    const rows = getActionsFor(m).length;
+    const ROW_H = 48;
+    const LIST_PAD = 12;
+    const MENU_W = 240;
+    const MARGIN = 8;
+    const menuH = rows * ROW_H + LIST_PAD;
+    const spaceBelow = (screenH - insets.bottom) - (rect.y + rect.h);
+    const spaceAbove = rect.y - insets.top;
+    let top: number;
+    if (spaceBelow >= menuH + MARGIN) {
+      top = rect.y + rect.h + MARGIN;
+    } else if (spaceAbove >= menuH + MARGIN) {
+      top = rect.y - menuH - MARGIN;
+    } else {
+      top = Math.min(
+        Math.max(rect.y + rect.h + MARGIN, insets.top + 8),
+        screenH - insets.bottom - menuH - 8,
+      );
+    }
+    const own = m.from === 'clinic';
+    let left = own ? rect.x + rect.w - MENU_W : rect.x;
+    left = Math.min(Math.max(left, 12), screenW - MENU_W - 12);
+    setSelectedMessage(m);
+    setMenuPos({ top, left });
+    setAnchorRect(rect);
+    setActionMenuOpen(true);
+  };
+  const closeActionMenu = () => setActionMenuOpen(false);
 
   const handlePickAndSendImage = async () => {
     if (!clinicId || !patientId) {
@@ -251,9 +354,7 @@ export default function ClinicConversationScreen() {
 
   const palette = AVATAR_PALETTE[hashName(patientName) % AVATAR_PALETTE.length];
 
-  const renderItem = ({ item }: { item: Message }) => {
-    const sent = item.from === 'clinic';
-    const time = formatBubbleTime(item.createdAt);
+  const BubbleBody = ({ item, sent, time }: { item: Message; sent: boolean; time: string }) => {
     if (item.type === 'image' && item.imageUrl) {
       const BUBBLE_MAX_W = 220;
       const ratio =
@@ -262,62 +363,69 @@ export default function ClinicConversationScreen() {
           : 1;
       const imgH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
       return (
-        <View style={[styles.bubbleRow, sent ? styles.bubbleRowRight : styles.bubbleRowLeft]}>
-          <View
-            style={[
-              styles.imageBubble,
-              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
-              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
-            ]}
-          >
-            <Image
-              source={{ uri: item.imageUrl }}
-              style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
-              resizeMode="cover"
-            />
-            {!!time && (
-              <Text
-                style={[
-                  styles.imageBubbleTime,
-                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
-                ]}
-              >
-                {time}
-              </Text>
-            )}
-          </View>
+        <View
+          style={[
+            styles.imageBubble,
+            sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+            !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+          ]}
+        >
+          <Image
+            source={{ uri: item.imageUrl }}
+            style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+            resizeMode="cover"
+          />
+          {!!time && (
+            <Text
+              style={[
+                styles.imageBubbleTime,
+                { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+              ]}
+            >
+              {time}
+            </Text>
+          )}
         </View>
       );
     }
     if (sent) {
       return (
-        <View style={[styles.bubbleRow, styles.bubbleRowRight]}>
-          <LinearGradient
-            colors={['#4DA3FF', '#1E6FD9']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[styles.bubble, styles.bubbleSent]}
-          >
-            <Text style={styles.bubbleSentText}>{item.text}</Text>
-            {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
-          </LinearGradient>
-        </View>
+        <LinearGradient
+          colors={['#4DA3FF', '#1E6FD9']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.bubble, styles.bubbleSent]}
+        >
+          <Text style={styles.bubbleSentText}>{item.text}</Text>
+          {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+        </LinearGradient>
       );
     }
     return (
-      <View style={[styles.bubbleRow, styles.bubbleRowLeft]}>
-        <View
-          style={[
-            styles.bubble,
-            styles.bubbleRecv,
-            { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder },
-          ]}
-        >
-          <Text style={[styles.bubbleRecvText, { color: recvText }]}>{item.text}</Text>
-          {!!time && (
-            <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>
-          )}
-        </View>
+      <View
+        style={[
+          styles.bubble,
+          styles.bubbleRecv,
+          { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder },
+        ]}
+      >
+        <Text style={[styles.bubbleRecvText, { color: recvText }]}>{item.text}</Text>
+        {!!time && (
+          <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>
+        )}
+      </View>
+    );
+  };
+
+  const renderItem = ({ item }: { item: Message }) => {
+    const sent = item.from === 'clinic';
+    const time = formatBubbleTime(item.createdAt);
+    const align = sent ? styles.bubbleRowRight : styles.bubbleRowLeft;
+    return (
+      <View style={[styles.bubbleRow, align]}>
+        <MessageBubble item={item} onOpen={openActionMenu}>
+          <BubbleBody item={item} sent={sent} time={time} />
+        </MessageBubble>
       </View>
     );
   };
@@ -674,6 +782,62 @@ export default function ClinicConversationScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal
+        visible={actionMenuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeActionMenu}
+      >
+        <Pressable style={styles.actionBackdrop} onPress={closeActionMenu} />
+        {anchorRect && selectedMessage && (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: anchorRect.y,
+              left: anchorRect.x,
+              width: anchorRect.w,
+            }}
+          >
+            <BubbleBody
+              item={selectedMessage}
+              sent={selectedMessage.from === 'clinic'}
+              time={formatBubbleTime(selectedMessage.createdAt)}
+            />
+          </View>
+        )}
+        {menuPos && (
+          <View
+            style={[
+              styles.actionCard,
+              {
+                top: menuPos.top,
+                left: menuPos.left,
+                backgroundColor: isDark ? '#1D2233' : '#FFFFFF',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)',
+              },
+            ]}
+          >
+            {getActionsFor(selectedMessage).map((a) => {
+              const color = a.danger ? '#EF4444' : textPrimary;
+              return (
+                <Pressable
+                  key={a.key}
+                  onPress={closeActionMenu}
+                  style={({ pressed }) => [
+                    styles.actionRow,
+                    pressed && { opacity: 0.6 },
+                  ]}
+                >
+                  <Ionicons name={a.icon} size={20} color={color} />
+                  <Text style={[styles.actionLabel, { color }]}>{a.label}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+      </Modal>
     </View>
   );
 }
@@ -949,5 +1113,33 @@ const styles = StyleSheet.create({
   attachOptLabel: {
     fontSize: 14.5,
     fontWeight: '700',
+  },
+  actionBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  actionCard: {
+    position: 'absolute',
+    width: 240,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+    overflow: 'hidden',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  actionLabel: {
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
