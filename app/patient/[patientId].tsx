@@ -25,6 +25,8 @@ type Message = {
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
+  reactionClinic?: string;
+  reactionPatient?: string;
 };
 
 export default function PatientView() {
@@ -292,6 +294,8 @@ export default function PatientView() {
                   imageUrl={item.imageUrl}
                   imageWidth={item.imageWidth}
                   imageHeight={item.imageHeight}
+                  reactionClinic={item.reactionClinic}
+                  reactionPatient={item.reactionPatient}
                 />
               )}
               style={{ flex: 1, marginVertical: 8 }}
