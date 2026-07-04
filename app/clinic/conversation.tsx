@@ -13,21 +13,21 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Dimensions,
-    FlatList,
-    Image,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableWithoutFeedback,
-    View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -480,8 +480,9 @@ export default function ClinicConversationScreen() {
     const sent = item.from === 'clinic';
     const time = formatBubbleTime(item.createdAt);
     const align = sent ? styles.bubbleRowRight : styles.bubbleRowLeft;
+    const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     return (
-      <View style={[styles.bubbleRow, align]}>
+      <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
           <BubbleBody item={item} sent={sent} time={time} />
         </MessageBubble>
@@ -1013,6 +1014,7 @@ const styles = StyleSheet.create({
   },
   bubbleRowLeft: { justifyContent: 'flex-start' },
   bubbleRowRight: { justifyContent: 'flex-end' },
+  bubbleRowReacted: { marginBottom: 20 },
 
   bubble: {
     paddingHorizontal: 13,
