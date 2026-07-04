@@ -879,18 +879,25 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
-            {REACTIONS.map((e) => (
-              <Pressable
-                key={e}
-                onPress={() => {
-                  setMessageReaction(selectedMessage, e);
-                  closeActionMenu();
-                }}
-                style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
-              >
-                <Text style={styles.reactionEmoji}>{e}</Text>
-              </Pressable>
-            ))}
+            {REACTIONS.map((e) => {
+              const isSelected = selectedMessage?.reactionClinic === e;
+              return (
+                <Pressable
+                  key={e}
+                  onPress={() => {
+                    setMessageReaction(selectedMessage, e);
+                    closeActionMenu();
+                  }}
+                  style={({ pressed }) => [
+                    styles.reactionChip,
+                    isSelected && styles.reactionChipSelected,
+                    pressed && { opacity: 0.5 },
+                  ]}
+                >
+                  <Text style={styles.reactionEmoji}>{e}</Text>
+                </Pressable>
+              );
+            })}
           </View>
         )}
         {menuPos && (
@@ -1244,6 +1251,10 @@ const styles = StyleSheet.create({
   reactionChip: {
     paddingHorizontal: 6,
     paddingVertical: 4,
+  },
+  reactionChipSelected: {
+    backgroundColor: 'rgba(61,158,255,0.18)',
+    borderRadius: 999,
   },
   reactionEmoji: {
     fontSize: 24,
