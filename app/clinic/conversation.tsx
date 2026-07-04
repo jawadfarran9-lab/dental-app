@@ -10,7 +10,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -73,7 +73,11 @@ type Message = {
   imageWidth?: number;
   imageHeight?: number;
   storagePath?: string;
+  reactionClinic?: string;
+  reactionPatient?: string;
 };
+
+const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
 type MessageBubbleProps = {
   item: Message;
@@ -91,7 +95,7 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
     });
   };
   return (
-    <Pressable ref={ref} onLongPress={handleLongPress} delayLongPress={350}>
+    <Pressable ref={ref} onLongPress={handleLongPress} delayLongPress={350} style={{ maxWidth: '78%' }}>
       {children}
     </Pressable>
   );
@@ -118,6 +122,7 @@ export default function ClinicConversationScreen() {
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -191,25 +196,56 @@ export default function ClinicConversationScreen() {
     const spaceBelow = (screenH - insets.bottom) - (rect.y + rect.h);
     const spaceAbove = rect.y - insets.top;
     let top: number;
+    let placedBelow: boolean;
     if (spaceBelow >= menuH + MARGIN) {
       top = rect.y + rect.h + MARGIN;
+      placedBelow = true;
     } else if (spaceAbove >= menuH + MARGIN) {
       top = rect.y - menuH - MARGIN;
+      placedBelow = false;
     } else {
       top = Math.min(
         Math.max(rect.y + rect.h + MARGIN, insets.top + 8),
         screenH - insets.bottom - menuH - 8,
       );
+      placedBelow = true;
     }
     const own = m.from === 'clinic';
     let left = own ? rect.x + rect.w - MENU_W : rect.x;
     left = Math.min(Math.max(left, 12), screenW - MENU_W - 12);
+
+    const ROW_W = 300;
+    const ROW_H_REACT = 52;
+    const ROW_MARGIN = 8;
+    let rowTop: number;
+    if (placedBelow) {
+      rowTop = rect.y - ROW_H_REACT - ROW_MARGIN;
+      if (rowTop < insets.top + 8) rowTop = insets.top + 8;
+    } else {
+      rowTop = rect.y + rect.h + ROW_MARGIN;
+      const maxTop = screenH - insets.bottom - ROW_H_REACT - 8;
+      if (rowTop > maxTop) rowTop = maxTop;
+    }
+    let rowLeft = own ? rect.x + rect.w - ROW_W : rect.x;
+    rowLeft = Math.min(Math.max(rowLeft, 12), screenW - ROW_W - 12);
+
     setSelectedMessage(m);
     setMenuPos({ top, left });
     setAnchorRect(rect);
+    setRowPos({ top: rowTop, left: rowLeft });
     setActionMenuOpen(true);
   };
   const closeActionMenu = () => setActionMenuOpen(false);
+
+  const setMessageReaction = async (message: Message, emoji: string) => {
+    if (!patientId) return;
+    try {
+      const next = message.reactionClinic === emoji ? deleteField() : emoji;
+      await updateDoc(doc(db, `patients/${patientId}/messages/${message.id}`), { reactionClinic: next });
+    } catch (e) {
+      console.error('[conversation] set reaction error', e);
+    }
+  };
 
   const handlePickAndSendImage = async () => {
     if (!clinicId || !patientId) {
@@ -355,6 +391,20 @@ export default function ClinicConversationScreen() {
   const palette = AVATAR_PALETTE[hashName(patientName) % AVATAR_PALETTE.length];
 
   const BubbleBody = ({ item, sent, time }: { item: Message; sent: boolean; time: string }) => {
+    const hasReaction = !!(item.reactionClinic || item.reactionPatient);
+    const reactionBadge = hasReaction ? (
+      <View
+        style={[
+          styles.reactionBadge,
+          styles.reactionBadgeLeft,
+        ]}
+      >
+        <Text style={styles.reactionBadgeText}>
+          {[item.reactionClinic, item.reactionPatient].filter(Boolean).join(' ')}
+        </Text>
+      </View>
+    ) : null;
+
     if (item.type === 'image' && item.imageUrl) {
       const BUBBLE_MAX_W = 220;
       const ratio =
@@ -385,6 +435,7 @@ export default function ClinicConversationScreen() {
               {time}
             </Text>
           )}
+          {reactionBadge}
         </View>
       );
     }
@@ -398,6 +449,7 @@ export default function ClinicConversationScreen() {
         >
           <Text style={styles.bubbleSentText}>{item.text}</Text>
           {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+          {reactionBadge}
         </LinearGradient>
       );
     }
@@ -413,6 +465,7 @@ export default function ClinicConversationScreen() {
         {!!time && (
           <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>
         )}
+        {reactionBadge}
       </View>
     );
   };
@@ -807,6 +860,32 @@ export default function ClinicConversationScreen() {
             />
           </View>
         )}
+        {rowPos && selectedMessage && (
+          <View
+            style={[
+              styles.reactionRow,
+              {
+                top: rowPos.top,
+                left: rowPos.left,
+                backgroundColor: isDark ? '#1D2233' : '#FFFFFF',
+                borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)',
+              },
+            ]}
+          >
+            {REACTIONS.map((e) => (
+              <Pressable
+                key={e}
+                onPress={() => {
+                  setMessageReaction(selectedMessage, e);
+                  closeActionMenu();
+                }}
+                style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
+              >
+                <Text style={styles.reactionEmoji}>{e}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
         {menuPos && (
           <View
             style={[
@@ -930,7 +1009,6 @@ const styles = StyleSheet.create({
   bubbleRowRight: { justifyContent: 'flex-end' },
 
   bubble: {
-    maxWidth: '78%',
     paddingHorizontal: 13,
     paddingVertical: 9,
     borderRadius: 18,
@@ -973,7 +1051,6 @@ const styles = StyleSheet.create({
   imageBubble: {
     padding: 4,
     borderRadius: 18,
-    maxWidth: '78%',
   },
   imageBubbleSent: {
     backgroundColor: 'rgba(30,111,217,0.18)',
@@ -1141,5 +1218,39 @@ const styles = StyleSheet.create({
   actionLabel: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  reactionRow: {
+    position: 'absolute',
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  reactionChip: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  reactionEmoji: {
+    fontSize: 24,
+  },
+  reactionBadge: {
+    position: 'absolute',
+    bottom: 2,
+    borderRadius: 10,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    backgroundColor: 'rgba(0,0,0,0.18)',
+  },
+  reactionBadgeRight: { right: 6 },
+  reactionBadgeLeft: { left: 6 },
+  reactionBadgeText: {
+    fontSize: 13,
   },
 });
