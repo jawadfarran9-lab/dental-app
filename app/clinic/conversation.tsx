@@ -958,6 +958,49 @@ export default function ClinicConversationScreen() {
         }}
         enableSearchBar
         enableRecentlyUsed
+        theme={
+          isDark
+            ? {
+                backdrop: 'rgba(0,0,0,0.55)',
+                knob: '#3D9EFF',
+                container: '#121A2E',
+                header: '#F2F5FB',
+                skinTonesContainer: '#1D2233',
+                category: {
+                  icon: '#8593AE',
+                  iconActive: '#FFFFFF',
+                  container: '#1D2233',
+                  containerActive: '#3D9EFF',
+                },
+                search: {
+                  background: '#1D2233',
+                  text: '#F2F5FB',
+                  placeholder: '#8593AE',
+                  icon: '#8593AE',
+                },
+                emoji: { selected: 'rgba(61,158,255,0.20)' },
+              }
+            : {
+                backdrop: 'rgba(0,0,0,0.35)',
+                knob: '#1E6FD9',
+                container: '#FFFFFF',
+                header: '#1B2542',
+                skinTonesContainer: '#EEF2FB',
+                category: {
+                  icon: '#8290AB',
+                  iconActive: '#1E6FD9',
+                  container: '#FFFFFF',
+                  containerActive: 'rgba(61,158,255,0.15)',
+                },
+                search: {
+                  background: '#EEF2FB',
+                  text: '#1B2542',
+                  placeholder: '#8290AB',
+                  icon: '#8290AB',
+                },
+                emoji: { selected: 'rgba(30,111,217,0.15)' },
+              }
+        }
       />
     </View>
   );
