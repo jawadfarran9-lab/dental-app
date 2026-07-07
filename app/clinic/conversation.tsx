@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import EmojiPicker from 'rn-emoji-keyboard';
 import {
   ActivityIndicator,
   Alert,
@@ -123,6 +124,8 @@ export default function ClinicConversationScreen() {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
+  const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -898,6 +901,17 @@ export default function ClinicConversationScreen() {
                 </Pressable>
               );
             })}
+            <Pressable
+              key="add-emoji"
+              onPress={() => {
+                setReactionTarget(selectedMessage);
+                closeActionMenu();
+                setEmojiPickerOpen(true);
+              }}
+              style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
+            >
+              <Ionicons name="add" size={22} color={isDark ? '#FFFFFF' : '#1B2542'} />
+            </Pressable>
           </View>
         )}
         {menuPos && (
@@ -931,6 +945,20 @@ export default function ClinicConversationScreen() {
           </View>
         )}
       </Modal>
+
+      <EmojiPicker
+        open={emojiPickerOpen}
+        onClose={() => setEmojiPickerOpen(false)}
+        onEmojiSelected={(e) => {
+          const picked = e?.emoji;
+          if (picked && reactionTarget) {
+            setMessageReaction(reactionTarget, picked);
+          }
+          setEmojiPickerOpen(false);
+        }}
+        enableSearchBar
+        enableRecentlyUsed
+      />
     </View>
   );
 }
