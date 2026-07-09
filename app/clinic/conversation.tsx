@@ -6,6 +6,7 @@ import { sendImageMessage } from '@/src/services/chatImages';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -80,6 +81,8 @@ type Message = {
 };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const RECENT_MAX = 6;
+const RECENTS_KEY = 'reactions:recent:v3';
 
 type MessageBubbleProps = {
   item: Message;
@@ -127,6 +130,8 @@ export default function ClinicConversationScreen() {
   const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
+  const [recents, setRecents] = useState<string[]>([]);
+  const [recentsLoaded, setRecentsLoaded] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -142,10 +147,12 @@ export default function ClinicConversationScreen() {
     return baseMessages.filter((m) => (m.text || '').toLowerCase().includes(qq));
   }, [baseMessages, searchOpen, searchQuery]);
 
-  const extraReaction =
-    selectedMessage?.reactionClinic && !REACTIONS.includes(selectedMessage.reactionClinic)
-      ? selectedMessage.reactionClinic
-      : null;
+  const strip = useMemo(() => {
+    const list = [...recents];
+    const cur = selectedMessage?.reactionClinic;
+    if (cur && !REACTIONS.includes(cur) && !list.includes(cur)) list.unshift(cur);
+    return list;
+  }, [recents, selectedMessage]);
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
@@ -248,12 +255,37 @@ export default function ClinicConversationScreen() {
 
   const setMessageReaction = async (message: Message, emoji: string) => {
     if (!patientId) return;
+    const isClearing = message.reactionClinic === emoji;
     try {
-      const next = message.reactionClinic === emoji ? deleteField() : emoji;
+      const next = isClearing ? deleteField() : emoji;
       await updateDoc(doc(db, `patients/${patientId}/messages/${message.id}`), { reactionClinic: next });
+      if (!isClearing && !REACTIONS.includes(emoji)) pushRecent(emoji);
     } catch (e) {
       console.error('[conversation] set reaction error', e);
     }
+  };
+
+  useEffect(() => {
+    AsyncStorage.getItem(RECENTS_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) setRecents(arr.filter((x) => typeof x === 'string'));
+          } catch {}
+        }
+        setRecentsLoaded(true);
+      })
+      .catch(() => setRecentsLoaded(true));
+  }, []);
+
+  const pushRecent = (emoji: string) => {
+    if (!recentsLoaded) return;
+    setRecents((prev) => {
+      const next = [emoji, ...prev.filter((x) => x !== emoji)].slice(0, RECENT_MAX);
+      AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
   };
 
   const handlePickAndSendImage = async () => {
@@ -914,22 +946,25 @@ export default function ClinicConversationScreen() {
                   </Pressable>
                 );
               })}
-              {extraReaction && selectedMessage && (
-                <Pressable
-                  key={`extra-${extraReaction}`}
-                  onPress={() => {
-                    setMessageReaction(selectedMessage, extraReaction);
-                    closeActionMenu();
-                  }}
-                  style={({ pressed }) => [
-                    styles.reactionChip,
-                    styles.reactionChipSelected,
-                    pressed && { opacity: 0.5 },
-                  ]}
-                >
-                  <Text style={styles.reactionEmoji}>{extraReaction}</Text>
-                </Pressable>
-              )}
+              {selectedMessage && strip.map((e) => {
+                const isSelected = selectedMessage?.reactionClinic === e;
+                return (
+                  <Pressable
+                    key={`strip-${e}`}
+                    onPress={() => {
+                      setMessageReaction(selectedMessage, e);
+                      closeActionMenu();
+                    }}
+                    style={({ pressed }) => [
+                      styles.reactionChip,
+                      isSelected && styles.reactionChipSelected,
+                      pressed && { opacity: 0.5 },
+                    ]}
+                  >
+                    <Text style={styles.reactionEmoji}>{e}</Text>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
             <Pressable
               key="add-emoji"
