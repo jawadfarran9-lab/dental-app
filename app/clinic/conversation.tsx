@@ -24,6 +24,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -141,6 +142,11 @@ export default function ClinicConversationScreen() {
     return baseMessages.filter((m) => (m.text || '').toLowerCase().includes(qq));
   }, [baseMessages, searchOpen, searchQuery]);
 
+  const extraReaction =
+    selectedMessage?.reactionClinic && !REACTIONS.includes(selectedMessage.reactionClinic)
+      ? selectedMessage.reactionClinic
+      : null;
+
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
 
@@ -217,7 +223,7 @@ export default function ClinicConversationScreen() {
     let left = own ? rect.x + rect.w - MENU_W : rect.x;
     left = Math.min(Math.max(left, 12), screenW - MENU_W - 12);
 
-    const ROW_W = 300;
+    const ROW_W = 360;
     const ROW_H_REACT = 52;
     const ROW_MARGIN = 8;
     let rowTop: number;
@@ -882,25 +888,49 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
-            {REACTIONS.map((e) => {
-              const isSelected = selectedMessage?.reactionClinic === e;
-              return (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              style={styles.reactionStripScroll}
+              contentContainerStyle={styles.reactionRowContent}
+            >
+              {REACTIONS.map((e) => {
+                const isSelected = selectedMessage?.reactionClinic === e;
+                return (
+                  <Pressable
+                    key={e}
+                    onPress={() => {
+                      setMessageReaction(selectedMessage, e);
+                      closeActionMenu();
+                    }}
+                    style={({ pressed }) => [
+                      styles.reactionChip,
+                      isSelected && styles.reactionChipSelected,
+                      pressed && { opacity: 0.5 },
+                    ]}
+                  >
+                    <Text style={styles.reactionEmoji}>{e}</Text>
+                  </Pressable>
+                );
+              })}
+              {extraReaction && selectedMessage && (
                 <Pressable
-                  key={e}
+                  key={`extra-${extraReaction}`}
                   onPress={() => {
-                    setMessageReaction(selectedMessage, e);
+                    setMessageReaction(selectedMessage, extraReaction);
                     closeActionMenu();
                   }}
                   style={({ pressed }) => [
                     styles.reactionChip,
-                    isSelected && styles.reactionChipSelected,
+                    styles.reactionChipSelected,
                     pressed && { opacity: 0.5 },
                   ]}
                 >
-                  <Text style={styles.reactionEmoji}>{e}</Text>
+                  <Text style={styles.reactionEmoji}>{extraReaction}</Text>
                 </Pressable>
-              );
-            })}
+              )}
+            </ScrollView>
             <Pressable
               key="add-emoji"
               onPress={() => {
@@ -1309,6 +1339,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     flexDirection: 'row',
     alignItems: 'center',
+    width: 360,
     borderRadius: 24,
     borderWidth: 1,
     paddingHorizontal: 8,
@@ -1318,6 +1349,13 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
+  },
+  reactionRowContent: {
+    alignItems: 'center',
+  },
+  reactionStripScroll: {
+    flex: 1,
+    minWidth: 0,
   },
   reactionChip: {
     paddingHorizontal: 6,
