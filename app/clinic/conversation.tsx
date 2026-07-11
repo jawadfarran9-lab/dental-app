@@ -139,6 +139,9 @@ export default function ClinicConversationScreen() {
   const [recentsLoaded, setRecentsLoaded] = useState(false);
   const [copiedVisible, setCopiedVisible] = useState(false);
   const copiedAnim = useRef(new Animated.Value(0)).current;
+  const inputRef = useRef<TextInput>(null);
+  const preEditDraftRef = useRef('');
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -482,6 +485,44 @@ export default function ClinicConversationScreen() {
     }
   };
 
+  const startEditMessage = (m: Message) => {
+    preEditDraftRef.current = draft;
+    setEditingMessage(m);
+    setDraft(m.text);
+    setTimeout(() => inputRef.current?.focus(), 150);
+  };
+
+  const cancelEdit = () => {
+    setEditingMessage(null);
+    setDraft(preEditDraftRef.current);
+    preEditDraftRef.current = '';
+    Keyboard.dismiss();
+  };
+
+  const handleConfirmEdit = async () => {
+    if (!editingMessage || !patientId) return;
+    const newText = draft.trim();
+    if (!newText || newText === editingMessage.text.trim()) return;
+    const target = editingMessage;
+    setEditingMessage(null);
+    setDraft(preEditDraftRef.current);
+    preEditDraftRef.current = '';
+    try {
+      await updateDoc(doc(db, `patients/${patientId}/messages/${target.id}`), { text: newText });
+      const list = messages;
+      const last = list[list.length - 1];
+      if (last && last.id === target.id && clinicId) {
+        try {
+          await updateDoc(doc(db, 'threads', `${clinicId}_${patientId}`), { lastMessageText: newText });
+        } catch {
+          // best-effort preview update
+        }
+      }
+    } catch (err) {
+      console.error('[clinic/conversation] edit error', err);
+    }
+  };
+
   const textPrimary = colors.textPrimary;
   const textSecondary = colors.textSecondary;
   const textMuted = colors.textTertiary;
@@ -608,6 +649,10 @@ export default function ClinicConversationScreen() {
   };
 
   const canSend = draft.trim().length > 0 && !sending;
+  const canConfirmEdit =
+    !!editingMessage &&
+    draft.trim().length > 0 &&
+    draft.trim() !== editingMessage.text.trim();
 
   return (
     <View style={{ flex: 1 }}>
@@ -822,13 +867,23 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
-            <Pressable
-              onPress={openAttach}
-              style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
-              hitSlop={6}
-            >
-              <Ionicons name="add" size={24} color={attachBtnIcon} />
-            </Pressable>
+            {editingMessage ? (
+              <Pressable
+                onPress={cancelEdit}
+                style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
+                hitSlop={6}
+              >
+                <Ionicons name="close" size={24} color={attachBtnIcon} />
+              </Pressable>
+            ) : (
+              <Pressable
+                onPress={openAttach}
+                style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={24} color={attachBtnIcon} />
+              </Pressable>
+            )}
             <View
               style={[
                 styles.input,
@@ -836,6 +891,7 @@ export default function ClinicConversationScreen() {
               ]}
             >
               <TextInput
+                ref={inputRef}
                 value={draft}
                 onChangeText={setDraft}
                 placeholder="Type a message"
@@ -846,11 +902,11 @@ export default function ClinicConversationScreen() {
               />
             </View>
             <Pressable
-              onPress={handleSend}
-              disabled={!canSend}
+              onPress={editingMessage ? handleConfirmEdit : handleSend}
+              disabled={editingMessage ? !canConfirmEdit : !canSend}
               style={({ pressed }) => [
                 styles.sendBtn,
-                { opacity: canSend ? (pressed ? 0.85 : 1) : 0.45 },
+                { opacity: (editingMessage ? canConfirmEdit : canSend) ? (pressed ? 0.85 : 1) : 0.45 },
               ]}
             >
               <LinearGradient
@@ -859,7 +915,7 @@ export default function ClinicConversationScreen() {
                 end={{ x: 1, y: 1 }}
                 style={styles.sendBtnInner}
               >
-                <Ionicons name="send" size={18} color="#FFFFFF" />
+                <Ionicons name={editingMessage ? 'checkmark' : 'send'} size={18} color="#FFFFFF" />
               </LinearGradient>
             </Pressable>
           </View>
@@ -1082,6 +1138,10 @@ export default function ClinicConversationScreen() {
                       const target = selectedMessage;
                       closeActionMenu();
                       if (target) setTimeout(() => handleCopyMessage(target), 250);
+                    } else if (a.key === 'edit') {
+                      const target = selectedMessage;
+                      closeActionMenu();
+                      if (target) startEditMessage(target);
                     } else {
                       closeActionMenu();
                     }
