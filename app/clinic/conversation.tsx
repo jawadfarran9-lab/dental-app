@@ -25,6 +25,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -299,6 +300,19 @@ export default function ClinicConversationScreen() {
     if (reactionSheetTarget) setReactionTarget(reactionSheetTarget);
     closeReactionSheet();
     setEmojiPickerOpen(true);
+  };
+
+  const handleShareMessage = async (m: Message) => {
+    const body: string[] = [];
+    if (m.text) body.push(m.text);
+    if (m.type === 'image' && m.imageUrl) body.push(m.imageUrl);
+    const content = body.join('\n');
+    const message = content ? `${content}\n\nShared via BeSmile AI` : 'Shared via BeSmile AI';
+    try {
+      await Share.share({ message });
+    } catch {
+      // user cancelled or share failed — no-op
+    }
   };
 
   useEffect(() => {
@@ -1031,7 +1045,16 @@ export default function ClinicConversationScreen() {
               return (
                 <Pressable
                   key={a.key}
-                  onPress={closeActionMenu}
+                  onPress={() => {
+                    if (a.key === 'forward') {
+                      const target = selectedMessage;
+                      Haptics.selectionAsync().catch(() => {});
+                      closeActionMenu();
+                      if (target) setTimeout(() => handleShareMessage(target), 250);
+                    } else {
+                      closeActionMenu();
+                    }
+                  }}
                   style={({ pressed }) => [
                     styles.actionRow,
                     pressed && { opacity: 0.6 },
