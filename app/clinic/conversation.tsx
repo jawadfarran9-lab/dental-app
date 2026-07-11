@@ -168,11 +168,50 @@ export default function ClinicConversationScreen() {
     [messages, clearedForClinicAt],
   );
 
-  const displayedMessages = useMemo(() => {
-    const qq = searchQuery.trim().toLowerCase();
-    if (!searchOpen || qq === '') return baseMessages;
-    return baseMessages.filter((m) => (m.text || '').toLowerCase().includes(qq));
+  // Search navigates instead of filtering: all messages stay visible.
+  const displayedMessages = baseMessages;
+
+  const [matchIndex, setMatchIndex] = useState(0);
+
+  const searchMatches = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!searchOpen || !q) return [] as number[];
+    const idxs: number[] = [];
+    baseMessages.forEach((m, i) => {
+      if ((m.text || '').toLowerCase().includes(q)) idxs.push(i);
+    });
+    return idxs;
   }, [baseMessages, searchOpen, searchQuery]);
+
+  const currentMatchId =
+    searchMatches.length > 0 ? baseMessages[searchMatches[matchIndex]]?.id ?? null : null;
+
+  const scrollToMatch = (listIndex: number) => {
+    try {
+      listRef.current?.scrollToIndex({ index: listIndex, animated: true, viewPosition: 0.4 });
+    } catch {}
+  };
+
+  useEffect(() => {
+    if (searchMatches.length > 0) {
+      const last = searchMatches.length - 1;
+      setMatchIndex(last);
+      setTimeout(() => scrollToMatch(searchMatches[last]), 50);
+    }
+  }, [searchMatches]);
+
+  const goOlderMatch = () => {
+    if (searchMatches.length === 0) return;
+    const next = Math.max(0, matchIndex - 1);
+    setMatchIndex(next);
+    scrollToMatch(searchMatches[next]);
+  };
+  const goNewerMatch = () => {
+    if (searchMatches.length === 0) return;
+    const next = Math.min(searchMatches.length - 1, matchIndex + 1);
+    setMatchIndex(next);
+    scrollToMatch(searchMatches[next]);
+  };
 
   const strip = useMemo(() => {
     const list = [...recents];
@@ -714,7 +753,7 @@ export default function ClinicConversationScreen() {
     const align = sent ? styles.bubbleRowRight : styles.bubbleRowLeft;
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     return (
-      <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted]}>
+      <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
           <BubbleBody item={item} sent={sent} time={time} />
         </MessageBubble>
@@ -827,6 +866,19 @@ export default function ClinicConversationScreen() {
                   </Pressable>
                 )}
               </View>
+              {searchQuery.trim().length > 0 && (
+                <View style={styles.searchNav}>
+                  <Text style={[styles.searchCount, { color: textSecondary }]}>
+                    {searchMatches.length > 0 ? `${matchIndex + 1}/${searchMatches.length}` : '0'}
+                  </Text>
+                  <Pressable onPress={goOlderMatch} disabled={searchMatches.length === 0} hitSlop={6} style={styles.searchNavBtn}>
+                    <Ionicons name="chevron-up" size={20} color={searchMatches.length === 0 ? inputPlaceholder : textPrimary} />
+                  </Pressable>
+                  <Pressable onPress={goNewerMatch} disabled={searchMatches.length === 0} hitSlop={6} style={styles.searchNavBtn}>
+                    <Ionicons name="chevron-down" size={20} color={searchMatches.length === 0 ? inputPlaceholder : textPrimary} />
+                  </Pressable>
+                </View>
+              )}
               <Pressable
                 onPress={() => {
                   setSearchOpen(false);
@@ -873,7 +925,7 @@ export default function ClinicConversationScreen() {
                       No matches
                     </Text>
                     <Text style={[styles.emptySub, { color: textMuted }]}>
-                      No messages match "{searchQuery.trim()}".
+                      No messages yet
                     </Text>
                   </View>
                 </View>
@@ -924,6 +976,10 @@ export default function ClinicConversationScreen() {
                   keyboardShouldPersistTaps="handled"
                   onContentSizeChange={() => {
                     if (!searchOpen) listRef.current?.scrollToEnd({ animated: false });
+                  }}
+                  onScrollToIndexFailed={(info) => {
+                    listRef.current?.scrollToOffset({ offset: Math.max(0, info.averageItemLength * info.index), animated: false });
+                    setTimeout(() => { try { listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.4 }); } catch {} }, 250);
                   }}
                 />
               )}
@@ -1514,6 +1570,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  searchNav: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 6 },
+  searchNavBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  searchCount: { fontSize: 13, fontWeight: '700', minWidth: 30, textAlign: 'center' },
+  searchMatchRow: { backgroundColor: 'rgba(61,158,255,0.10)', borderRadius: 14 },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
 
