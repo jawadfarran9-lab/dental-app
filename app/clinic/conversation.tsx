@@ -93,6 +93,7 @@ type Message = {
   reactionClinic?: string;
   reactionPatient?: string;
   seenAt?: number;
+  starredClinic?: boolean;
 };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -315,6 +316,17 @@ export default function ClinicConversationScreen() {
       if (!isClearing && !REACTIONS.includes(emoji)) pushRecent(emoji);
     } catch (e) {
       console.error('[conversation] set reaction error', e);
+    }
+  };
+
+  const toggleStar = async (m: Message) => {
+    if (!patientId) return;
+    try {
+      await updateDoc(doc(db, `patients/${patientId}/messages/${m.id}`), {
+        starredClinic: m.starredClinic ? deleteField() : true,
+      });
+    } catch (e) {
+      console.error('[conversation] toggle star error', e);
     }
   };
 
@@ -616,6 +628,12 @@ export default function ClinicConversationScreen() {
       </Pressable>
     ) : null;
 
+    const starBadge = item.starredClinic ? (
+      <View style={styles.starBadge}>
+        <Ionicons name="star" size={10} color="#F5A623" />
+      </View>
+    ) : null;
+
     if (item.type === 'image' && item.imageUrl) {
       const BUBBLE_MAX_W = 220;
       const ratio =
@@ -649,6 +667,7 @@ export default function ClinicConversationScreen() {
             )}
           </View>
           {reactionBadge}
+          {starBadge}
         </View>
       );
     }
@@ -665,6 +684,7 @@ export default function ClinicConversationScreen() {
             {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
           </LinearGradient>
           {reactionBadge}
+          {starBadge}
         </View>
       );
     }
@@ -683,6 +703,7 @@ export default function ClinicConversationScreen() {
           )}
         </View>
         {reactionBadge}
+        {starBadge}
       </View>
     );
   };
@@ -1199,6 +1220,11 @@ export default function ClinicConversationScreen() {
                       const target = selectedMessage;
                       closeActionMenu();
                       if (target) setTimeout(() => openMessageInfo(target), 220);
+                    } else if (a.key === 'star') {
+                      const target = selectedMessage;
+                      Haptics.selectionAsync().catch(() => {});
+                      closeActionMenu();
+                      if (target) toggleStar(target);
                     } else if (a.key === 'remove') {
                       const target = selectedMessage;
                       closeActionMenu();
@@ -1792,6 +1818,24 @@ const styles = StyleSheet.create({
   infoIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   infoRowLabel: { fontSize: 15, fontWeight: '700' },
   infoRowValue: { fontSize: 13, marginTop: 1 },
+  starBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
   copiedPillWrap: {
     position: 'absolute',
     alignSelf: 'center',
