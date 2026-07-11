@@ -46,6 +46,47 @@ export async function updateThreadOnMessage(
   }
 }
 
+export async function ensureThread(
+  clinicId: string,
+  patientId: string,
+  patientName: string,
+): Promise<void> {
+  try {
+    const threadId = `${clinicId}_${patientId}`;
+    const threadRef = doc(db, 'threads', threadId);
+    const snap = await getDoc(threadRef);
+    const cleanName = patientName && patientName.trim() ? patientName.trim() : 'Patient';
+    if (!snap.exists()) {
+      await setDoc(threadRef, {
+        clinicId,
+        patientId,
+        patientName: cleanName,
+        lastMessageText: '',
+        lastMessageSender: '',
+        lastMessageAt: serverTimestamp(),
+        unreadForClinic: 0,
+        unreadForPatient: 0,
+        createdAt: serverTimestamp(),
+      });
+      return;
+    }
+    // Heal an incomplete/stub thread so it appears in the clinic list.
+    const data = snap.data() as any;
+    const patch: Record<string, any> = {};
+    if (!data.clinicId) patch.clinicId = clinicId;
+    if (!data.patientId) patch.patientId = patientId;
+    if (data.lastMessageAt == null) patch.lastMessageAt = serverTimestamp();
+    if ((!data.patientName || String(data.patientName).trim() === '') && cleanName !== 'Patient') {
+      patch.patientName = cleanName;
+    }
+    if (Object.keys(patch).length > 0) {
+      await updateDoc(threadRef, patch);
+    }
+  } catch (e) {
+    console.error('[threadsHelper] ensureThread error', e);
+  }
+}
+
 /**
  * Mark thread as read for clinic
  * Uses setDoc with merge to safely handle non-existent threads

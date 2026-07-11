@@ -5,7 +5,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { sendImageMessage } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
-import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
+import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -505,6 +505,7 @@ export default function ClinicConversationScreen() {
     }
 
     markThreadReadForClinic(clinicId, patientId as string);
+    ensureThread(clinicId, patientId as string, patientName);
 
     const q = query(
       collection(db, `patients/${patientId}/messages`),
