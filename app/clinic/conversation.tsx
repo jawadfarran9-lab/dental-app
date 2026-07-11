@@ -7,6 +7,7 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -211,6 +212,17 @@ export default function ClinicConversationScreen() {
     const next = Math.min(searchMatches.length - 1, matchIndex + 1);
     setMatchIndex(next);
     scrollToMatch(searchMatches[next]);
+  };
+
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [pickedDate, setPickedDate] = useState<Date>(() => new Date());
+
+  const jumpToDate = () => {
+    const target = new Date(pickedDate.getFullYear(), pickedDate.getMonth(), pickedDate.getDate(), 0, 0, 0).getTime();
+    setDatePickerOpen(false);
+    const idx = baseMessages.findIndex((m) => (m.createdAt ?? 0) >= target);
+    const targetIdx = idx >= 0 ? idx : baseMessages.length - 1;
+    if (targetIdx >= 0) setTimeout(() => scrollToMatch(targetIdx), 250);
   };
 
   const strip = useMemo(() => {
@@ -866,6 +878,9 @@ export default function ClinicConversationScreen() {
                   </Pressable>
                 )}
               </View>
+              <Pressable onPress={() => setDatePickerOpen(true)} hitSlop={6} style={styles.searchCalBtn}>
+                <Ionicons name="calendar-outline" size={20} color={textSecondary} />
+              </Pressable>
               {searchQuery.trim().length > 0 && (
                 <View style={styles.searchNav}>
                   <Text style={[styles.searchCount, { color: textSecondary }]}>
@@ -1473,6 +1488,31 @@ export default function ClinicConversationScreen() {
         </View>
       </Modal>
 
+      <Modal visible={datePickerOpen} transparent animationType="slide" onRequestClose={() => setDatePickerOpen(false)}>
+        <Pressable style={styles.reactionSheetBackdrop} onPress={() => setDatePickerOpen(false)} />
+        <View style={[styles.reactionSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.reactionSheetKnob} />
+          <Text style={[styles.infoTitle, { color: textPrimary }]}>Jump to date</Text>
+          <DateTimePicker
+            value={pickedDate}
+            mode="date"
+            display="spinner"
+            maximumDate={new Date()}
+            minimumDate={baseMessages[0]?.createdAt ? new Date(baseMessages[0].createdAt) : undefined}
+            onChange={(_e, d) => { if (d) setPickedDate(d); }}
+            style={styles.datePicker}
+          />
+          <Pressable onPress={jumpToDate} style={styles.jumpBtn}>
+            <LinearGradient colors={['#3D9EFF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.jumpBtnInner}>
+              <Text style={styles.jumpBtnText}>Jump to date</Text>
+            </LinearGradient>
+          </Pressable>
+        </View>
+      </Modal>
+
       {copiedVisible && (
         <Animated.View
           pointerEvents="none"
@@ -1574,6 +1614,11 @@ const styles = StyleSheet.create({
   searchNavBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   searchCount: { fontSize: 13, fontWeight: '700', minWidth: 30, textAlign: 'center' },
   searchMatchRow: { backgroundColor: 'rgba(61,158,255,0.10)', borderRadius: 14 },
+  searchCalBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
+  datePicker: { alignSelf: 'center', marginVertical: 8 },
+  jumpBtn: { marginTop: 8, borderRadius: 16, overflow: 'hidden' },
+  jumpBtnInner: { paddingVertical: 14, alignItems: 'center', borderRadius: 16 },
+  jumpBtnText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
 
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
 
