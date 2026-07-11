@@ -839,7 +839,20 @@ export default function ClinicConversationScreen() {
                 </Text>
               </View>
             </Pressable>
-
+            <View style={styles.headerActions}>
+              <Pressable
+                onPress={() => Haptics.selectionAsync().catch(() => {})}
+                style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? backBgPressed : backBg }]}
+              >
+                <Ionicons name="call-outline" size={20} color={backIconColor} />
+              </Pressable>
+              <Pressable
+                onPress={() => Haptics.selectionAsync().catch(() => {})}
+                style={({ pressed }) => [styles.headerBtn, { backgroundColor: pressed ? backBgPressed : backBg }]}
+              >
+                <Ionicons name="videocam-outline" size={22} color={backIconColor} />
+              </Pressable>
+            </View>
           </View>
 
           {searchOpen && (
@@ -1034,6 +1047,15 @@ export default function ClinicConversationScreen() {
                 maxLength={2000}
               />
             </View>
+            {!editingMessage && (
+              <Pressable
+                onPress={() => Haptics.selectionAsync().catch(() => {})}
+                style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
+                hitSlop={6}
+              >
+                <Ionicons name="mic-outline" size={22} color={attachBtnIcon} />
+              </Pressable>
+            )}
             <Pressable
               onPress={editingMessage ? handleConfirmEdit : handleSend}
               disabled={editingMessage ? !canConfirmEdit : !canSend}
@@ -1548,6 +1570,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   headerAvatar: {
     width: 38,
     height: 38,
