@@ -356,34 +356,40 @@ export default function ClinicMessagesScreen() {
                     </LinearGradient>
 
                     <View style={styles.rowText}>
-                      <View style={styles.rowTopLine}>
-                        <Text
-                          style={[styles.rowName, { color: textPrimary }]}
-                          numberOfLines={1}
-                        >
-                          {t.name}
-                        </Text>
-                        {t.messageCount > 0 && (
-                          <View style={styles.rowCountWrap}>
-                            <Ionicons name="chatbubble-ellipses-outline" size={11} color={textMuted} />
-                            <Text style={[styles.rowCount, { color: textMuted }]} numberOfLines={1}>
-                              {localizeNumber(String(t.messageCount))}
-                            </Text>
-                          </View>
-                        )}
-                        {!!timeLabel && (
-                          <Text style={[styles.rowTime, { color: textMuted }]} numberOfLines={1}>
-                            {timeLabel}
+                      <View style={styles.rowMainCol}>
+                        <View style={styles.rowTopLine}>
+                          <Text
+                            style={[styles.rowName, { color: textPrimary }, t.unread > 0 && styles.rowNameUnread]}
+                            numberOfLines={1}
+                          >
+                            {t.name}
                           </Text>
-                        )}
-                      </View>
-                      <View style={styles.rowBottomLine}>
+                          {t.messageCount > 0 && (
+                            <View style={styles.rowCountWrap}>
+                              <Ionicons name="chatbubble-ellipses-outline" size={11} color={textMuted} />
+                              <Text style={[styles.rowCount, { color: textMuted }]} numberOfLines={1}>
+                                {localizeNumber(String(t.messageCount))}
+                              </Text>
+                            </View>
+                          )}
+                        </View>
                         <Text
                           style={[styles.rowPreview, { color: textSecondary }]}
                           numberOfLines={1}
                         >
                           {t.lastMessage || ' '}
                         </Text>
+                      </View>
+
+                      <View style={styles.rowRightCol}>
+                        {!!timeLabel && (
+                          <Text
+                            style={[styles.rowTime, { color: textMuted }, t.unread > 0 && styles.rowTimeUnread]}
+                            numberOfLines={1}
+                          >
+                            {timeLabel}
+                          </Text>
+                        )}
                         {t.unread > 0 && (
                           <LinearGradient
                             colors={['#4DA3FF', '#1E6FD9']}
@@ -603,14 +609,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.3,
   },
-  rowText: { flex: 1, gap: 4 },
+  rowText: { flex: 1, flexDirection: 'row', alignItems: 'stretch', gap: 4 },
+  rowMainCol: { flex: 1, justifyContent: 'center', gap: 3 },
+  rowRightCol: {
+    marginLeft: 10,
+    minWidth: 52,
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    paddingVertical: 1,
+  },
   rowTopLine: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
   rowName: { flex: 1, fontSize: 16, fontWeight: '700' },
+  rowNameUnread: { fontWeight: '700' },
   rowTime: { fontSize: 12, fontWeight: '600' },
+  rowTimeUnread: { color: '#4DA3FF', fontWeight: '700' },
   rowBottomLine: {
     flexDirection: 'row',
     alignItems: 'center',
