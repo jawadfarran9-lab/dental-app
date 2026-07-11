@@ -13,7 +13,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import EmojiPicker from 'rn-emoji-keyboard';
 import {
   ActivityIndicator,
   Alert,
@@ -33,6 +32,7 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import EmojiPicker from 'rn-emoji-keyboard';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -130,6 +130,8 @@ export default function ClinicConversationScreen() {
   const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
+  const [reactionSheetOpen, setReactionSheetOpen] = useState(false);
+  const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
   const listRef = useRef<FlatList<Message>>(null);
@@ -153,6 +155,21 @@ export default function ClinicConversationScreen() {
     if (cur && !REACTIONS.includes(cur) && !list.includes(cur)) list.unshift(cur);
     return list;
   }, [recents, selectedMessage]);
+
+  const reactionSheetEntries = useMemo(() => {
+    const t = reactionSheetTarget;
+    if (!t) return [] as { key: string; emoji: string; name: string; me: boolean }[];
+    const list: { key: string; emoji: string; name: string; me: boolean }[] = [];
+    if (t.reactionClinic) list.push({ key: 'clinic', emoji: t.reactionClinic, name: 'You', me: true });
+    if (t.reactionPatient) list.push({ key: 'patient', emoji: t.reactionPatient, name: patientName, me: false });
+    return list;
+  }, [reactionSheetTarget, patientName]);
+
+  const reactionSheetChips = useMemo(() => {
+    const m: Record<string, number> = {};
+    reactionSheetEntries.forEach((e) => { m[e.emoji] = (m[e.emoji] || 0) + 1; });
+    return Object.entries(m);
+  }, [reactionSheetEntries]);
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
@@ -253,6 +270,13 @@ export default function ClinicConversationScreen() {
   };
   const closeActionMenu = () => setActionMenuOpen(false);
 
+  const openReactionSheet = (m: Message) => {
+    Haptics.selectionAsync().catch(() => {});
+    setReactionSheetTarget(m);
+    setReactionSheetOpen(true);
+  };
+  const closeReactionSheet = () => setReactionSheetOpen(false);
+
   const setMessageReaction = async (message: Message, emoji: string) => {
     if (!patientId) return;
     const isClearing = message.reactionClinic === emoji;
@@ -263,6 +287,18 @@ export default function ClinicConversationScreen() {
     } catch (e) {
       console.error('[conversation] set reaction error', e);
     }
+  };
+
+  const removeMyReaction = () => {
+    if (reactionSheetTarget?.reactionClinic) {
+      setMessageReaction(reactionSheetTarget, reactionSheetTarget.reactionClinic);
+    }
+    closeReactionSheet();
+  };
+  const openPickerFromSheet = () => {
+    if (reactionSheetTarget) setReactionTarget(reactionSheetTarget);
+    closeReactionSheet();
+    setEmojiPickerOpen(true);
   };
 
   useEffect(() => {
@@ -434,16 +470,15 @@ export default function ClinicConversationScreen() {
   const BubbleBody = ({ item, sent, time }: { item: Message; sent: boolean; time: string }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     const reactionBadge = hasReaction ? (
-      <View
-        style={[
-          styles.reactionBadge,
-          styles.reactionBadgeLeft,
-        ]}
+      <Pressable
+        onPress={() => openReactionSheet(item)}
+        hitSlop={8}
+        style={[styles.reactionBadge, styles.reactionBadgeLeft]}
       >
         <Text style={styles.reactionBadgeText}>
           {[item.reactionClinic, item.reactionPatient].filter(Boolean).join(' ')}
         </Text>
-      </View>
+      </Pressable>
     ) : null;
 
     if (item.type === 'image' && item.imageUrl) {
@@ -1067,6 +1102,77 @@ export default function ClinicConversationScreen() {
               }
         }
       />
+
+      <Modal
+        visible={reactionSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={closeReactionSheet}
+      >
+        <Pressable style={styles.reactionSheetBackdrop} onPress={closeReactionSheet} />
+        <View
+          style={[
+            styles.reactionSheet,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
+        >
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.reactionSheetKnob} />
+          <Text style={[styles.reactionSheetTitle, { color: textPrimary }]}>
+            {reactionSheetEntries.length} Reaction{reactionSheetEntries.length === 1 ? '' : 's'}
+          </Text>
+
+          <View style={styles.reactionSheetChipsRow}>
+            <Pressable onPress={openPickerFromSheet} style={styles.reactionSheetAddBtn}>
+              <Ionicons name="happy-outline" size={22} color={textPrimary} />
+            </Pressable>
+            {reactionSheetChips.map(([emoji, n]) => (
+              <View key={emoji} style={styles.reactionSheetChip}>
+                <Text style={styles.reactionSheetChipEmoji}>{emoji}</Text>
+                <Text style={[styles.reactionSheetChipCount, { color: textSecondary }]}>{n}</Text>
+              </View>
+            ))}
+          </View>
+
+          {reactionSheetEntries.map((e) => (
+            <Pressable
+              key={e.key}
+              disabled={!e.me}
+              onPress={e.me ? removeMyReaction : undefined}
+              style={styles.reactionSheetRow}
+            >
+              {e.me ? (
+                <LinearGradient
+                  colors={['#3D9EFF', '#1E6FD9']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.reactionSheetAvatar}
+                >
+                  <Ionicons name="person" size={20} color="#FFFFFF" />
+                </LinearGradient>
+              ) : (
+                <LinearGradient
+                  colors={AVATAR_PALETTE[hashName(e.name) % AVATAR_PALETTE.length] as any}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.reactionSheetAvatar}
+                >
+                  <Text style={styles.reactionSheetAvatarText}>{initialsOf(e.name)}</Text>
+                </LinearGradient>
+              )}
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.reactionSheetRowName, { color: textPrimary }]}>{e.name}</Text>
+                {e.me && (
+                  <Text style={[styles.reactionSheetRowSub, { color: textSecondary }]}>Tap to remove</Text>
+                )}
+              </View>
+              <Text style={styles.reactionSheetRowEmoji}>{e.emoji}</Text>
+            </Pressable>
+          ))}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1423,4 +1529,19 @@ const styles = StyleSheet.create({
   reactionBadgeText: {
     fontSize: 13,
   },
+  reactionSheetBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
+  reactionSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 16, overflow: 'hidden' },
+  reactionSheetKnob: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(128,128,128,0.35)', marginBottom: 12 },
+  reactionSheetTitle: { fontSize: 17, fontWeight: '800', marginBottom: 14, marginLeft: 4 },
+  reactionSheetChipsRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12, marginLeft: 4 },
+  reactionSheetAddBtn: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(128,128,128,0.30)' },
+  reactionSheetChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, height: 36, borderRadius: 18, backgroundColor: 'rgba(61,158,255,0.12)' },
+  reactionSheetChipEmoji: { fontSize: 17 },
+  reactionSheetChipCount: { fontSize: 14, fontWeight: '700' },
+  reactionSheetRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 4 },
+  reactionSheetAvatar: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center' },
+  reactionSheetAvatarText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+  reactionSheetRowName: { fontSize: 16, fontWeight: '700' },
+  reactionSheetRowSub: { fontSize: 13, marginTop: 1 },
+  reactionSheetRowEmoji: { fontSize: 22 },
 });
