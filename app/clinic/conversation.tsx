@@ -7,6 +7,7 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -16,6 +17,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Dimensions,
   FlatList,
   Image,
@@ -135,6 +137,8 @@ export default function ClinicConversationScreen() {
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
+  const [copiedVisible, setCopiedVisible] = useState(false);
+  const copiedAnim = useRef(new Animated.Value(0)).current;
   const listRef = useRef<FlatList<Message>>(null);
 
   const patientName = (name as string) || 'Patient';
@@ -312,6 +316,29 @@ export default function ClinicConversationScreen() {
       await Share.share({ message });
     } catch {
       // user cancelled or share failed — no-op
+    }
+  };
+
+  const flashCopied = () => {
+    setCopiedVisible(true);
+    copiedAnim.stopAnimation();
+    copiedAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(copiedAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
+      Animated.delay(1100),
+      Animated.timing(copiedAnim, { toValue: 0, duration: 220, useNativeDriver: true }),
+    ]).start(() => setCopiedVisible(false));
+  };
+
+  const handleCopyMessage = async (m: Message) => {
+    const text = m.text?.trim();
+    if (!text) return;
+    try {
+      await Clipboard.setStringAsync(text);
+      Haptics.selectionAsync().catch(() => {});
+      flashCopied();
+    } catch (e) {
+      console.error('[conversation] copy error', e);
     }
   };
 
@@ -1051,6 +1078,10 @@ export default function ClinicConversationScreen() {
                       Haptics.selectionAsync().catch(() => {});
                       closeActionMenu();
                       if (target) setTimeout(() => handleShareMessage(target), 250);
+                    } else if (a.key === 'copy') {
+                      const target = selectedMessage;
+                      closeActionMenu();
+                      if (target) setTimeout(() => handleCopyMessage(target), 250);
                     } else {
                       closeActionMenu();
                     }
@@ -1196,6 +1227,30 @@ export default function ClinicConversationScreen() {
           ))}
         </View>
       </Modal>
+
+      {copiedVisible && (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.copiedPillWrap,
+            {
+              opacity: copiedAnim,
+              transform: [{ translateY: copiedAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+              bottom: insets.bottom + 90,
+            },
+          ]}
+        >
+          <LinearGradient
+            colors={['#3D9EFF', '#1E6FD9']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.copiedPill}
+          >
+            <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+            <Text style={styles.copiedPillText}>Copied</Text>
+          </LinearGradient>
+        </Animated.View>
+      )}
     </View>
   );
 }
@@ -1567,4 +1622,25 @@ const styles = StyleSheet.create({
   reactionSheetRowName: { fontSize: 16, fontWeight: '700' },
   reactionSheetRowSub: { fontSize: 13, marginTop: 1 },
   reactionSheetRowEmoji: { fontSize: 22 },
+  copiedPillWrap: {
+    position: 'absolute',
+    alignSelf: 'center',
+    borderRadius: 22,
+    backgroundColor: '#1E6FD9',
+    shadowColor: '#1E6FD9',
+    shadowOpacity: 0.35,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+    zIndex: 50,
+  },
+  copiedPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 22,
+  },
+  copiedPillText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
