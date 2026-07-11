@@ -3,6 +3,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { clearChatForClinic } from '@/src/services/chatClear';
+import { requestOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -379,6 +380,21 @@ export default function ClinicContactInfoScreen() {
                 <View key={i}>{r}</View>
               ));
             })()}
+          </View>
+
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>CHAT</Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {renderRow({
+              icon: 'search',
+              label: 'Search',
+              value: 'Search in this chat',
+              onPress: () => {
+                requestOpenSearch();
+                if (router.canGoBack()) router.back();
+              },
+              showChevron: true,
+              isLast: true,
+            })}
           </View>
 
           <Text style={[styles.eyebrow, { color: textSecondary }]}>STARRED</Text>

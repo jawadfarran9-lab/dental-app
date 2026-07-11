@@ -3,6 +3,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { sendImageMessage } from '@/src/services/chatImages';
+import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,9 +13,9 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -139,6 +140,12 @@ export default function ClinicConversationScreen() {
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+
+  useFocusEffect(
+    useCallback(() => {
+      if (consumeOpenSearch()) setSearchOpen(true);
+    }, []),
+  );
   const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
   const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
@@ -833,25 +840,6 @@ export default function ClinicConversationScreen() {
               </View>
             </Pressable>
 
-            <Pressable
-              onPress={() => {
-                setSearchOpen((v) => {
-                  const next = !v;
-                  if (!next) setSearchQuery('');
-                  return next;
-                });
-              }}
-              style={({ pressed }) => [
-                styles.headerBtn,
-                { backgroundColor: pressed ? backBgPressed : backBg },
-              ]}
-            >
-              <Ionicons
-                name={searchOpen ? 'close' : 'search-outline'}
-                size={20}
-                color={backIconColor}
-              />
-            </Pressable>
           </View>
 
           {searchOpen && (
