@@ -68,6 +68,17 @@ function formatBubbleTime(ts: any): string {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+function formatInfoTime(ts?: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12 || 12;
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${h}:${m} ${ampm}`;
+}
+
 type Message = {
   id: string;
   from: 'patient' | 'clinic';
@@ -81,6 +92,7 @@ type Message = {
   storagePath?: string;
   reactionClinic?: string;
   reactionPatient?: string;
+  seenAt?: number;
 };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -135,6 +147,10 @@ export default function ClinicConversationScreen() {
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
   const [reactionSheetOpen, setReactionSheetOpen] = useState(false);
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
+  const [messageInfoOpen, setMessageInfoOpen] = useState(false);
+  const [messageInfoTarget, setMessageInfoTarget] = useState<Message | null>(null);
+  const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
+  const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
   const [copiedVisible, setCopiedVisible] = useState(false);
@@ -178,6 +194,11 @@ export default function ClinicConversationScreen() {
     reactionSheetEntries.forEach((e) => { m[e.emoji] = (m[e.emoji] || 0) + 1; });
     return Object.entries(m);
   }, [reactionSheetEntries]);
+
+  const infoMsg = useMemo(
+    () => (messageInfoTarget ? messages.find((m) => m.id === messageInfoTarget.id) ?? messageInfoTarget : null),
+    [messageInfoTarget, messages],
+  );
 
   const openAttach = () => setAttachVisible(true);
   const closeAttach = () => setAttachVisible(false);
@@ -1174,6 +1195,10 @@ export default function ClinicConversationScreen() {
                       const target = selectedMessage;
                       closeActionMenu();
                       if (target) startEditMessage(target);
+                    } else if (a.key === 'info') {
+                      const target = selectedMessage;
+                      closeActionMenu();
+                      if (target) setTimeout(() => openMessageInfo(target), 220);
                     } else if (a.key === 'remove') {
                       const target = selectedMessage;
                       closeActionMenu();
@@ -1321,6 +1346,48 @@ export default function ClinicConversationScreen() {
               <Text style={styles.reactionSheetRowEmoji}>{e.emoji}</Text>
             </Pressable>
           ))}
+        </View>
+      </Modal>
+
+      <Modal visible={messageInfoOpen} transparent animationType="slide" onRequestClose={closeMessageInfo}>
+        <Pressable style={styles.reactionSheetBackdrop} onPress={closeMessageInfo} />
+        <View style={[styles.reactionSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.reactionSheetKnob} />
+          <Text style={[styles.infoTitle, { color: textPrimary }]}>Message info</Text>
+          {infoMsg && (
+            <>
+              <View style={[styles.infoPreview, { backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }]}>
+                <Text style={[styles.infoPreviewText, { color: textSecondary }]} numberOfLines={2}>
+                  {infoMsg.type === 'image' ? 'Photo' : infoMsg.text}
+                </Text>
+              </View>
+              <View style={styles.infoRow}>
+                <View style={[styles.infoIcon, { backgroundColor: 'rgba(61,158,255,0.14)' }]}>
+                  <Ionicons name="arrow-up-circle" size={20} color="#3D9EFF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.infoRowLabel, { color: textPrimary }]}>Sent</Text>
+                  <Text style={[styles.infoRowValue, { color: textSecondary }]}>{formatInfoTime(infoMsg.createdAt)}</Text>
+                </View>
+              </View>
+              {infoMsg.from === 'clinic' && (
+                <View style={styles.infoRow}>
+                  <View style={[styles.infoIcon, { backgroundColor: infoMsg.seenAt ? 'rgba(16,185,129,0.14)' : 'rgba(128,128,128,0.14)' }]}>
+                    <Ionicons name="checkmark-done" size={20} color={infoMsg.seenAt ? '#10B981' : (isDark ? '#8A93A6' : '#98A2B3')} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.infoRowLabel, { color: textPrimary }]}>Seen</Text>
+                    <Text style={[styles.infoRowValue, { color: textSecondary }]}>
+                      {infoMsg.seenAt ? formatInfoTime(infoMsg.seenAt) : 'Not seen yet'}
+                    </Text>
+                  </View>
+                </View>
+              )}
+            </>
+          )}
         </View>
       </Modal>
 
@@ -1718,6 +1785,13 @@ const styles = StyleSheet.create({
   reactionSheetRowName: { fontSize: 16, fontWeight: '700' },
   reactionSheetRowSub: { fontSize: 13, marginTop: 1 },
   reactionSheetRowEmoji: { fontSize: 22 },
+  infoTitle: { fontSize: 17, fontWeight: '800', marginBottom: 14, marginLeft: 4 },
+  infoPreview: { borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16 },
+  infoPreviewText: { fontSize: 14, lineHeight: 20 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10 },
+  infoIcon: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  infoRowLabel: { fontSize: 15, fontWeight: '700' },
+  infoRowValue: { fontSize: 13, marginTop: 1 },
   copiedPillWrap: {
     position: 'absolute',
     alignSelf: 'center',

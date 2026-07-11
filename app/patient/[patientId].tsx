@@ -9,7 +9,7 @@ import { markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/thr
 import { localizeDate, localizeNumber } from '@/utils/localization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, writeBatch } from 'firebase/firestore';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Dimensions, FlatList, Image, ImageBackground, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -27,6 +27,7 @@ type Message = {
   imageHeight?: number;
   reactionClinic?: string;
   reactionPatient?: string;
+  seenAt?: number;
 };
 
 export default function PatientView() {
@@ -126,6 +127,18 @@ export default function PatientView() {
       markThreadReadForPatient(patient.clinicId, authenticatedPatientId);
     }
   }, [tab, authenticatedPatientId, patient]);
+
+  // Stamp a real seenAt on clinic messages the patient is currently viewing (first-seen wins).
+  useEffect(() => {
+    if (tab !== 'chat' || !authenticatedPatientId) return;
+    const unseen = messages.filter((m) => m.from === 'clinic' && !m.seenAt);
+    if (unseen.length === 0) return;
+    const batch = writeBatch(db);
+    unseen.forEach((m) => {
+      batch.update(doc(db, `patients/${authenticatedPatientId}/messages/${m.id}`), { seenAt: Date.now() });
+    });
+    batch.commit().catch(() => {});
+  }, [tab, messages, authenticatedPatientId]);
 
   const sendMessage = async () => {
     const text = msgText.trim();
