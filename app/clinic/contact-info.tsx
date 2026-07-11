@@ -49,6 +49,7 @@ export default function ClinicContactInfoScreen() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [media, setMedia] = useState<{ id: string; imageUrl: string; createdAt?: number }[]>([]);
+  const [starredCount, setStarredCount] = useState(0);
   const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
   const [clearing, setClearing] = useState(false);
 
@@ -71,6 +72,7 @@ export default function ClinicContactInfoScreen() {
           }))
           .reverse();
         setMedia(imgs);
+        setStarredCount(snap.docs.filter((d) => (d.data() as any).starredClinic === true).length);
       },
       (e) => console.error('[contact-info] media sub error', e),
     );
@@ -377,6 +379,18 @@ export default function ClinicContactInfoScreen() {
                 <View key={i}>{r}</View>
               ));
             })()}
+          </View>
+
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>STARRED</Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {renderRow({
+              icon: 'star',
+              label: 'Starred messages',
+              value: starredCount > 0 ? `${starredCount} message${starredCount === 1 ? '' : 's'}` : 'None yet',
+              onPress: () => router.push({ pathname: '/clinic/starred', params: { patientId, name: displayName } } as any),
+              showChevron: true,
+              isLast: true,
+            })}
           </View>
 
           <View style={styles.mediaHeaderRow}>
