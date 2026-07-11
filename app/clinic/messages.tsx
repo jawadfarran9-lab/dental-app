@@ -9,7 +9,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
-import { useWindowDimensions } from 'react-native';
 import {
     ActivityIndicator,
     KeyboardAvoidingView,
@@ -19,8 +18,7 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
-    View,
+    TextInput, useWindowDimensions, View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -71,6 +69,7 @@ type ThreadRow = {
   lastMessage: string;
   lastAt: any;
   unread: number;
+  messageCount: number;
 };
 
 export default function ClinicMessagesScreen() {
@@ -111,10 +110,11 @@ export default function ClinicMessagesScreen() {
         return {
           id: d.id,
           patientId: data.patientId ?? fallbackPatientId,
-          name: data.patientName ?? 'Patient',
+          name: String(data.patientName ?? '').trim() || 'Patient',
           lastMessage: data.lastMessageText ?? '',
           lastAt: data.lastMessageAt,
           unread: data.unreadForClinic ?? 0,
+          messageCount: data.messageCount ?? 0,
         };
       });
       setThreads(list);
@@ -363,6 +363,14 @@ export default function ClinicMessagesScreen() {
                         >
                           {t.name}
                         </Text>
+                        {t.messageCount > 0 && (
+                          <View style={styles.rowCountWrap}>
+                            <Ionicons name="chatbubble-ellipses-outline" size={11} color={textMuted} />
+                            <Text style={[styles.rowCount, { color: textMuted }]} numberOfLines={1}>
+                              {localizeNumber(String(t.messageCount))}
+                            </Text>
+                          </View>
+                        )}
                         {!!timeLabel && (
                           <Text style={[styles.rowTime, { color: textMuted }]} numberOfLines={1}>
                             {timeLabel}
@@ -609,6 +617,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rowPreview: { flex: 1, fontSize: 13.5 },
+  rowCount: { fontSize: 11.5, fontWeight: '700' },
+  rowCountWrap: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   unreadBadge: {
     minWidth: 22,
     height: 22,

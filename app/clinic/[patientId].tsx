@@ -117,7 +117,7 @@ export default function PatientDetails() {
   const backBgPressed = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(27, 37, 66, 0.1)';
   const backIconColor = isDark ? '#FFFFFF' : '#1B2542';
 
-  const patientName = patient?.name || '';
+  const patientName = patient?.name?.trim() || 'Patient';
   const palette =
     AVATAR_PALETTE[hashName(patientName || '?') % AVATAR_PALETTE.length];
 

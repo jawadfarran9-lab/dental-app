@@ -1,5 +1,14 @@
 import { db } from '@/firebaseConfig';
-import { doc, getDoc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, doc, getCountFromServer, getDoc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+
+async function countThreadMessages(patientId: string): Promise<number> {
+  try {
+    const snap = await getCountFromServer(collection(db, `patients/${patientId}/messages`));
+    return snap.data().count;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * Update thread when a message is sent
@@ -25,6 +34,7 @@ export async function updateThreadOnMessage(
         lastMessageText: messageText,
         lastMessageSender: senderType,
         lastMessageAt: serverTimestamp(),
+        messageCount: increment(1),
         [senderType === 'clinic' ? 'unreadForPatient' : 'unreadForClinic']: increment(1),
       });
     } else {
@@ -38,6 +48,7 @@ export async function updateThreadOnMessage(
         lastMessageAt: serverTimestamp(),
         unreadForClinic: senderType === 'patient' ? 1 : 0,
         unreadForPatient: senderType === 'clinic' ? 1 : 0,
+        messageCount: 1,
         createdAt: serverTimestamp(),
       });
     }
@@ -57,6 +68,7 @@ export async function ensureThread(
     const snap = await getDoc(threadRef);
     const cleanName = patientName && patientName.trim() ? patientName.trim() : 'Patient';
     if (!snap.exists()) {
+      const count = await countThreadMessages(patientId);
       await setDoc(threadRef, {
         clinicId,
         patientId,
@@ -66,6 +78,7 @@ export async function ensureThread(
         lastMessageAt: serverTimestamp(),
         unreadForClinic: 0,
         unreadForPatient: 0,
+        messageCount: count,
         createdAt: serverTimestamp(),
       });
       return;
@@ -78,6 +91,9 @@ export async function ensureThread(
     if (data.lastMessageAt == null) patch.lastMessageAt = serverTimestamp();
     if ((!data.patientName || String(data.patientName).trim() === '') && cleanName !== 'Patient') {
       patch.patientName = cleanName;
+    }
+    if (data.messageCount == null) {
+      patch.messageCount = await countThreadMessages(patientId);
     }
     if (Object.keys(patch).length > 0) {
       await updateDoc(threadRef, patch);
