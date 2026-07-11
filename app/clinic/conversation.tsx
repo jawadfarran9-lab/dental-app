@@ -12,7 +12,7 @@ import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -521,6 +521,38 @@ export default function ClinicConversationScreen() {
     } catch (err) {
       console.error('[clinic/conversation] edit error', err);
     }
+  };
+
+  const handleRemoveMessage = (m: Message) => {
+    if (!patientId) return;
+    Alert.alert(
+      'Delete this message?',
+      'This permanently deletes the message for both you and the patient. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const wasLast = messages.length > 0 && messages[messages.length - 1].id === m.id;
+            const prev = wasLast ? messages[messages.length - 2] : undefined;
+            try {
+              await deleteDoc(doc(db, `patients/${patientId}/messages/${m.id}`));
+              if (wasLast && clinicId) {
+                const preview = prev ? (prev.type === 'image' ? 'Photo' : prev.text) : '';
+                try {
+                  await updateDoc(doc(db, 'threads', `${clinicId}_${patientId}`), { lastMessageText: preview });
+                } catch {
+                  // best-effort preview refresh
+                }
+              }
+            } catch (err) {
+              console.error('[clinic/conversation] remove error', err);
+            }
+          },
+        },
+      ],
+    );
   };
 
   const textPrimary = colors.textPrimary;
@@ -1142,6 +1174,10 @@ export default function ClinicConversationScreen() {
                       const target = selectedMessage;
                       closeActionMenu();
                       if (target) startEditMessage(target);
+                    } else if (a.key === 'remove') {
+                      const target = selectedMessage;
+                      closeActionMenu();
+                      if (target) setTimeout(() => handleRemoveMessage(target), 250);
                     } else {
                       closeActionMenu();
                     }
