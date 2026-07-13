@@ -998,7 +998,7 @@ BeSmile AI Team
               style={[styles.modalButton, { backgroundColor: SUBSCRIPTION_BLUE }]}
               onPress={() => {
                 setShowSuccessModal(false);
-                router.replace('/clinic/login' as any);
+                router.replace('/login' as any);
               }}
               activeOpacity={0.8}
             >
