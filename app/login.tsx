@@ -233,8 +233,10 @@ export default function LoginScreen() {
   // Placeholder — wire up in a future step.
   const onForgotPassword = () => {};
 
-  // Placeholder — wire up in a future step.
-  const onSubscribe = () => {};
+  // Navigates to the subscription-type chooser screen.
+  const onSubscribe = () => {
+    router.push('/subscribe-choice' as any);
+  };
 
   return (
     <View style={[styles.mainContainer, { backgroundColor: 'transparent' }]}>
