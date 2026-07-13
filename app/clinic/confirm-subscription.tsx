@@ -7,6 +7,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
 import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
+import { getHomeRoute } from '@/src/utils/getHomeRoute';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -168,14 +169,6 @@ export default function ConfirmSubscription() {
   const isFree = !isNaN(priceNum) && priceNum === 0;
   const theme = getPlanTheme(planLabel, isNaN(priceNum) ? -1 : priceNum, includeAIPro);
 
-  const getHomeRoute = (type: string): string => {
-    switch (type) {
-      case 'dental': return '/clinic/dental-home';
-      case 'beauty': return '/clinic/beauty-home';
-      case 'laser': return '/clinic/laser-home';
-      default: return '/clinic/dashboard';
-    }
-  };
   const homeRoute = getHomeRoute(clinicType);
 
   // Load subscription details from AsyncStorage

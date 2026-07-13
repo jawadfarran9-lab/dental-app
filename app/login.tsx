@@ -4,6 +4,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureOwnerMembership, findUserByEmailAndPassword } from '@/src/services/clinicMembersService';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
+import { getHomeRoute } from '@/src/utils/getHomeRoute';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -42,20 +43,6 @@ export default function LoginScreen() {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { setClinicAuth } = useAuth();
-
-  // Replicated from app/clinic/login.tsx:127-138 (helper is not exported).
-  const getHomeRoute = (clinicType: string | null | undefined): string => {
-    switch (clinicType) {
-      case 'dental':
-        return '/clinic/dental-home';
-      case 'beauty':
-        return '/clinic/beauty-home';
-      case 'laser':
-        return '/clinic/laser-home';
-      default:
-        return '/clinic/dashboard';
-    }
-  };
 
   // Entrance + badge float animations.
   useEffect(() => {
