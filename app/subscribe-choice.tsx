@@ -20,8 +20,11 @@ export default function SubscribeChoiceScreen() {
   const router = useRouter();
   const { colors, isDark } = useTheme();
 
-  // Placeholder — wire up in a future step.
-  const onClinicSubscription = () => {};
+  // Opens the existing clinic subscription flow (new/upgrade/renew all
+  // branch from /clinic/subscribe based on current clinic state).
+  const onClinicSubscription = () => {
+    router.push('/clinic/subscribe' as any);
+  };
 
   // Placeholder — wire up in a future step.
   const onAppSubscription = () => {};
@@ -54,11 +57,10 @@ export default function SubscribeChoiceScreen() {
           </Text>
 
           <View style={styles.options}>
-            {/* Placeholder — wire up in a future step. */}
+            {/* Opens the existing clinic subscription flow. */}
             <TouchableOpacity
               activeOpacity={0.9}
               onPress={onClinicSubscription}
-              disabled
               style={[
                 styles.card,
                 {
