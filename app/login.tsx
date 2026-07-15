@@ -20,9 +20,7 @@ import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, Platf
 /**
  * STANDALONE LOGIN SCREEN — reachable at /login
  *
- * Mirrors app/clinic/login.tsx visually and reuses the exact same
- * owner-first / doctor-fallback auth logic via setClinicAuth.
- * Not wired as the app entry point.
+ * Owner-first / doctor-fallback auth via setClinicAuth.
  */
 
 export default function LoginScreen() {
@@ -126,7 +124,6 @@ export default function LoginScreen() {
   }, []);
 
   // Shared login logic — owner-first, doctor-fallback.
-  // Mirrors app/clinic/login.tsx:219-368.
   const performLogin = async (loginEmail: string, loginPassword: string) => {
     let ownerError: any = null;
 

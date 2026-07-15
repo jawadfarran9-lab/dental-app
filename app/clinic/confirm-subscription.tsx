@@ -310,7 +310,7 @@ export default function ConfirmSubscription() {
             if (!cId) warnings.push('clinicId is empty');
             if (isNaN(finalNum) || finalNum < 0) warnings.push(`finalPrice invalid: ${actualFinalPriceStr}`);
             if (!planName) warnings.push('planName is empty');
-            if (!mergedClinicType) warnings.push('clinicType is empty — post-confirm route will default to /clinic/login');
+            if (!mergedClinicType) warnings.push('clinicType is empty — post-confirm route will default to /clinic/dashboard');
             if (warnings.length > 0) {
               console.warn('[CONFIRM] Data integrity warnings:', warnings.join('; '));
             }
