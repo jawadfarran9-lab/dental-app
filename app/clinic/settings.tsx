@@ -1,14 +1,16 @@
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    Alert,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -31,6 +33,7 @@ export default function ClinicSettingsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isDark } = useTheme();
+  const { logout } = useAuth();
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -116,6 +119,18 @@ export default function ClinicSettingsScreen() {
           subtitle: 'Add and manage your doctors',
           icon: 'people-outline',
           iconColor: '#EC4899',
+        },
+      ],
+    },
+    {
+      title: 'ACCOUNT',
+      rows: [
+        {
+          id: 'logout',
+          title: 'Log out',
+          subtitle: 'Sign out of your clinic account',
+          icon: 'log-out-outline',
+          iconColor: '#5B6B82',
         },
       ],
     },
@@ -231,6 +246,23 @@ export default function ClinicSettingsScreen() {
                       else if (row.id === 'clinic-profile-photo') router.push('/clinic/clinic-profile-photo');
                       else if (row.id === 'patient-form-fields') router.push('/clinic/patients-list' as any);
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
+                      else if (row.id === 'logout') {
+                        Alert.alert(
+                          'Log out',
+                          'Are you sure you want to log out?',
+                          [
+                            { text: 'Cancel', style: 'cancel' },
+                            {
+                              text: 'Log out',
+                              style: 'destructive',
+                              onPress: async () => {
+                                await logout();
+                                router.replace('/login' as any);
+                              },
+                            },
+                          ]
+                        );
+                      }
                     }}
                     style={({ pressed }) => [
                       styles.row,
