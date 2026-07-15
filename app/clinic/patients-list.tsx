@@ -10,12 +10,12 @@ import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import { useCallback, useState } from 'react';
 import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -61,7 +61,7 @@ export default function PatientsListScreen() {
 
   const loadPatients = useCallback(async () => {
     if (!clinicUser) {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
     if (!clinicId) {

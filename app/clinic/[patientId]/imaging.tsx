@@ -42,7 +42,7 @@ export default function PatientImagingScreen() {
 
   useEffect(() => {
     if (!clinicUser || !clinicId || !patientId) {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
 

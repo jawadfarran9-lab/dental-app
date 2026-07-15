@@ -2,8 +2,8 @@ import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useClinic } from '@/src/context/ClinicContext';
-import { changePatientCode } from '@/src/services/patientCodeService';
 import { useTheme } from '@/src/context/ThemeContext';
+import { changePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
@@ -16,16 +16,16 @@ import { doc, getDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -78,7 +78,7 @@ export default function PatientEditScreen() {
 
   useEffect(() => {
     if (!clinicUser) {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
     if (!clinicId || !patientId) return;

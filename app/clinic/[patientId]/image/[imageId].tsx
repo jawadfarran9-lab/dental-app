@@ -57,7 +57,7 @@ export default function ImageViewerScreen() {
 
   useEffect(() => {
     if (!clinicUser || !clinicId || !patientId || !imageId) {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
 

@@ -75,7 +75,7 @@ export default function PatientDetails() {
   useEffect(() => {
     if (clinicLoading) return;
     if (!clinicUser) {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
     if (!patientId) return;
