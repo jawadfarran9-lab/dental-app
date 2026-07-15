@@ -245,6 +245,7 @@ export default function TabsLayout() {
         <Tabs.Screen
           name="subscription"
           options={{
+            href: null,
             title: 'Subscribe',
             tabBarIcon: ({ color, focused }) => (
               <TabIcon name="star" focused={focused} color={color} isDark={isDark} />
