@@ -14,6 +14,11 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserRole = 'clinic' | 'patient' | null;
 
+export type ClinicType = 'dental' | 'beauty' | 'laser' | null;
+
+const narrowClinicType = (v: unknown): ClinicType =>
+  v === 'dental' || v === 'beauty' || v === 'laser' ? v : null;
+
 export interface AuthState {
   userRole: UserRole;
   userId: string | null;
@@ -21,6 +26,7 @@ export interface AuthState {
   memberId: string | null;
   clinicRole: ClinicRole | null;
   memberStatus: MemberStatus | null;
+  clinicType: ClinicType;
   isSubscribed: boolean | null;
   isDetailsComplete: boolean | null;
   loading: boolean;
@@ -51,6 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     memberId: null,
     clinicRole: null,
     memberStatus: null,
+    clinicType: null,
     isSubscribed: null,
     isDetailsComplete: null,
     loading: true,
@@ -70,18 +77,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   /**
    * Check subscription status for clinic
    */
-  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean | null; detailsComplete: boolean; clinicMissing?: boolean }> => {
+  const checkClinicSubscription = async (clinicId: string): Promise<{ subscribed: boolean | null; detailsComplete: boolean; clinicMissing?: boolean; clinicType: ClinicType }> => {
     try {
       const clinicRef = doc(db, 'clinics', clinicId);
       const clinicSnap = await getDoc(clinicRef);
 
       if (!clinicSnap.exists()) {
-        return { subscribed: null, detailsComplete: false, clinicMissing: true };
+        return { subscribed: null, detailsComplete: false, clinicMissing: true, clinicType: null };
       }
 
       const clinicData = clinicSnap.data();
       const subscribed = hasActiveSubscription(clinicData);
-      
+
       // Check if clinic details are complete (clinicName required)
       const detailsComplete = !!(clinicData.clinicName && clinicData.clinicName.trim());
 
@@ -90,11 +97,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         ensureClinicPublished(clinicId, clinicData).catch(() => {});
       }
 
-      return { subscribed, detailsComplete };
+      return { subscribed, detailsComplete, clinicType: narrowClinicType(clinicData.clinicType) };
     } catch (error) {
       console.error('[AUTH] Error checking clinic subscription:', error);
       // Return null (unknown) — never flip to false on transient errors
-      return { subscribed: null, detailsComplete: false };
+      return { subscribed: null, detailsComplete: false, clinicType: null };
     }
   };
 
@@ -122,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (subResult.clinicMissing) {
           await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
-          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
           return;
         }
 
@@ -131,7 +138,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const clinicSnap = await getDoc(doc(db, 'clinics', clinicId));
           if (!clinicSnap.exists()) {
             await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
-            setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+            setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
             return;
           }
           const memberId = storedMemberId || clinicId;
@@ -167,6 +174,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             memberId: resolvedMember.id,
             clinicRole: resolvedMember.role,
             memberStatus: resolvedMember.status,
+            clinicType: narrowClinicType(clinicSnap.data()?.clinicType),
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
             loading: false,
@@ -186,6 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             memberId: null,
             clinicRole: 'owner',
             memberStatus: null,
+            clinicType: subResult.clinicType,
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
             loading: false,
@@ -201,6 +210,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           memberId: null,
           clinicRole: null,
           memberStatus: null,
+          clinicType: null,
           isSubscribed: null, // Patients don't have subscription
           isDetailsComplete: null,
           loading: false,
@@ -239,6 +249,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             memberId: ownerMember.id,
             clinicRole: ownerMember.role,
             memberStatus: ownerMember.status,
+            clinicType: narrowClinicType(clinicDoc.data()?.clinicType),
             isSubscribed: subscribed ?? null,
             isDetailsComplete: detailsComplete,
             loading: false,
@@ -255,6 +266,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             memberId: null,
             clinicRole: null,
             memberStatus: null,
+            clinicType: null,
             isSubscribed: null,
             isDetailsComplete: null,
             loading: false,
@@ -271,6 +283,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           memberId: null,
           clinicRole: null,
           memberStatus: null,
+          clinicType: null,
           isSubscribed: null,
           isDetailsComplete: null,
           loading: false,
@@ -321,6 +334,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberId,
         clinicRole: role,
         memberStatus: status,
+        clinicType: subResult.clinicType,
         isSubscribed: subResult.subscribed ?? null,
         isDetailsComplete: subResult.detailsComplete,
         loading: false,
@@ -366,6 +380,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberId: null,
         clinicRole: null,
         memberStatus: null,
+        clinicType: null,
         isSubscribed: null,
         isDetailsComplete: null,
         loading: false,
@@ -403,6 +418,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         memberId: null,
         clinicRole: null,
         memberStatus: null,
+        clinicType: null,
         isSubscribed: null,
         isDetailsComplete: null,
         loading: false,

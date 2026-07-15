@@ -14,6 +14,7 @@ export function useAuth(): AuthState {
       memberId: null,
       clinicRole: null,
       memberStatus: null,
+      clinicType: null,
       isSubscribed: null,
       isDetailsComplete: null,
       loading: true,
