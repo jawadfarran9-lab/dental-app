@@ -40,7 +40,7 @@ export default function ClinicCancelSubscriptionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { clinicId, checkAuthState } = useAuth();
+  const { clinicId, logout } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [snap, setSnap] = useState<ClinicSubscriptionSnapshot | null>(null);
@@ -112,8 +112,8 @@ export default function ClinicCancelSubscriptionScreen() {
         { isPublished: false },
         { merge: true }
       );
-      await checkAuthState();
-      router.replace('/clinic/subscribe?reason=cancelled' as any);
+      await logout();
+      router.replace('/login' as any);
     } catch (err) {
       console.error('[CANCEL-SUB] cancel error', err);
       Alert.alert("Couldn't cancel", 'Please try again.');
