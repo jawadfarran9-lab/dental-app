@@ -693,7 +693,7 @@ export default function ClinicSignup() {
           Alert.alert(
             t('common.attention'),
             t('auth.accountExists', 'Account already exists. Please log in.'),
-            [{ text: t('common.ok'), onPress: () => router.replace('/clinic/login' as any) }]
+            [{ text: t('common.ok'), onPress: () => router.replace('/login' as any) }]
           );
           return;
         }
