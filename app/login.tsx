@@ -3,12 +3,14 @@ import PremiumGradientBackground from '@/src/components/PremiumGradientBackgroun
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureOwnerMembership, findUserByEmailAndPassword } from '@/src/services/clinicMembersService';
-import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
+import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
+import * as SecureStore from 'expo-secure-store';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
@@ -28,6 +30,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const biometricAttempted = useRef(false);
   const entranceAnim = useRef(new Animated.Value(0)).current;
   const badgeFloat = useRef(new Animated.Value(0)).current;
   const emailFocusAnim = useRef(new Animated.Value(0)).current;
@@ -84,6 +87,44 @@ export default function LoginScreen() {
     }, [])
   );
 
+  // Biometric auto-login on mount (opt-in only)
+  useEffect(() => {
+    const checkBiometricLogin = async () => {
+      if (biometricAttempted.current) return;
+      biometricAttempted.current = true;
+
+      // Only prompt if user explicitly opted in
+      const enabled = await SecureStore.getItemAsync('biometric_enabled');
+      if (enabled !== 'true') return;
+
+      const stored = await SecureStore.getItemAsync('clinic_credentials');
+      if (!stored) return;
+
+      const biometricAvailable = await LocalAuthentication.hasHardwareAsync();
+      if (!biometricAvailable) return;
+
+      const enrolled = await LocalAuthentication.isEnrolledAsync();
+      if (!enrolled) return;
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'Login with Face ID',
+        cancelLabel: 'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (!result.success) return;
+
+      try {
+        const { email: savedEmail, password: savedPassword } = JSON.parse(stored);
+        await onLoginAuto(savedEmail, savedPassword);
+      } catch {
+        // Silently fail — user can login manually
+      }
+    };
+
+    checkBiometricLogin();
+  }, []);
+
   // Shared login logic — owner-first, doctor-fallback.
   // Mirrors app/clinic/login.tsx:219-368.
   const performLogin = async (loginEmail: string, loginPassword: string) => {
@@ -122,6 +163,50 @@ export default function LoginScreen() {
           role: ownerMember.role,
           status: ownerMember.status,
         });
+
+        // Biometric opt-in: prompt user after first successful login
+        const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
+        if (biometricFlag === null) {
+          // First login — check if device supports biometrics before asking
+          const hasHw = await LocalAuthentication.hasHardwareAsync();
+          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+          if (hasHw && isEnrolled) {
+            await new Promise<void>((resolve) => {
+              Alert.alert(
+                'Enable Face ID',
+                'Enable Face ID / Fingerprint for faster login?',
+                [
+                  {
+                    text: 'Not now',
+                    style: 'cancel',
+                    onPress: async () => {
+                      await SecureStore.setItemAsync('biometric_enabled', 'false');
+                      resolve();
+                    },
+                  },
+                  {
+                    text: 'Enable',
+                    onPress: async () => {
+                      await SecureStore.setItemAsync('biometric_enabled', 'true');
+                      await SecureStore.setItemAsync(
+                        'clinic_credentials',
+                        JSON.stringify({ email: loginEmail, password: loginPassword })
+                      );
+                      resolve();
+                    },
+                  },
+                ],
+                { cancelable: false }
+              );
+            });
+          }
+        } else if (biometricFlag === 'true') {
+          // Already opted in — update stored credentials
+          await SecureStore.setItemAsync(
+            'clinic_credentials',
+            JSON.stringify({ email: loginEmail, password: loginPassword })
+          );
+        }
 
         if (!isSubscribed) {
           Alert.alert(
@@ -184,6 +269,22 @@ export default function LoginScreen() {
 
     if (ownerError) throw ownerError;
     Alert.alert(t('common.error'), t('auth.invalidCredentials'));
+  };
+
+  // Biometric auto-login handler
+  const onLoginAuto = async (autoEmail: string, autoPassword: string) => {
+    setLoading(true);
+    try {
+      await performLogin(autoEmail, autoPassword);
+    } catch (err: any) {
+      // Clear stored credentials if they're invalid
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        await SecureStore.deleteItemAsync('clinic_credentials');
+        await SecureStore.deleteItemAsync('biometric_enabled');
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   const onLogin = async () => {
