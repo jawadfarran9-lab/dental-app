@@ -35,7 +35,7 @@ export function useClinicGuard() {
         });
       } catch (e) {}
       logout();
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
 
@@ -76,7 +76,7 @@ export function useClinicGuardNoSubscription() {
         });
       } catch (e) {}
       logout();
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
   }, [userRole, loading, memberStatus, logout]);
@@ -90,14 +90,14 @@ export function useClinicRoleGuard(allowedRoles: ClinicRole[]) {
     if (loading) return;
 
     if (userRole !== 'clinic') {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
 
     // PHASE T: Block DISABLED or REMOVED members
     if (memberStatus === 'DISABLED' || memberStatus === 'REMOVED') {
       logout();
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
       return;
     }
 
@@ -124,7 +124,7 @@ export function usePatientGuard() {
 
   useEffect(() => {
     if (!loading && userRole === 'clinic') {
-      router.replace('/clinic/login' as any);
+      router.replace('/login' as any);
     }
   }, [userRole, loading]);
 }
