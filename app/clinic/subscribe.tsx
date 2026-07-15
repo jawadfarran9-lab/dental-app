@@ -639,7 +639,7 @@ export default function ClinicSubscribeLanding() {
             </TouchableOpacity>
           )}
 
-          <TouchableOpacity onPress={() => router.push('/clinic/login' as any)}>
+          <TouchableOpacity onPress={() => router.push('/login' as any)}>
             <Text style={[styles.secondaryLink, { color: ACCENT }]}>{t('subscription.alreadyHaveAccount', 'Already have an account?')}</Text>
           </TouchableOpacity>
         </View>

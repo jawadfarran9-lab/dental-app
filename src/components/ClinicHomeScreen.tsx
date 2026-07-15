@@ -400,7 +400,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
           style: 'destructive',
           onPress: async () => {
             await logout();
-            router.replace('/clinic/login' as any);
+            router.replace('/login' as any);
           },
         },
       ]
