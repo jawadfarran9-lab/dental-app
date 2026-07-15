@@ -1,6 +1,7 @@
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { getHomeRoute } from '@/src/utils/getHomeRoute';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -43,7 +44,7 @@ const ROLE_BUTTONS: ReadonlyArray<RoleButtonData> = [
     desc: 'Manage your clinic, patients & content',
     gradient: ['#54ACFF', '#1E6FD9'],
     shadowColor: '#2E86E0',
-    route: '/clinic/login',
+    route: '/login',
   },
   {
     key: 'patient',
@@ -235,7 +236,8 @@ const RoleButton = memo(function RoleButton({
  * CLINIC ENTRY PAGE
  *
  * Main entry point with navigation buttons:
- * - "Clinic" → /clinic/login
+ * - "Clinic" → logged-in clinic user goes straight to their clinic home
+ *              via getHomeRoute(clinicType); everyone else → /login
  * - "Patient" → /patient
  * - "Games" → /kids
  * - "Back" → /(tabs)/home
@@ -244,7 +246,7 @@ export default function ClinicTab() {
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const { logout } = useAuth();
+  const { logout, userRole, clinicType } = useAuth();
 
   const backPillStyle = useMemo<ViewStyle>(
     () => ({
@@ -293,6 +295,10 @@ export default function ClinicTab() {
               {...rest}
               delay={i * 700}
               onPress={async () => {
+                if (key === 'clinic' && userRole === 'clinic') {
+                  router.push(getHomeRoute(clinicType) as any);
+                  return;
+                }
                 if (key === 'patient') {
                   await logout();
                 }
