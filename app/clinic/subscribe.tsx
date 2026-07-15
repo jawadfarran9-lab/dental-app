@@ -280,6 +280,14 @@ export default function ClinicSubscribeLanding() {
   };
 
   const goBack = () => {
+    if (reason === 'cancelled') {
+      router.replace('/(tabs)/home' as any);
+      return;
+    }
+    if (router.canGoBack()) {
+      router.back();
+      return;
+    }
     router.replace('/(tabs)/home' as any);
   };
 
