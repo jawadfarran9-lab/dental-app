@@ -406,30 +406,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     try {
       await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
-      // Clear biometric credentials on logout
-      try {
-        const SecureStore = require('expo-secure-store');
-        await SecureStore.deleteItemAsync('clinic_credentials');
-        await SecureStore.deleteItemAsync('biometric_enabled');
-      } catch {}
-      // End Firebase Auth session so no ghost user persists
-      await signOut(auth);
-      setAuthState({
-        userRole: null,
-        userId: null,
-        clinicId: null,
-        memberId: null,
-        clinicRole: null,
-        memberStatus: null,
-        clinicType: null,
-        isSubscribed: null,
-        isDetailsComplete: null,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
-      console.error('[AUTH] Error logging out:', error);
+    } catch (e) {
+      logSilentFailure('authContext.logout.clearStorage', e);
     }
+    // Clear biometric credentials on logout
+    try {
+      const SecureStore = require('expo-secure-store');
+      await SecureStore.deleteItemAsync('clinic_credentials');
+      await SecureStore.deleteItemAsync('biometric_enabled');
+    } catch (e) {
+      logSilentFailure('authContext.logout.clearBiometric', e);
+    }
+    // End Firebase Auth session so no ghost user persists
+    try {
+      await signOut(auth);
+    } catch (e) {
+      logSilentFailure('authContext.logout.signOut', e);
+    }
+    // Always reset in-memory state, even if a cleanup step failed —
+    // otherwise the app keeps treating the user as logged in.
+    setAuthState({
+      userRole: null,
+      userId: null,
+      clinicId: null,
+      memberId: null,
+      clinicRole: null,
+      memberStatus: null,
+      clinicType: null,
+      isSubscribed: null,
+      isDetailsComplete: null,
+      loading: false,
+      error: null,
+    });
   };
 
   /**
