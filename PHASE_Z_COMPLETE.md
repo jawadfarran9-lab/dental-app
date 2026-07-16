@@ -5,6 +5,31 @@ Status: Completed — Awaiting Approval
 
 ---
 
+## CORRECTION — 2026-07-16
+
+The Z3 "encryption-at-rest" claim below is **FALSE** and was never true.
+
+- The encryption key was derived from `SHA256(uid : clinicId : salt)` where
+  both `uid` and `clinicId` were stored on the same Firestore document as
+  the ciphertext, and `salt` was read from `EXPO_PUBLIC_SECURITY_SALT`
+  (falling back to the literal `'public-salt'`). `EXPO_PUBLIC_*` values
+  are bundled into the shipped client JS. Anyone able to read the
+  ciphertext could derive the same key from the same document plus the
+  bundled salt. There was no secret.
+- The code never ran in practice: `editSession` had zero callers,
+  `decryptText` was never imported anywhere, and `privateNotes` /
+  `medicalNotesSensitive` were not declared on the `Session` type.
+- The theatre code (`src/utils/secure.ts` and the encryption block inside
+  `editSession`) was removed. See git history for the removed code.
+- Patient-data confidentiality depends on Firestore rules, which are
+  currently fully open. The real control is tracked in the auth /
+  security rebuild, not here.
+
+The rest of this document is preserved as a historical record of what
+was believed to have been delivered.
+
+---
+
 ## Z1 — Firestore Rules & Auth Guards
 - Hardened rules with role + clinicId validation
 - OWNER_ADMIN: team management, branding updates, audit read, sessions read/write

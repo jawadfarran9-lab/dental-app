@@ -1,7 +1,5 @@
 import { db } from '@/firebaseConfig';
 import { SessionEditParams } from '@/src/types/session';
-import { deriveKey, encryptText } from '@/src/utils/secure';
-import { logSilentFailure } from '@/src/utils/silentFailure';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { writeAuditLog } from './auditLogService';
 
@@ -22,22 +20,6 @@ export async function editSession(params: SessionEditParams & { clinicId: string
     lastEditedByName: editedByName,
   };
 
-  // PHASE Z3: Encrypt sensitive fields if present
-  try {
-    const salt = process.env.EXPO_PUBLIC_SECURITY_SALT || 'public-salt';
-    const key = deriveKey(editedBy, String(updates.clinicId || ''), salt);
-    if (updateData.privateNotes) {
-      updateData.privateNotes = encryptText(String(updateData.privateNotes), key);
-      updateData.privateNotesEncrypted = true;
-    }
-    if (updateData.medicalNotesSensitive) {
-      updateData.medicalNotesSensitive = encryptText(String(updateData.medicalNotesSensitive), key);
-      updateData.medicalNotesSensitiveEncrypted = true;
-    }
-  } catch (e) {
-    logSilentFailure('sessionService.encryptNotes', e);
-  }
-  
   await updateDoc(sessionRef, updateData);
   
   // PHASE U: Log session edit in audit log
