@@ -1,4 +1,5 @@
 import { hideReel, isPostSaved, markInterested, reportReel, toggleSavePost } from '@/services/engagementService';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
@@ -55,7 +56,7 @@ const ReelOptionsSheet = ({
   // Sync saved state from backend when sheet opens
   useEffect(() => {
     if (visible && reelId) {
-      isPostSaved(reelId).then(setSaved).catch(() => {});
+      isPostSaved(reelId).then(setSaved).catch((e) => logSilentFailure('reelOptionsSheet.isPostSaved', e));
     }
   }, [visible, reelId]);
 

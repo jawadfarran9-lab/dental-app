@@ -8,6 +8,7 @@
  * auto-archiving (Phase 3), and camera roll save (Phase 4).
  */
 import { db } from '@/firebaseConfig';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import * as FileSystem from 'expo-file-system';
 import { File as ExpoFile, Paths } from 'expo-file-system';
 import * as MediaLibrary from 'expo-media-library';
@@ -195,15 +196,16 @@ export async function createStory(
 
     // Phase 3: Auto-archive
     if (prefs.saveStoryToArchive) {
-      archiveStory(clinicId, story).catch(() => {});
+      archiveStory(clinicId, story).catch((e) => logSilentFailure('storyService.archiveStory', e));
     }
 
     // Phase 4: Save to camera roll
     if (prefs.saveStoryToCameraRoll) {
       saveToCameraRoll(story.mediaUrl, story.type).catch(() => {});
     }
-  } catch {
+  } catch (e) {
     // Preference read failed — story is still saved, skip side effects
+    logSilentFailure('storyService.getClinicPreferences', e);
   }
 
   return story;

@@ -5,6 +5,7 @@ import i18n from '@/i18n';
 import { getHeroImage } from '@/src/constants/heroImages';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { localizeDate, localizeNumber } from '@/utils/localization';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -137,7 +138,7 @@ export default function PatientView() {
     unseen.forEach((m) => {
       batch.update(doc(db, `patients/${authenticatedPatientId}/messages/${m.id}`), { seenAt: Date.now() });
     });
-    batch.commit().catch(() => {});
+    batch.commit().catch((e) => logSilentFailure('patientDetail.markMessagesSeen', e));
   }, [tab, messages, authenticatedPatientId]);
 
   const sendMessage = async () => {

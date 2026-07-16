@@ -9,26 +9,27 @@ import { useClinicSettings } from '@/src/hooks/useClinicSettings';
 import { ArchiveItem, fetchArchive } from '@/src/services/archiveService';
 import { createHighlight, deleteHighlight, fetchHighlights, Highlight, updateHighlight } from '@/src/services/highlightsService';
 import { fetchClinicPublicOwner } from '@/src/services/publicClinics';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Dimensions,
-  Easing,
-  FlatList,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Dimensions,
+    Easing,
+    FlatList,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    TouchableWithoutFeedback,
+    View,
 } from 'react-native';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -212,7 +213,7 @@ export default function ArchiveScreen() {
       if (!cancelled && clinic?.geo) {
         setClinicLocation(clinic.geo);
       }
-    }).catch(() => {});
+    }).catch((e) => logSilentFailure('archive.fetchClinicPublicOwner', e));
     return () => { cancelled = true; };
   }, [clinicId]);
 

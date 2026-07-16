@@ -1,4 +1,5 @@
 import { db } from '@/firebaseConfig';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
     collection,
@@ -57,7 +58,7 @@ export const togglePostLike = async (
     await deleteDoc(ref);
     try {
       await updateDoc(mediaDoc(clinicId, postId), { likeCount: increment(-1) });
-    } catch { /* media doc may not have likeCount yet */ }
+    } catch (e) { logSilentFailure('engagementService.incrementLikeCount', e); /* media doc may not have likeCount yet */ }
     const count = await getLikeCount(clinicId, postId, initialLikes);
     return { isLiked: false, likeCount: Math.max(0, count) };
   } else {
@@ -65,14 +66,15 @@ export const togglePostLike = async (
     await setDoc(ref, { deviceId, createdAt: serverTimestamp() });
     try {
       await updateDoc(mediaDoc(clinicId, postId), { likeCount: increment(1) });
-    } catch {
+    } catch (e) {
+      logSilentFailure('engagementService.rollbackLikeCount', e);
       // If media doc doesn't have likeCount field, set it
       try {
         const mSnap = await getDoc(mediaDoc(clinicId, postId));
         if (mSnap.exists()) {
           await updateDoc(mediaDoc(clinicId, postId), { likeCount: (mSnap.data().likeCount || 0) + 1 });
         }
-      } catch { /* ignore */ }
+      } catch (e2) { logSilentFailure('engagementService.rollbackLikeCount.inner', e2); /* ignore */ }
     }
     const count = await getLikeCount(clinicId, postId, initialLikes);
     return { isLiked: true, likeCount: count };

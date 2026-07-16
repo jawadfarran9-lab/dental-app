@@ -13,6 +13,7 @@ import {
     trackUpgradePromptShown,
 } from '@/src/utils/aiProAnalytics';
 import { getFallbackMessage, mockAIChatAPI } from '@/src/utils/mockAIAPI';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
@@ -75,7 +76,7 @@ export default function AIChatScreen() {
 	// Track when upgrade prompt is shown (non-Pro users trying to chat)
 	useEffect(() => {
 		if (showUpgradePrompt && clinicId) {
-			trackUpgradePromptShown(clinicId).catch(() => {});
+			trackUpgradePromptShown(clinicId).catch((e) => logSilentFailure('ai.trackUpgradePromptShown', e));
 		}
 	}, [showUpgradePrompt, clinicId]);
 
@@ -83,14 +84,14 @@ export default function AIChatScreen() {
 	useEffect(() => {
 		if (hasHydrated && messages.length > 2 && clinicId) {
 			// More than welcome message + at least one user message
-			trackAIChatStarted(clinicId).catch(() => {});
+			trackAIChatStarted(clinicId).catch((e) => logSilentFailure('ai.trackAIChatStarted', e));
 		}
 	}, [hasHydrated, messages.length, clinicId]);
 
 	// Track when AI Pro feature is used (Pro response received)
 	useEffect(() => {
 		if (hasAIPro && streamingText.length > 0 && clinicId) {
-			trackAIFeatureUsed('detailed-analysis', clinicId).catch(() => {});
+			trackAIFeatureUsed('detailed-analysis', clinicId).catch((e) => logSilentFailure('ai.trackAIFeatureUsed', e));
 			// Show Pro feature tooltip on first Pro response
 			setShowProTooltip(true);
 		}

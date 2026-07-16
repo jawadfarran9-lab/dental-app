@@ -1,5 +1,6 @@
 import { useAuth } from '@/src/context/AuthContext';
 import { ClinicRole } from '@/src/types/members';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { useRouter } from 'expo-router';
 import { useEffect } from 'react';
 
@@ -33,7 +34,7 @@ export function useClinicGuard() {
           clinicId: clinicId,
           meta: { status: memberStatus },
         });
-      } catch (e) {}
+      } catch (e) { logSilentFailure('navigationGuards.useClinicGuard.auditLog', e); }
       logout();
       router.replace('/login' as any);
       return;
@@ -74,7 +75,7 @@ export function useClinicGuardNoSubscription() {
           clinicId: clinicId,
           meta: { status: memberStatus },
         });
-      } catch (e) {}
+      } catch (e) { logSilentFailure('navigationGuards.useClinicGuardNoSubscription.auditLog', e); }
       logout();
       router.replace('/login' as any);
       return;
