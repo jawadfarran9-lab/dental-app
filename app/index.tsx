@@ -1,5 +1,6 @@
 import '@/i18n';
 import { useAuth } from '@/src/context/AuthContext';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useRef } from 'react';
@@ -54,7 +55,9 @@ export default function Index() {
     if (userRole === null && !!error && retryCountRef.current < MAX_RETRIES) {
       retryTimerRef.current = setTimeout(() => {
         retryCountRef.current += 1;
-        checkAuthState().catch(() => {});
+        checkAuthState().catch((err) => {
+          logSilentFailure('index.checkAuthStateRetry', err);
+        });
       }, RETRY_DELAY_MS);
     }
   }, [loading, userRole, error, router, checkAuthState]);

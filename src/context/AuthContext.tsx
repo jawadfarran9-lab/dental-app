@@ -6,6 +6,7 @@ import {
     recordMemberLogin,
 } from '@/src/services/clinicMembersService';
 import { ClinicRole, MemberStatus } from '@/src/types/members';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
@@ -94,7 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Auto-sync to public directory (fire-and-forget, non-blocking)
       if (subscribed && detailsComplete) {
-        ensureClinicPublished(clinicId, clinicData).catch(() => {});
+        ensureClinicPublished(clinicId, clinicData).catch((err) => {
+          logSilentFailure('authContext.ensureClinicPublished', err);
+        });
       }
 
       return { subscribed, detailsComplete, clinicType: narrowClinicType(clinicData.clinicType) };

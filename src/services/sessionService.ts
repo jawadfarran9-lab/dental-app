@@ -1,6 +1,7 @@
 import { db } from '@/firebaseConfig';
 import { SessionEditParams } from '@/src/types/session';
 import { deriveKey, encryptText } from '@/src/utils/secure';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { writeAuditLog } from './auditLogService';
 
@@ -33,7 +34,9 @@ export async function editSession(params: SessionEditParams & { clinicId: string
       updateData.medicalNotesSensitive = encryptText(String(updateData.medicalNotesSensitive), key);
       updateData.medicalNotesSensitiveEncrypted = true;
     }
-  } catch {}
+  } catch (e) {
+    logSilentFailure('sessionService.encryptNotes', e);
+  }
   
   await updateDoc(sessionRef, updateData);
   

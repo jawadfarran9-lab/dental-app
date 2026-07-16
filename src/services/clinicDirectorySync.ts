@@ -14,6 +14,7 @@
  */
 
 import { db } from '@/firebaseConfig';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 
@@ -77,5 +78,6 @@ export async function ensureClinicPublished(
     await setDoc(doc(db, 'clinics_public', clinicId), payload, { merge: true });
   } catch (err) {
     // Non-critical background sync — swallow silently
+    logSilentFailure('clinicDirectorySync.ensureClinicPublished', err);
   }
 }

@@ -8,6 +8,7 @@ import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
 import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
+import { logSilentFailure } from '@/src/utils/silentFailure';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -469,7 +470,9 @@ BeSmile AI Team
 
 
       // Auto-publish to clinics directory (fire-and-forget)
-      ensureClinicPublished(clinicId).catch(() => {});
+      ensureClinicPublished(clinicId).catch((err) => {
+        logSilentFailure('confirmSubscription.ensureClinicPublished', err);
+      });
 
       // Write session keys for downstream hooks (useSubscriptionStatus, feedback, etc.)
       const plan = confirmPayload.subscriptionPlan;
