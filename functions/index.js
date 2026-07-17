@@ -546,3 +546,61 @@ function classifyAIResponse(response, userMessage) {
 
   return 'dental'; // default
 }
+
+// ============================================================
+// assignOwnerClaims — HTTPS callable (v1)
+// ============================================================
+// Stamps { role: 'owner', clinicId } onto the caller's Firebase Auth
+// token. Verifies the caller via context.auth.uid (never trusts input),
+// locates the caller's clinic by ownerUid, preserves any pre-existing
+// custom claims, and is idempotent by construction.
+//
+// Returns: { clinicId }
+exports.assignOwnerClaims = functions.https.onCall(async (_data, context) => {
+  if (!context.auth) {
+    console.error('[assignOwnerClaims] unauthenticated caller');
+    throw new functions.https.HttpsError(
+      'unauthenticated',
+      'Sign in required to assign owner claims.'
+    );
+  }
+
+  const uid = context.auth.uid;
+  const db = admin.firestore();
+
+  const snap = await db
+    .collection('clinics')
+    .where('ownerUid', '==', uid)
+    .limit(2)
+    .get();
+
+  if (snap.empty) {
+    console.error(`[assignOwnerClaims] no clinic found for uid=${uid}`);
+    throw new functions.https.HttpsError(
+      'not-found',
+      'No clinic is owned by this account yet.'
+    );
+  }
+
+  if (snap.size > 1) {
+    console.error(`[assignOwnerClaims] multiple clinics found for uid=${uid}`);
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'Multiple clinics are owned by this account; cannot assign automatically.'
+    );
+  }
+
+  const clinicId = snap.docs[0].id;
+
+  const user = await admin.auth().getUser(uid);
+  const existing = user.customClaims || {};
+
+  await admin.auth().setCustomUserClaims(uid, {
+    ...existing,
+    role: 'owner',
+    clinicId,
+  });
+
+  console.log(`[assignOwnerClaims] uid=${uid} clinicId=${clinicId}`);
+  return { clinicId };
+});
