@@ -66,3 +66,12 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Firebase emulator artifacts (local dev only)
+*-debug.log
+emulator-data/
+
+# Firebase Functions local runtime config — CONTAINS SECRETS
+# (mirror of `firebase functions:config:get`: OpenAI + Stripe keys)
+functions/.runtimeconfig.json
+.runtimeconfig.json
