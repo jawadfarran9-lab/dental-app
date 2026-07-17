@@ -1,8 +1,9 @@
 // firebaseConfig.ts - Firebase client initialization
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
+import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
+import { connectStorageEmulator, getStorage } from "firebase/storage";
 
 // Firebase project: dental-jawad (project number: 256500365668)
 const firebaseConfig = {
@@ -21,5 +22,20 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
 export const auth = getAuth(app);
-export { app };
+export const functions = getFunctions(app);
 
+const useEmulator =
+  __DEV__ && process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
+
+if (useEmulator) {
+  const host = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
+  connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(db, host, 8080);
+  connectStorageEmulator(storage, host, 9199);
+  connectFunctionsEmulator(functions, host, 5001);
+  console.warn(`[firebase] EMULATOR MODE — host=${host}`);
+} else {
+  console.log('[firebase] production mode — project=dental-jawad');
+}
+
+export { app };
