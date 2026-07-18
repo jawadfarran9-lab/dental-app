@@ -1,24 +1,25 @@
-import { db } from '@/firebaseConfig';
+import { db, functions } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { createDoctorMember, listClinicMembers, removeMember, updateDoctorPassword } from '@/src/services/clinicMembersService';
+import { listClinicMembers, removeMember, updateDoctorPassword } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    ActivityIndicator,
+    Alert,
+    Dimensions,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -243,7 +244,8 @@ export default function ClinicTeamScreen() {
 
     try {
       setSubmitting(true);
-      await createDoctorMember(clinicId, trimmedEmail, password);
+      const createDoctor = httpsCallable(functions, 'createDoctorAccount');
+      await createDoctor({ email: trimmedEmail, password });
       await refreshMembers();
       closeSheet();
       setEmail('');
