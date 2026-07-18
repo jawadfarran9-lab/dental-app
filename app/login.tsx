@@ -2,7 +2,7 @@ import { auth, db, functions } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { ensureOwnerMembership, findUserByEmailAndPassword } from '@/src/services/clinicMembersService';
+import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
@@ -292,45 +292,6 @@ export default function LoginScreen() {
       try { await signOut(auth); } catch {}
     } catch (err) {
       ownerError = err;
-    }
-
-    // Doctor fallback: Firestore-only session.
-    const doctorRecord = await findUserByEmailAndPassword(loginEmail, loginPassword);
-    if (doctorRecord && doctorRecord.profile.role === 'doctor') {
-      const { memberId, profile } = doctorRecord;
-
-      if (profile.status !== 'ACTIVE') {
-        Alert.alert(
-          t('common.attention'),
-          'This account has been disabled. Please contact the clinic owner.'
-        );
-        return;
-      }
-
-      const clinicSnap = await getDoc(doc(db, 'clinics', profile.clinicId));
-      const clinicData = clinicSnap.exists() ? clinicSnap.data() : null;
-      const clinicType = clinicData?.clinicType || null;
-      const isSubscribed = clinicData ? hasActiveSubscription(clinicData) : false;
-
-      await setClinicAuth({
-        clinicId: profile.clinicId,
-        memberId,
-        role: 'doctor',
-        status: profile.status,
-      });
-
-      if (!isSubscribed) {
-        Alert.alert(
-          t('common.attention'),
-          t('common.subscriptionInactive'),
-          [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
-        );
-        return;
-      }
-
-      const homeRoute = getHomeRoute(clinicType);
-      router.replace(homeRoute as any);
-      return;
     }
 
     if (ownerError) throw ownerError;

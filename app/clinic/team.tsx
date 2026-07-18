@@ -1,6 +1,6 @@
 import { db, functions } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { listClinicMembers, removeMember, updateDoctorPassword } from '@/src/services/clinicMembersService';
+import { listClinicMembers, removeMember } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
