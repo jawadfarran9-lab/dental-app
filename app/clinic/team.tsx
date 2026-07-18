@@ -198,7 +198,8 @@ export default function ClinicTeamScreen() {
       }
       try {
         setSubmitting(true);
-        await updateDoctorPassword(clinicId, editingMember.id, password);
+        const updatePw = httpsCallable(functions, 'updateDoctorPassword');
+        await updatePw({ uid: editingMember.id, password });
         closeSheet();
         setEmail('');
         setPassword('');

@@ -670,3 +670,53 @@ exports.createDoctorAccount = functions.https.onCall(async (data, context) => {
   console.log(`[createDoctorAccount] created doctor uid=${uid} for clinic=${clinicId}`);
   return { memberId: uid };
 });
+
+// ─────────────────────────────────────────────────────────────
+// Phase 4.4-b — owner-only password reset for a doctor in the owner's clinic.
+// Updates the doctor's REAL Firebase Auth password. Cross-tenant guarded:
+// the target uid MUST be a doctor member of the caller-owner's clinic.
+// No password is ever stored in Firestore.
+// ─────────────────────────────────────────────────────────────
+exports.updateDoctorPassword = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const callerRole = context.auth.token.role;
+  const clinicId = context.auth.token.clinicId;
+  if (callerRole !== 'owner' || !clinicId) {
+    throw new functions.https.HttpsError('permission-denied', 'Only a clinic owner can change a doctor password.');
+  }
+  const uid = data && data.uid ? String(data.uid) : '';
+  const password = data && data.password ? String(data.password) : '';
+  if (!uid || password.length < 6) {
+    throw new functions.https.HttpsError('invalid-argument', 'A valid doctor id and a password of at least 6 characters are required.');
+  }
+
+  const db = admin.firestore();
+  const memberSnap = await db.doc(`clinics/${clinicId}/members/${uid}`).get();
+  if (!memberSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'No such doctor in your clinic.');
+  }
+  const member = memberSnap.data() || {};
+  if (member.role !== 'doctor' || member.status === 'REMOVED') {
+    throw new functions.https.HttpsError('failed-precondition', 'Target is not an active doctor in your clinic.');
+  }
+
+  try {
+    await admin.auth().updateUser(uid, { password });
+  } catch (e) {
+    if (e && e.code === 'auth/user-not-found') {
+      throw new functions.https.HttpsError('not-found', 'This doctor has no login account yet.');
+    }
+    if (e && e.code === 'auth/invalid-password') {
+      throw new functions.https.HttpsError('invalid-argument', 'The password is not valid.');
+    }
+    throw new functions.https.HttpsError('internal', 'Could not update the password.');
+  }
+
+  const { FieldValue } = require('firebase-admin/firestore');
+  await db.doc(`clinics/${clinicId}/members/${uid}`).set({ updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+
+  console.log(`[updateDoctorPassword] reset password for doctor uid=${uid} in clinic=${clinicId}`);
+  return { ok: true };
+});
