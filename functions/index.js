@@ -604,3 +604,69 @@ exports.assignOwnerClaims = functions.https.onCall(async (_data, context) => {
   console.log(`[assignOwnerClaims] uid=${uid} clinicId=${clinicId}`);
   return { clinicId };
 });
+
+// ─────────────────────────────────────────────────────────────
+// Phase 4.1 — owner-only creation of a real Firebase Auth doctor account.
+// Clinic is taken from the OWNER's token (not input) → tenant isolation.
+// No password is ever stored in Firestore.
+// ─────────────────────────────────────────────────────────────
+exports.createDoctorAccount = functions.https.onCall(async (data, context) => {
+  // 1) must be authenticated
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  // 2) must be a clinic owner; clinicId comes from the owner's verified token
+  const callerRole = context.auth.token.role;
+  const clinicId = context.auth.token.clinicId;
+  if (callerRole !== 'owner' || !clinicId) {
+    throw new functions.https.HttpsError('permission-denied', 'Only a clinic owner can create doctor accounts.');
+  }
+  // 3) validate input
+  const email = (data && data.email ? String(data.email) : '').trim().toLowerCase();
+  const password = data && data.password ? String(data.password) : '';
+  if (!email || password.length < 6) {
+    throw new functions.https.HttpsError('invalid-argument', 'A valid email and a password of at least 6 characters are required.');
+  }
+
+  // 4) create the Auth user (handle duplicate email)
+  let userRecord;
+  try {
+    userRecord = await admin.auth().createUser({ email, password, emailVerified: false });
+  } catch (e) {
+    if (e && e.code === 'auth/email-already-exists') {
+      throw new functions.https.HttpsError('already-exists', 'A user with this email already exists.');
+    }
+    throw new functions.https.HttpsError('internal', 'Could not create the account.');
+  }
+  const uid = userRecord.uid;
+
+  // 5) stamp doctor claims (uid-as-memberId model)
+  await admin.auth().setCustomUserClaims(uid, {
+    role: 'doctor',
+    clinicId,
+    mustChangePassword: true,
+  });
+
+  // 6) derive a display name from the email local-part
+  const local = email.split('@')[0] || 'Doctor';
+  const displayName = local.charAt(0).toUpperCase() + local.slice(1);
+  const db = admin.firestore();
+  const { FieldValue } = require('firebase-admin/firestore');
+  const ts = FieldValue.serverTimestamp();
+
+  // 7) member doc (NO password field)
+  await db.doc(`clinics/${clinicId}/members/${uid}`).set({
+    id: uid, clinicId, displayName, email,
+    role: 'doctor', status: 'ACTIVE',
+    createdAt: ts, updatedAt: ts,
+  }, { merge: true });
+
+  // 8) user doc (NO password field)
+  await db.doc(`users/${uid}`).set({
+    clinicId, role: 'doctor', status: 'ACTIVE',
+    email, displayName, lastLoginAt: null,
+  }, { merge: true });
+
+  console.log(`[createDoctorAccount] created doctor uid=${uid} for clinic=${clinicId}`);
+  return { memberId: uid };
+});
