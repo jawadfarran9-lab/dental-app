@@ -1,4 +1,4 @@
-import { auth, db } from '@/firebaseConfig';
+import { auth, db, functions } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -13,6 +13,7 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, Easing, KeyboardAvoidingView, Platform, SafeAreaView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -145,6 +146,26 @@ export default function LoginScreen() {
         const clinicDoc = snapshot.docs[0];
         const clinicId = clinicDoc.id;
         const clinicData = clinicDoc.data();
+
+        // Ensure owner custom claims (role + clinicId) are present on the token.
+        // Idempotent: only assigns if missing; never blocks login on failure.
+        try {
+          const tokenResult = await userCredential.user.getIdTokenResult();
+          const hasOwnerClaims =
+            tokenResult.claims.role === 'owner' &&
+            tokenResult.claims.clinicId === clinicId;
+          if (!hasOwnerClaims) {
+            const assignOwnerClaims = httpsCallable(functions, 'assignOwnerClaims');
+            await assignOwnerClaims();
+            await userCredential.user.getIdToken(true); // force refresh so new claims land
+            console.log('[auth] owner claims assigned + token refreshed');
+          } else {
+            console.log('[auth] owner claims already present — skipped');
+          }
+        } catch (e) {
+          console.warn('[auth] claims assignment skipped (non-blocking):', e);
+        }
+
         const isSubscribed = hasActiveSubscription(clinicData);
         const clinicPlan = clinicData.subscriptionPlan || '';
         const clinicType = clinicData.clinicType || null;
