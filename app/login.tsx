@@ -238,6 +238,54 @@ export default function LoginScreen() {
         const homeRoute = getHomeRoute(clinicType);
         router.replace(homeRoute as any);
         return;
+      } else {
+        // Phase 4.2 — doctor with a real Firebase Auth account.
+        // If the token carries doctor claims, log in as doctor (do NOT sign out).
+        // Legacy doctors (no claims) fall through to the Firestore-only fallback.
+        try {
+          const tokenResult = await userCredential.user.getIdTokenResult();
+          const claimRole = tokenResult.claims.role;
+          const claimClinicId = tokenResult.claims.clinicId;
+          if (claimRole === 'doctor' && claimClinicId) {
+            const clinicIdStr = String(claimClinicId);
+            const memberSnap = await getDoc(doc(db, `clinics/${clinicIdStr}/members/${firebaseUid}`));
+            const memberData = memberSnap.exists() ? memberSnap.data() : null;
+            const status = (memberData && memberData.status) ? memberData.status : 'ACTIVE';
+            if (status !== 'ACTIVE') {
+              try { await signOut(auth); } catch {}
+              Alert.alert(
+                t('common.attention'),
+                'This account has been disabled. Please contact the clinic owner.'
+              );
+              return;
+            }
+            const clinicSnap = await getDoc(doc(db, 'clinics', clinicIdStr));
+            const clinicData = clinicSnap.exists() ? clinicSnap.data() : null;
+            const clinicType = clinicData?.clinicType || null;
+            const isSubscribed = clinicData ? hasActiveSubscription(clinicData) : false;
+            await setClinicAuth({
+              clinicId: clinicIdStr,
+              memberId: firebaseUid,
+              role: 'doctor',
+              status,
+            });
+            console.log('[auth] doctor logged in via real Firebase Auth');
+            if (!isSubscribed) {
+              Alert.alert(
+                t('common.attention'),
+                t('common.subscriptionInactive'),
+                [{ text: t('common.ok'), onPress: () => router.replace('/clinic/subscribe?reason=cancelled' as any) }]
+              );
+              return;
+            }
+            const homeRoute = getHomeRoute(clinicType);
+            router.replace(homeRoute as any);
+            return;
+          }
+        } catch (e) {
+          console.warn('[auth] doctor-claims path skipped (non-blocking):', e);
+          // fall through to signOut + Firestore-only fallback below
+        }
       }
       // Firebase Auth succeeded but no clinic matched — sign out and fall
       // through to doctor branch.
