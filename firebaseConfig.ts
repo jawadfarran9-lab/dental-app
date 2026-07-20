@@ -1,4 +1,5 @@
 // firebaseConfig.ts - Firebase client initialization
+import Constants from 'expo-constants';
 import { initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth } from "firebase/auth";
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
@@ -27,15 +28,30 @@ export const functions = getFunctions(app);
 const useEmulator =
   __DEV__ && process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
+function resolveEmulatorHost(): { host: string; source: string } {
+  const c: any = Constants;
+  const hostUri =
+    c?.expoConfig?.hostUri ||
+    c?.manifest2?.extra?.expoClient?.hostUri ||
+    c?.manifest?.debuggerHost;
+  const detected =
+    typeof hostUri === 'string' ? hostUri.split(':')[0] : undefined;
+  if (detected) return { host: detected, source: 'expo' };
+  if (process.env.EXPO_PUBLIC_EMULATOR_HOST)
+    return { host: process.env.EXPO_PUBLIC_EMULATOR_HOST, source: 'env' };
+  return { host: '127.0.0.1', source: 'default' };
+}
+
 if (useEmulator) {
-  const host = process.env.EXPO_PUBLIC_EMULATOR_HOST || '127.0.0.1';
+  const { host, source } = resolveEmulatorHost();
   connectAuthEmulator(auth, `http://${host}:9099`, { disableWarnings: true });
   connectFirestoreEmulator(db, host, 8080);
   connectStorageEmulator(storage, host, 9199);
   connectFunctionsEmulator(functions, host, 5001);
-  console.warn(`[firebase] EMULATOR MODE — host=${host}`);
+  console.warn(`[firebase] EMULATOR MODE — host=${host} (source=${source})`);
 } else {
   console.log('[firebase] production mode — project=dental-jawad');
 }
 
 export { app };
+
