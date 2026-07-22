@@ -5,9 +5,10 @@ import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { generateUniquePatientCode, reservePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
+import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
-import { isValidPhone, normalizePhone } from '@/utils/phone';
+import { isValidPhoneForCountry, normalizePhone, toStoredPhone } from '@/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -62,6 +63,7 @@ export default function CreatePatientScreen() {
   const [insuranceProvider, setInsuranceProvider] = useState('');
   const [insurancePolicyNumber, setInsurancePolicyNumber] = useState('');
   const [loading, setLoading] = useState(false);
+  const [clinicCountryCode, setClinicCountryCode] = useState<string | null>(null);
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
@@ -82,6 +84,25 @@ export default function CreatePatientScreen() {
     }
   }, [clinicUser, router]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!clinicId) {
+      setClinicCountryCode(null);
+      return;
+    }
+    (async () => {
+      try {
+        const data = await fetchClinicData(clinicId);
+        if (!cancelled) setClinicCountryCode(data?.countryCode || null);
+      } catch {
+        if (!cancelled) setClinicCountryCode(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clinicId]);
+
   const onSubmit = async () => {
     if (!name) {
       Alert.alert(t('common.validation'), t('createPatient.nameRequired'));
@@ -91,7 +112,7 @@ export default function CreatePatientScreen() {
       Alert.alert(t('common.validation'), t('createPatient.phoneRequired'));
       return;
     }
-    if (!isValidPhone(phone)) {
+    if (!isValidPhoneForCountry(phone, clinicCountryCode)) {
       Alert.alert(t('common.validation'), t('createPatient.phoneInvalid'));
       return;
     }
@@ -108,7 +129,7 @@ export default function CreatePatientScreen() {
         clinicId,
         code,
         name,
-        phone: normalizePhone(phone),
+        phone: toStoredPhone(phone, clinicCountryCode),
         email: email || null,
         notes: notes || null,
         dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : null,

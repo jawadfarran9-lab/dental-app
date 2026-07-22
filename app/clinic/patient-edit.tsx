@@ -6,8 +6,9 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { changePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
+import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { localizeNumber } from '@/utils/localization';
-import { isValidPhone, normalizePhone } from '@/utils/phone';
+import { isValidPhoneForCountry, normalizePhone, toStoredPhone } from '@/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
@@ -76,6 +77,26 @@ export default function PatientEditScreen() {
   const [archiving, setArchiving] = useState(false);
   const [changingCode, setChangingCode] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [clinicCountryCode, setClinicCountryCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!clinicId) {
+      setClinicCountryCode(null);
+      return;
+    }
+    (async () => {
+      try {
+        const data = await fetchClinicData(clinicId);
+        if (!cancelled) setClinicCountryCode(data?.countryCode || null);
+      } catch {
+        if (!cancelled) setClinicCountryCode(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [clinicId]);
 
   useEffect(() => {
     if (!clinicUser) {
@@ -183,7 +204,7 @@ export default function PatientEditScreen() {
       Alert.alert(t('common.validation'), t('createPatient.phoneRequired'));
       return;
     }
-    if (!isValidPhone(phone)) {
+    if (!isValidPhoneForCountry(phone, clinicCountryCode)) {
       Alert.alert(t('common.validation'), t('createPatient.phoneInvalid'));
       return;
     }
@@ -197,7 +218,7 @@ export default function PatientEditScreen() {
       const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
       await updateDoc(pRef, {
         name,
-        phone: normalizePhone(phone),
+        phone: toStoredPhone(phone, clinicCountryCode),
         email: email || null,
         notes: notes || null,
         dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : null,
