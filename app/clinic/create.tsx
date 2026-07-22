@@ -7,6 +7,7 @@ import { generateUniquePatientCode, reservePatientCode } from '@/src/services/pa
 import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
+import { isValidPhone, normalizePhone } from '@/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -86,6 +87,14 @@ export default function CreatePatientScreen() {
       Alert.alert(t('common.validation'), t('createPatient.nameRequired'));
       return;
     }
+    if (!normalizePhone(phone)) {
+      Alert.alert(t('common.validation'), t('createPatient.phoneRequired'));
+      return;
+    }
+    if (!isValidPhone(phone)) {
+      Alert.alert(t('common.validation'), t('createPatient.phoneInvalid'));
+      return;
+    }
     if (!clinicId) {
       Alert.alert(t('common.error'), t('createPatient.clinicIdError'));
       return;
@@ -99,7 +108,7 @@ export default function CreatePatientScreen() {
         clinicId,
         code,
         name,
-        phone: phone || null,
+        phone: normalizePhone(phone),
         email: email || null,
         notes: notes || null,
         dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : null,

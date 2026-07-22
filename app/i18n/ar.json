@@ -144,7 +144,7 @@
   "createPatient": {
     "title": "إنشاء مريض",
     "name": "اسم المريض *",
-    "phone": "الهاتف",
+    "phone": "Phone *",
     "email": "البريد الإلكتروني (اختياري)",
     "dateOfBirth": "تاريخ الميلاد",
     "gender": "الجنس",
@@ -158,6 +158,8 @@
     "notes": "ملاحظات",
     "create": "إنشاء مريض",
     "nameRequired": "اسم المريض مطلوب",
+    "phoneRequired": "Phone number is required",
+    "phoneInvalid": "Please enter a valid phone number",
     "clinicIdError": "معرف العيادة غير متوفر. يرجى تسجيل الدخول مرة أخرى.",
     "created": "تم إنشاء المريض",
     "code": "رمز المريض",

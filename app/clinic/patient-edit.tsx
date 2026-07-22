@@ -7,6 +7,7 @@ import { changePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
+import { isValidPhone, normalizePhone } from '@/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
@@ -178,6 +179,14 @@ export default function PatientEditScreen() {
       Alert.alert(t('common.validation'), t('createPatient.nameRequired'));
       return;
     }
+    if (!normalizePhone(phone)) {
+      Alert.alert(t('common.validation'), t('createPatient.phoneRequired'));
+      return;
+    }
+    if (!isValidPhone(phone)) {
+      Alert.alert(t('common.validation'), t('createPatient.phoneInvalid'));
+      return;
+    }
     if (!clinicId || !patientId) {
       Alert.alert(t('common.error'), t('createPatient.clinicIdError'));
       return;
@@ -188,7 +197,7 @@ export default function PatientEditScreen() {
       const pRef = doc(db, 'clinics', clinicId, 'patients', patientId as string);
       await updateDoc(pRef, {
         name,
-        phone: phone || null,
+        phone: normalizePhone(phone),
         email: email || null,
         notes: notes || null,
         dateOfBirth: dateOfBirth ? dateOfBirth.toISOString().split('T')[0] : null,

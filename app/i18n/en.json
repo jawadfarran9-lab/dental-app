@@ -123,7 +123,7 @@
   "createPatient": {
     "title": "Create Patient",
     "name": "Patient name *",
-    "phone": "Phone",
+    "phone": "Phone *",
     "email": "Email (optional, for notifications)",
     "dateOfBirth": "Date of Birth",
     "gender": "Gender",
@@ -137,6 +137,8 @@
     "notes": "Notes",
     "create": "Create Patient",
     "nameRequired": "Patient name is required",
+    "phoneRequired": "Phone number is required",
+    "phoneInvalid": "Please enter a valid phone number",
     "clinicIdError": "Clinic ID not available. Please log in again.",
     "created": "Patient Created",
     "code": "Patient code",
