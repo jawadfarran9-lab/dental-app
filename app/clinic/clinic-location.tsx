@@ -4,6 +4,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import StaticMapPreview from '@/src/components/StaticMapPreview';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -163,6 +164,8 @@ export default function ClinicLocationScreen() {
         },
         { merge: true }
       );
+      try { await ensureClinicPublished(clinicId); }
+      catch (e) { console.warn('[clinic-location] publish sync failed', e); }
       Alert.alert('Saved', 'Your clinic location has been updated.');
     } catch (err) {
       console.error('[CLINIC-LOCATION] save error', err);

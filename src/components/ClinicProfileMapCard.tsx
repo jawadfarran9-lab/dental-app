@@ -134,6 +134,7 @@ export default function ClinicProfileMapCard({
       >
         <View style={styles.mapContainer} pointerEvents="none">
           <RNMapView
+            key={`${latitude},${longitude}`}
             style={StyleSheet.absoluteFill}
             initialRegion={region}
             scrollEnabled={false}
