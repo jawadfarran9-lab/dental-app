@@ -53,9 +53,16 @@ export default function PatientView() {
       try {
         // Get stored patient ID from AsyncStorage
         const storedPatientId = await AsyncStorage.getItem('patientId');
-        
+        const storedClinicId = await AsyncStorage.getItem('patientClinicId');
+
         if (!storedPatientId) {
           // No session - redirect to login
+          router.replace('/patient' as any);
+          return;
+        }
+
+        if (!storedClinicId) {
+          // Session missing clinicId - can't build nested path; send back to login
           router.replace('/patient' as any);
           return;
         }
@@ -73,7 +80,7 @@ export default function PatientView() {
         const patientId = storedPatientId;
 
         // Load patient info
-        const pRef = doc(db, 'patients', patientId);
+        const pRef = doc(db, 'clinics', storedClinicId, 'patients', patientId);
         const pSnap = await getDoc(pRef);
         if (pSnap.exists()) {
           const patientData = { id: pSnap.id, ...(pSnap.data() as any) };

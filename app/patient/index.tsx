@@ -1,29 +1,28 @@
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { lookupPatientByCode } from '@/src/services/patientCodeService';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs, query, where } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Animated,
+    Easing,
+    KeyboardAvoidingView,
+    Platform,
+    SafeAreaView,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { db } from '@/firebaseConfig';
 
 /**
  * PATIENT LOGIN - PREMIUM REDESIGN
@@ -104,23 +103,19 @@ export default function PatientLogin() {
 
     setLoading(true);
     try {
-      // Query Firestore for patient with this code (as string)
-      const q = query(collection(db, 'patients'), where('code', '==', trimmed));
-      const snapshot = await getDocs(q);
+      const result = await lookupPatientByCode(trimmed);
 
-      if (snapshot.empty) {
+      if (!result) {
         Alert.alert(t('common.error'), t('patient.codeNotFound'));
         setLoading(false);
         return;
       }
 
-      // Get the first (should be only) matching patient
-      const patientDoc = snapshot.docs[0];
-      const patientId = patientDoc.id;
+      const { clinicId, patientId } = result;
 
       // PHASE F: Update global auth state via AuthContext
-      // This will store patientId and clear clinicId
-      await setPatientAuth(patientId);
+      // This will store patientId and clinicId
+      await setPatientAuth(patientId, clinicId);
 
       // Navigate to patient detail screen
       router.push(`/patient/${patientId}` as any);
