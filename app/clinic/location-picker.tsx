@@ -66,6 +66,7 @@ export default function LocationPickerScreen() {
   const [initialRegion, setInitialRegion] = useState<Region | null>(null);
   const [center, setCenter] = useState<{ lat: number; lng: number } | null>(null);
   const [address, setAddress] = useState<string>('');
+  const [pinCountryCode, setPinCountryCode] = useState<string | null>(null);
   const [resolving, setResolving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -141,11 +142,14 @@ export default function LocationPickerScreen() {
         const country = r.isoCountryCode || r.country || '';
         const parts = [name, city, country].filter(Boolean);
         setAddress(parts.length > 0 ? parts.join(', ') : `${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        setPinCountryCode(r?.isoCountryCode ? String(r.isoCountryCode).toUpperCase() : null);
       } else {
         setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        setPinCountryCode(null);
       }
     } catch {
       setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+      setPinCountryCode(null);
     } finally {
       setResolving(false);
     }
@@ -177,10 +181,10 @@ export default function LocationPickerScreen() {
     if (!center) return;
     await AsyncStorage.setItem(
       'signupDraftLocation',
-      JSON.stringify({ lat: center.lat, lng: center.lng, address }),
+      JSON.stringify({ lat: center.lat, lng: center.lng, address, countryCode: pinCountryCode }),
     );
     router.back();
-  }, [center, address, router]);
+  }, [center, address, pinCountryCode, router]);
 
   // ─── Loading state ───
   if (loading || !initialRegion) {

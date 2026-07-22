@@ -91,7 +91,7 @@ export default function ClinicLocationScreen() {
         try {
           const raw = await AsyncStorage.getItem('signupDraftLocation');
           if (raw) {
-            const parsed = JSON.parse(raw) as Partial<ClinicLocation>;
+            const parsed = JSON.parse(raw) as Partial<ClinicLocation> & { countryCode?: string };
             if (
               typeof parsed.lat === 'number' &&
               typeof parsed.lng === 'number'
@@ -102,6 +102,7 @@ export default function ClinicLocationScreen() {
                 address: parsed.address ?? '',
               });
             }
+            if (parsed.countryCode) setCountryCode(String(parsed.countryCode).toUpperCase());
             await AsyncStorage.removeItem('signupDraftLocation');
           }
         } catch (err) {
@@ -135,6 +136,14 @@ export default function ClinicLocationScreen() {
     if (saving) return;
     if (!clinicId) {
       Alert.alert("Couldn't save", 'Missing clinic session. Please reopen the page.');
+      return;
+    }
+    if (!location?.lat || !location?.lng) {
+      Alert.alert('Location Required', 'Please select your clinic location before saving.');
+      return;
+    }
+    if (!countryCode) {
+      Alert.alert('Country Required', 'Please select the clinic country before saving.');
       return;
     }
     try {

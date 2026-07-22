@@ -148,10 +148,11 @@ export default function ClinicSignup() {
         try {
           const raw = await AsyncStorage.getItem('signupDraftLocation');
           if (raw) {
-            const loc = JSON.parse(raw) as { lat: number; lng: number; address: string };
+            const loc = JSON.parse(raw) as { lat: number; lng: number; address: string; countryCode?: string };
             if (loc.lat && loc.lng) {
               setClinicLocation(loc);
             }
+            if (loc.countryCode) setCountry(String(loc.countryCode).toUpperCase());
             await AsyncStorage.removeItem('signupDraftLocation');
           }
         } catch (e) {
@@ -376,7 +377,7 @@ export default function ClinicSignup() {
 
     // For FREE subscriptions: Only core fields + location required (NO payment method needed)
     if (isFreeSubscription) {
-      const isValid = Boolean(coreFieldsOk && locationOk && !loading);
+      const isValid = Boolean(coreFieldsOk && locationOk && !!country && !loading);
       return isValid;
     }
     
@@ -397,7 +398,7 @@ export default function ClinicSignup() {
       paymentOk = true;
     }
     
-    const isValid = Boolean(coreFieldsOk && locationOk && paymentMethodSelected && paymentOk && !loading);
+    const isValid = Boolean(coreFieldsOk && locationOk && !!country && paymentMethodSelected && paymentOk && !loading);
     
     
     return isValid;
@@ -446,6 +447,12 @@ export default function ClinicSignup() {
         'Location Required',
         'Please select your clinic location before continuing.'
       );
+    }
+
+    // Country is required
+    if (!country) {
+      setCountryError('Please select the clinic country');
+      return Alert.alert('Country Required', 'Please select the clinic country before continuing.');
     }
 
     // Working hours: at least one day must be enabled
