@@ -83,7 +83,10 @@
     "enterCode": "Enter your patient code",
     "login": "Patient Login",
     "code": "Patient Code",
-    "codeNotFound": "Patient code not found. Please check the code and try again."
+    "codeNotFound": "Patient code not found. Please check the code and try again.",
+    "phone": "Phone",
+    "enterPhone": "Please enter your phone number",
+    "codePhoneMismatch": "Code or phone number is incorrect"
   },
   "chat": {
     "placeholder": "Write a message...",

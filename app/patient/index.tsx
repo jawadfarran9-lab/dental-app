@@ -2,9 +2,13 @@ import PremiumGradientBackground from '@/src/components/PremiumGradientBackgroun
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { lookupPatientByCode } from '@/src/services/patientCodeService';
+import { fetchClinicData } from '@/src/utils/clinicDataUtils';
+import { toStoredPhone } from '@/src/utils/phone';
+import { db } from '@/firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -35,6 +39,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function PatientLogin() {
   const [code, setCode] = useState('');
+  const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
   const { t } = useTranslation();
@@ -46,6 +51,7 @@ export default function PatientLogin() {
   const entranceAnim = useRef(new Animated.Value(0)).current;
   const badgeFloat = useRef(new Animated.Value(0)).current;
   const codeFocusAnim = useRef(new Animated.Value(0)).current;
+  const phoneFocusAnim = useRef(new Animated.Value(0)).current;
 
   const animateFocus = (v: Animated.Value, to: number) =>
     Animated.timing(v, {
@@ -100,6 +106,7 @@ export default function PatientLogin() {
   const onLogin = async () => {
     const trimmed = code.trim();
     if (!trimmed) return Alert.alert(t('common.validation'), t('patient.enterCode'));
+    if (!phone.trim()) return Alert.alert(t('common.validation'), t('patient.enterPhone'));
 
     setLoading(true);
     try {
@@ -112,6 +119,16 @@ export default function PatientLogin() {
       }
 
       const { clinicId, patientId } = result;
+
+      const clinicData = await fetchClinicData(clinicId);
+      const countryCode = clinicData?.countryCode ?? null;
+      const patientSnap = await getDoc(doc(db, 'clinics', clinicId, 'patients', patientId));
+      const storedPhone = patientSnap.exists() ? String(patientSnap.data().phone ?? '') : '';
+      if (toStoredPhone(phone.trim(), countryCode) !== toStoredPhone(storedPhone, countryCode)) {
+        Alert.alert(t('common.error'), t('patient.codePhoneMismatch'));
+        setLoading(false);
+        return;
+      }
 
       // PHASE F: Update global auth state via AuthContext
       // This will store patientId and clinicId
@@ -211,6 +228,26 @@ export default function PatientLogin() {
                   },
                 ]}
               >
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
+                  {t('patient.phone')}
+                </Text>
+
+                <View style={[styles.inputRow, { backgroundColor: colors.inputBackground, borderColor: colors.inputBorder }]}>
+                  <Ionicons name="call-outline" size={20} color={colors.textSecondary} />
+                  <TextInput
+                    style={[styles.inputFlex, { color: colors.textPrimary }]}
+                    placeholder={t('patient.phone')}
+                    placeholderTextColor={colors.inputPlaceholder}
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                    editable={!loading}
+                    onFocus={() => animateFocus(phoneFocusAnim, 1)}
+                    onBlur={() => animateFocus(phoneFocusAnim, 0)}
+                  />
+                  <Animated.View pointerEvents="none" style={[styles.focusRing, { opacity: phoneFocusAnim }]} />
+                </View>
+
                 <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>
                   {t('patient.enterCode')}
                 </Text>

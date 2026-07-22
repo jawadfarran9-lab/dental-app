@@ -104,7 +104,10 @@
     "enterCode": "أدخل رمز المريض الخاص بك",
     "login": "تسجيل دخول المريض",
     "code": "رمز المريض",
-    "codeNotFound": "لم يتم العثور على رمز المريض. يرجى التحقق من الرمز والمحاولة مرة أخرى."
+    "codeNotFound": "لم يتم العثور على رمز المريض. يرجى التحقق من الرمز والمحاولة مرة أخرى.",
+    "phone": "Phone",
+    "enterPhone": "Please enter your phone number",
+    "codePhoneMismatch": "Code or phone number is incorrect"
   },
   "chat": {
     "placeholder": "اكتب رسالة...",
