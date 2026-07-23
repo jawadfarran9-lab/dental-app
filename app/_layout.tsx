@@ -79,6 +79,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/clinic-settings" options={{ headerShown: false }} />
       <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: true }} />
       <Stack.Screen name="patient/conversation" options={{ headerShown: false }} />
+      <Stack.Screen name="patient/your-info" options={{ headerShown: false }} />
 
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
