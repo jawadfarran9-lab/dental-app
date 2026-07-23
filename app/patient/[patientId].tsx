@@ -152,7 +152,7 @@ export default function PatientView() {
               <Ionicons name="log-out-outline" size={18} color={colors.textSecondary} />
               <Text style={[styles.logoutText, { color: colors.textSecondary }]}>{t('patient.logout')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/patient/messages' as any)} activeOpacity={0.85}>
+            <TouchableOpacity onPress={() => router.push('/patient/conversation' as any)} activeOpacity={0.85}>
               <LinearGradient
                 colors={['#54ACFF', '#1E6FD9']}
                 start={{ x: 0, y: 0 }}
