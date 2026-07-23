@@ -1,34 +1,38 @@
-import ChatBubble from '@/components/ChatBubble';
-import TabHeader from '@/components/TabHeader';
 import { db } from '@/firebaseConfig';
-import i18n from '@/i18n';
-import { getHeroImage } from '@/src/constants/heroImages';
+import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
-import { logSilentFailure } from '@/src/utils/silentFailure';
-import { markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { localizeDate, localizeNumber } from '@/utils/localization';
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { addDoc, collection, doc, getDoc, onSnapshot, orderBy, query, writeBatch } from 'firebase/firestore';
-import { useEffect, useRef, useState } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Alert, Dimensions, FlatList, Image, ImageBackground, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Message = {
-  id?: string;
-  from: 'patient' | 'clinic';
-  text: string;
-  createdAt?: any;
-  senderName?: string;
-  senderRole?: string;
-  type?: 'image';
-  imageUrl?: string;
-  imageWidth?: number;
-  imageHeight?: number;
-  reactionClinic?: string;
-  reactionPatient?: string;
-  seenAt?: number;
+const toMillis = (v: any): number | null => {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  if (typeof v?.toMillis === 'function') return v.toMillis();
+  if (typeof v?.toDate === 'function') return v.toDate().getTime();
+  if (typeof v?.seconds === 'number') return v.seconds * 1000;
+  return null;
+};
+
+const formatTime = (v: any): string => {
+  const ms = toMillis(v);
+  return ms == null ? '' : new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
 export default function PatientView() {
@@ -36,40 +40,33 @@ export default function PatientView() {
   const { patientId: routePatientId } = useLocalSearchParams();
   const [patient, setPatient] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
-  const [msgText, setMsgText] = useState('');
   const [authenticatedPatientId, setAuthenticatedPatientId] = useState<string | null>(null);
-  const [tab, setTab] = useState<'timeline' | 'chat'>('timeline');
-    const [clinicName, setClinicName] = useState<string>(''); // PHASE G: Clinic branding
-  const flatRef = useRef<FlatList>(null);
+  const [clinicId, setClinicId] = useState<string | null>(null);
+  const [clinicName, setClinicName] = useState<string>('');
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
-  const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
   const router = useRouter();
 
   useEffect(() => {
     const loadPatientSession = async () => {
       try {
-        // Get stored patient ID from AsyncStorage
         const storedPatientId = await AsyncStorage.getItem('patientId');
         const storedClinicId = await AsyncStorage.getItem('patientClinicId');
 
         if (!storedPatientId) {
-          // No session - redirect to login
           router.replace('/patient' as any);
           return;
         }
 
         if (!storedClinicId) {
-          // Session missing clinicId - can't build nested path; send back to login
           router.replace('/patient' as any);
           return;
         }
 
         setAuthenticatedPatientId(storedPatientId);
+        setClinicId(storedClinicId);
 
-        // SECURITY: Ensure the authenticated patient can only access their own data
         if (routePatientId && routePatientId !== storedPatientId) {
           Alert.alert(t('common.error'), t('patient.accessDenied'));
           await AsyncStorage.removeItem('patientId');
@@ -79,14 +76,12 @@ export default function PatientView() {
 
         const patientId = storedPatientId;
 
-        // Load patient info
         const pRef = doc(db, 'clinics', storedClinicId, 'patients', patientId);
         const pSnap = await getDoc(pRef);
         if (pSnap.exists()) {
           const patientData = { id: pSnap.id, ...(pSnap.data() as any) };
           setPatient(patientData);
-          
-          // PHASE G: Fetch clinic name for branding
+
           if (patientData.clinicId) {
             try {
               const clinicRef = doc(db, 'clinics', patientData.clinicId);
@@ -101,25 +96,7 @@ export default function PatientView() {
           }
         }
 
-        // Subscribe to sessions
-        const sessionsQ = query(collection(db, `patients/${patientId}/sessions`), orderBy('date', 'desc'));
-        const unsubSessions = onSnapshot(sessionsQ, (snap) => {
-          setSessions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-        });
-
-        // Subscribe to messages
-        const messagesQ = query(collection(db, `patients/${patientId}/messages`), orderBy('createdAt', 'asc'));
-        const unsubMessages = onSnapshot(messagesQ, (snap) => {
-          setMessages(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-          setTimeout(() => flatRef.current?.scrollToEnd({ animated: true }), 200);
-        });
-
         setLoading(false);
-
-        return () => {
-          unsubSessions();
-          unsubMessages();
-        };
       } catch (err) {
         console.error('patient view error', err);
         setLoading(false);
@@ -127,48 +104,24 @@ export default function PatientView() {
     };
 
     loadPatientSession();
-  }, [router, routePatientId]);
+  }, [router, routePatientId, t]);
 
-  // Mark thread as read when chat tab is opened
   useEffect(() => {
-    if (tab === 'chat' && authenticatedPatientId && patient) {
-      markThreadReadForPatient(patient.clinicId, authenticatedPatientId);
-    }
-  }, [tab, authenticatedPatientId, patient]);
-
-  // Stamp a real seenAt on clinic messages the patient is currently viewing (first-seen wins).
-  useEffect(() => {
-    if (tab !== 'chat' || !authenticatedPatientId) return;
-    const unseen = messages.filter((m) => m.from === 'clinic' && !m.seenAt);
-    if (unseen.length === 0) return;
-    const batch = writeBatch(db);
-    unseen.forEach((m) => {
-      batch.update(doc(db, `patients/${authenticatedPatientId}/messages/${m.id}`), { seenAt: Date.now() });
+    if (!clinicId || !authenticatedPatientId) return;
+    const sessionsQ = query(
+      collection(db, `clinics/${clinicId}/patients/${authenticatedPatientId}/sessions`),
+      orderBy('date', 'desc'),
+    );
+    const unsub = onSnapshot(sessionsQ, (snap) => {
+      setSessions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
     });
-    batch.commit().catch((e) => logSilentFailure('patientDetail.markMessagesSeen', e));
-  }, [tab, messages, authenticatedPatientId]);
-
-  const sendMessage = async () => {
-    const text = msgText.trim();
-    if (!text || !authenticatedPatientId || !patient) return;
-    setMsgText('');
-    
-    await addDoc(collection(db, `patients/${authenticatedPatientId}/messages`), {
-      from: 'patient',
-      text,
-      senderName: patient.name || t('chat.you'),
-      createdAt: Date.now(),
-    });
-
-    // Update thread with message (need clinicId from patient doc)
-    if (patient.clinicId) {
-      await updateThreadOnMessage(patient.clinicId, authenticatedPatientId, patient.name, text, 'patient');
-    }
-  };
+    return () => unsub();
+  }, [clinicId, authenticatedPatientId]);
 
   const onLogout = async () => {
     try {
       await AsyncStorage.removeItem('patientId');
+      await AsyncStorage.removeItem('patientClinicId');
       router.replace('/patient' as any);
     } catch (err) {
       console.error('logout error', err);
@@ -184,202 +137,123 @@ export default function PatientView() {
   }
 
   return (
-    <KeyboardAvoidingView 
-      style={{ flex: 1 }} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
-    >
-      <View style={[styles.container, { backgroundColor: colors.background }]}>
-        <ImageBackground
-          source={{ uri: getHeroImage('patient', isDark) }}
-          style={styles.hero}
-          imageStyle={styles.heroImage}
-        >
-          <View style={[styles.heroOverlay, { backgroundColor: colors.bannerOverlay }]}> 
-            <Text style={[styles.heroTitle, { color: colors.textPrimary }]}>{patient?.name || ''}</Text>
-            <Text style={[styles.heroSubtitle, { color: colors.textPrimary }]}>
-              {t('patients.code')}{localizeNumber(patient?.code)}
-            </Text>
-            {clinicName ? <Text style={[styles.heroSubtitle, { color: colors.textPrimary }]}>{clinicName}</Text> : null}
-          </View>
-        </ImageBackground>
-        <View style={styles.headerRow}>
-          <View style={{ flex: 1 }}>
-                        {/* PHASE G: Display clinic name if available */}
-                        {clinicName && (
-                          <Text style={[styles.clinicName, { color: colors.accentBlue }]}>{clinicName}</Text>
-                        )}
-            <Text style={[styles.name, { color: colors.textPrimary }]}>{patient?.name}</Text>
-            <Text style={[styles.sub, { color: colors.textSecondary }]}>{t('patients.code')}{localizeNumber(patient?.code)}</Text>
-            {patient?.createdAt && (
-              <Text style={[styles.createdAt, { color: colors.textSecondary }]}>
-                {t('patients.created')}{' '}
-                {localizeDate(patient.createdAt)}
-              </Text>
-            )}
-          </View>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity
-              style={[styles.messagesBtn, { backgroundColor: colors.buttonBackground }]}
-              onPress={() => router.push('/patient/messages' as any)}
-            >
-              <Text style={[styles.messagesText, { color: colors.buttonText }]}>{t('tabs.messages')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.messagesBtn, { backgroundColor: colors.buttonBackground }]}
-              onPress={() => router.push(`/patient/files?patientId=${authenticatedPatientId}` as any)}
-            >
-              <Text style={[styles.messagesText, { color: colors.buttonText }]}>{t('patient.files', 'الملفات')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.logoutBtn, { backgroundColor: colors.buttonSecondaryBackground, borderColor: colors.cardBorder }]}
-              onPress={onLogout}
-            >
-              <Text style={[styles.logoutText, { color: colors.buttonSecondaryText }]}>{t('patient.logout')}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <Stack.Screen options={{ headerShown: false }} />
+      <PremiumGradientBackground isDark={isDark} />
+      <SafeAreaView style={{ flex: 1 }}>
+        <View style={styles.screen}>
+          <Text style={[styles.pageTitle, { color: colors.textPrimary }]}>Your Treatment</Text>
 
-        <View style={{ flexDirection: 'row', marginVertical: 8 }}>
-          <TabHeader
-            tabs={[
-              { key: 'timeline', label: t('tabs.timeline') },
-              { key: 'chat', label: t('tabs.chatClinic') },
-            ]}
-            activeTab={tab}
-            onTabChange={(key: string) => setTab(key as 'timeline' | 'chat')}
-          />
-        </View>
-        {tab === 'timeline' ? (
+          <View style={styles.topbar}>
+            <TouchableOpacity
+              onPress={onLogout}
+              style={[styles.logoutBtn, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
+              <Ionicons name="log-out-outline" size={18} color={colors.textSecondary} />
+              <Text style={[styles.logoutText, { color: colors.textSecondary }]}>{t('patient.logout')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => router.push('/patient/messages' as any)} activeOpacity={0.85}>
+              <LinearGradient
+                colors={['#54ACFF', '#1E6FD9']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.messagesBtn}
+              >
+                <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
+                <Text style={styles.messagesText}>{t('tabs.messages')}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.idCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.name, { color: colors.textPrimary }]}>{patient?.name}</Text>
+              <Ionicons name="sparkles" size={16} color={colors.accentBlue} />
+            </View>
+            {clinicName ? (
+              <View style={styles.clinicChip}>
+                <Ionicons name="business-outline" size={13} color={colors.accentBlue} />
+                <Text style={[styles.clinicChipText, { color: colors.accentBlue }]}>{clinicName}</Text>
+              </View>
+            ) : null}
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaText, { color: colors.textSecondary }]}>
+                {t('patients.code')}
+                <Text style={[styles.metaStrong, { color: colors.textPrimary }]}>{localizeNumber(patient?.code)}</Text>
+              </Text>
+              <Text style={[styles.metaMuted, { color: colors.textTertiary }]}>
+                {'  ·  '}
+                {t('patient.since', 'Patient since')} {localizeDate(patient?.createdAt)} · {formatTime(patient?.createdAt)}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.secHead}>
+            <Text style={[styles.secTitle, { color: colors.textPrimary }]}>{t('patient.sessions', 'Sessions')}</Text>
+            <Text style={[styles.secCount, { color: colors.textSecondary }]}>{localizeNumber(sessions.length)}</Text>
+          </View>
+
           <FlatList
             data={sessions}
-            keyExtractor={(i) => i.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.sessionGridCard,
-                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
-                ]}
-                onPress={() => {
-                  // Navigate to session details/image viewer
-                  if (item.images && item.images.length > 0) {
-                    router.push(`/patient/${authenticatedPatientId}?tab=image&sessionId=${item.id}` as any);
-                  }
-                }}
-              >
-                {/* Session Image */}
-                {item.images && item.images.length > 0 ? (
-                  <Image
-                    source={{ uri: item.images[0] }}
-                    style={styles.sessionGridImage}
-                  />
-                ) : (
-                  <View style={[styles.sessionGridImage, { backgroundColor: colors.cardBorder }]}>
-                    <Text style={{ color: colors.textSecondary }}>📷</Text>
-                  </View>
-                )}
-
-                {/* Session Info */}
-                <View style={styles.sessionGridInfo}>
-                  <Text style={[styles.sessionGridType, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {item.type}
-                  </Text>
-                  {item.date && (
-                    <Text style={[styles.sessionGridDate, { color: colors.textSecondary }]} numberOfLines={1}>
-                      {localizeDate(item.date)}
-                    </Text>
-                  )}
+            keyExtractor={(item: any) => item.id}
+            contentContainerStyle={{ paddingBottom: 28 }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <Text style={[styles.empty, { color: colors.textTertiary }]}>{t('patient.noSessions')}</Text>
+            }
+            renderItem={({ item }: any) => (
+              <View style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+                <View style={styles.sessionBar} />
+                <View style={styles.sessionIcon}>
+                  <Ionicons name="document-text-outline" size={20} color={colors.accentBlue} />
                 </View>
-              </TouchableOpacity>
+                <View style={styles.sessionMid}>
+                  <Text style={[styles.sessionType, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {item.title}
+                  </Text>
+                </View>
+                <View style={styles.sessionRight}>
+                  <Text style={[styles.sessionDate, { color: colors.textSecondary }]}>{localizeDate(item.date)}</Text>
+                  <Text style={[styles.sessionTime, { color: colors.textTertiary }]}>{formatTime(item.date)}</Text>
+                </View>
+              </View>
             )}
-            numColumns={2}
-            ListEmptyComponent={<Text style={[styles.muted, { color: colors.textSecondary }]}>{t('patient.noSessions')}</Text>}
-            scrollEnabled={false}
-            style={{ maxHeight: '100%' }}
-            columnWrapperStyle={styles.gridRow}
           />
-        ) : (
-          <>
-            <FlatList
-              ref={flatRef}
-              data={messages}
-              keyExtractor={(i) => i.id!}
-              renderItem={({ item }) => (
-                <ChatBubble
-                  text={item.text}
-                  isSender={item.from === 'patient'}
-                  senderType={item.from}
-                  senderName={item.senderName}
-                  senderRole={item.senderRole}
-                  createdAt={item.createdAt}
-                  imageUrl={item.imageUrl}
-                  imageWidth={item.imageWidth}
-                  imageHeight={item.imageHeight}
-                  reactionClinic={item.reactionClinic}
-                  reactionPatient={item.reactionPatient}
-                />
-              )}
-              style={{ flex: 1, marginVertical: 8 }}
-            />
-            <View style={styles.chatRow}>
-              <TextInput
-                value={msgText}
-                onChangeText={setMsgText}
-                placeholder={t('chat.placeholder')}
-                style={[
-                  styles.chatInput,
-                  { borderColor: colors.inputBorder, backgroundColor: colors.inputBackground, color: colors.textPrimary },
-                  isRTL && { textAlign: 'right', writingDirection: 'rtl' },
-                ]}
-                editable={!!authenticatedPatientId}
-              />
-              <TouchableOpacity style={[styles.sendBtn, { backgroundColor: colors.buttonBackground }]} onPress={sendMessage}>
-                <Text style={{ color: colors.buttonText, fontWeight: '600' }}>{t('chat.send')}</Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        )}
-      </View>
-    </KeyboardAvoidingView>
+        </View>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16 },
+  container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  hero: { width: '100%', height: Dimensions.get('window').height * 0.45, marginBottom: 16, borderRadius: 16, overflow: 'hidden' },
-  heroImage: { resizeMode: 'cover' },
-  heroOverlay: { flex: 1, justifyContent: 'flex-end', padding: 16 },
-  heroTitle: { fontSize: 24, fontWeight: '800' },
-  heroSubtitle: { fontSize: 14, fontWeight: '600', marginTop: 2 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  name: { fontSize: 22, fontWeight: '700' },
-  sub: { },
-  createdAt: { fontSize: 13, marginTop: 2 },
-  clinicName: { fontSize: 14, fontWeight: '600', marginBottom: 4 },
-  actionsRow: { flexDirection: 'row', gap: 8 },
-  messagesBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6 },
-  messagesText: { fontWeight: '600' },
-  logoutBtn: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, borderWidth: 1 },
-  logoutText: { fontWeight: '600' },
-  sessionCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 12, shadowOpacity: 0.05, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2 },
-  sessionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  sessionType: { fontSize: 15, fontWeight: '700' },
-  sessionDate: { fontSize: 12, fontWeight: '600' },
-  sessionBody: { marginBottom: 8 },
-  sessionLabel: { fontSize: 12, fontWeight: '600', marginBottom: 2 },
-  sessionText: { fontSize: 13, lineHeight: 19 },
-  thumb: { width: 120, height: 80, marginRight: 8, borderRadius: 6 },
-  // Grid card styles (Instagram-like)
-  gridRow: { justifyContent: 'space-between', gap: 8, marginBottom: 8 },
-  sessionGridCard: { flex: 1, borderRadius: 12, overflow: 'hidden', borderWidth: 1, minHeight: 180 },
-  sessionGridImage: { width: '100%', height: 120, resizeMode: 'cover', justifyContent: 'center', alignItems: 'center' },
-  sessionGridInfo: { padding: 10 },
-  sessionGridType: { fontSize: 14, fontWeight: '700', marginBottom: 4 },
-  sessionGridDate: { fontSize: 12, fontWeight: '600' },
-  muted: {},
-  light: {},
-  chatRow: { flexDirection: 'row', alignItems: 'center' },
-  chatInput: { flex: 1, borderWidth: 1, padding: 8, borderRadius: 8 },
-  sendBtn: { padding: 10, marginLeft: 8, borderRadius: 8 },
+  screen: { flex: 1, paddingHorizontal: 16, paddingTop: 8 },
+  pageTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4, marginBottom: 12, paddingHorizontal: 2 },
+  topbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 16 },
+  logoutText: { fontWeight: '700', fontSize: 15 },
+  messagesBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 18 },
+  messagesText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  idCard: { borderWidth: 1, borderRadius: 18, padding: 16 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  name: { fontSize: 21, fontWeight: '800', letterSpacing: -0.4 },
+  clinicChip: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', marginTop: 8, backgroundColor: 'rgba(61,158,255,0.08)', paddingVertical: 5, paddingHorizontal: 11, borderRadius: 20 },
+  clinicChipText: { fontWeight: '700', fontSize: 12.5 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginTop: 11 },
+  metaText: { fontSize: 12, fontWeight: '600' },
+  metaStrong: { fontWeight: '800' },
+  metaMuted: { fontSize: 12, fontWeight: '700' },
+  secHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', marginTop: 20, marginBottom: 12, paddingHorizontal: 2 },
+  secTitle: { fontSize: 19, fontWeight: '800', letterSpacing: -0.3 },
+  secCount: { fontSize: 12.5, fontWeight: '700' },
+  empty: { textAlign: 'center', marginTop: 30, fontSize: 14, fontWeight: '600' },
+  sessionCard: { flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1, borderRadius: 16, padding: 14, paddingLeft: 12, marginBottom: 11 },
+  sessionBar: { width: 5, alignSelf: 'stretch', borderRadius: 6, backgroundColor: '#3D9EFF' },
+  sessionIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(61,158,255,0.08)', alignItems: 'center', justifyContent: 'center' },
+  sessionMid: { flex: 1, minWidth: 0 },
+  sessionType: { fontSize: 15.5, fontWeight: '800', letterSpacing: -0.2 },
+  sessionRight: { alignItems: 'flex-end' },
+  sessionDate: { fontSize: 13, fontWeight: '800' },
+  sessionTime: { fontSize: 12, fontWeight: '700', marginTop: 2 },
 });
