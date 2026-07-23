@@ -72,7 +72,6 @@ function RootNavigator() {
       />
       <Stack.Screen name="story-viewer" options={{ headerShown: false, animation: 'fade' }} />
       <Stack.Screen name="patient/index" options={{ title: 'Patient Login', headerShown: false }} />
-      <Stack.Screen name="patient/files" options={{ title: 'My Files', headerShown: true }} />
       <Stack.Screen name="patient/profile" options={{ title: 'Clinic Profile', headerShown: true }} />
       <Stack.Screen name="clinic/confirm-subscription" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/renew-subscribe" options={{ headerShown: false }} />
