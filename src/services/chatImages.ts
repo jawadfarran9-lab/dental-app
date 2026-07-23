@@ -9,8 +9,19 @@ export async function sendImageMessage(params: {
   patientId: string;
   patientName: string;
   localUri: string;
+  from?: 'clinic' | 'patient';
+  senderName?: string;
+  senderType?: 'clinic' | 'patient';
 }): Promise<void> {
-  const { clinicId, patientId, patientName, localUri } = params;
+  const {
+    clinicId,
+    patientId,
+    patientName,
+    localUri,
+    from = 'clinic',
+    senderName = 'Clinic',
+    senderType = 'clinic',
+  } = params;
   const compressed = await compressImage(localUri, { maxWidth: 1600, quality: 0.7 });
   const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.jpg`;
@@ -20,15 +31,15 @@ export async function sendImageMessage(params: {
   });
   const imageUrl = await getDownloadURL(snap.ref);
   await addDoc(collection(db, `patients/${patientId}/messages`), {
-    from: 'clinic',
+    from,
     text: '',
     type: 'image',
     imageUrl,
     imageWidth: compressed.width,
     imageHeight: compressed.height,
     storagePath,
-    senderName: 'Clinic',
+    senderName,
     createdAt: Date.now(),
   });
-  await updateThreadOnMessage(clinicId, patientId, patientName, 'Photo', 'clinic');
+  await updateThreadOnMessage(clinicId, patientId, patientName, 'Photo', senderType);
 }

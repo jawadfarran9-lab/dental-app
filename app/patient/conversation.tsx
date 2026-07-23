@@ -1,6 +1,7 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
+import { sendImageMessage } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/threadsHelper';
@@ -9,6 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
@@ -136,6 +138,8 @@ export default function ClinicConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [attachVisible, setAttachVisible] = useState(false);
+  const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -540,6 +544,46 @@ export default function ClinicConversationScreen() {
   const handleBack = () => {
     if (router.canGoBack()) router.back();
     else router.replace('/patient' as any);
+  };
+
+  const openAttach = () => setAttachVisible(true);
+  const closeAttach = () => setAttachVisible(false);
+
+  const handlePickAndSendImage = async () => {
+    if (!clinicId || !patientId) {
+      Alert.alert('Missing info', 'Cannot send right now.');
+      return;
+    }
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Please allow photo access to send an image.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 1,
+      });
+      if (result.canceled) return;
+      const uri = result.assets?.[0]?.uri;
+      if (!uri) return;
+      setAttachBusy(true);
+      await sendImageMessage({
+        clinicId,
+        patientId,
+        patientName: patientName ?? '',
+        localUri: uri,
+        from: 'patient',
+        senderName: 'Patient',
+        senderType: 'patient',
+      });
+    } catch (err) {
+      console.error('[patient-conversation] pick/send image error', err);
+      Alert.alert('Upload failed', 'Please try again.');
+    } finally {
+      setAttachBusy(false);
+    }
   };
 
   const handleSend = async () => {
@@ -1015,7 +1059,15 @@ export default function ClinicConversationScreen() {
               >
                 <Ionicons name="close" size={24} color={attachBtnIcon} />
               </Pressable>
-            ) : null}
+            ) : (
+              <Pressable
+                onPress={openAttach}
+                style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
+                hitSlop={6}
+              >
+                <Ionicons name="add" size={24} color={attachBtnIcon} />
+              </Pressable>
+            )}
             <View
               style={[
                 styles.input,
@@ -1062,6 +1114,98 @@ export default function ClinicConversationScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={attachVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={closeAttach}
+      >
+        <Pressable style={styles.attachBackdrop} onPress={closeAttach} />
+        <View
+          style={[
+            styles.attachSheet,
+            { paddingBottom: insets.bottom + 20 },
+          ]}
+        >
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.attachHandle} />
+          <View style={[styles.attachHead, { borderBottomColor: sheetDivider }]}>
+            <Text style={[styles.attachTitle, { color: textPrimary }]}>
+              Send attachment
+            </Text>
+          </View>
+          <View style={styles.attachOpts}>
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {
+                closeAttach();
+                setTimeout(handlePickAndSendImage, 250);
+              }}
+            >
+              <LinearGradient
+                colors={['#4DA3FF', '#1668E3']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="image" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Photo
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {
+                closeAttach();
+                router.push('/patient/chat-camera' as any);
+              }}
+            >
+              <LinearGradient
+                colors={['#A989FF', '#7C3AED']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="camera" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Camera
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={[
+                styles.attachOpt,
+                { backgroundColor: tileBg, borderColor: tileBorder },
+              ]}
+              onPress={() => {}}
+            >
+              <LinearGradient
+                colors={['#34DDB0', '#0EA37A']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.attachOptIco}
+              >
+                <Ionicons name="document" size={26} color="#fff" />
+              </LinearGradient>
+              <Text style={[styles.attachOptLabel, { color: textPrimary }]}>
+                Files
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={actionMenuOpen}
