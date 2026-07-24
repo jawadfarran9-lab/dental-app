@@ -8,17 +8,17 @@ import { useFocusEffect, useRouter } from 'expo-router';
 import { memo, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Animated,
-  Dimensions,
-  Easing,
-  Platform,
-  SafeAreaView,
-  StyleSheet,
-  Text,
-  TextStyle,
-  TouchableOpacity,
-  View,
-  ViewStyle,
+    Animated,
+    Dimensions,
+    Easing,
+    Platform,
+    SafeAreaView,
+    StyleSheet,
+    Text,
+    TextStyle,
+    TouchableOpacity,
+    View,
+    ViewStyle,
 } from 'react-native';
 
 const SCREEN_PADDING_H = 22;
@@ -298,9 +298,6 @@ export default function ClinicTab() {
                 if (key === 'clinic' && userRole === 'clinic') {
                   router.push(getHomeRoute(clinicType) as any);
                   return;
-                }
-                if (key === 'patient') {
-                  await logout();
                 }
                 router.push(rest.route as any);
               }}

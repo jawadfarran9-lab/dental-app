@@ -1,10 +1,10 @@
+import { db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { lookupPatientByCode } from '@/src/services/patientCodeService';
 import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { toStoredPhone } from '@/src/utils/phone';
-import { db } from '@/firebaseConfig';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
@@ -98,10 +98,6 @@ export default function PatientLogin() {
       };
     }, [])
   );
-
-  // PHASE F: Guard - prevent clinic users from accessing patient pages
-  const { usePatientGuard } = require('@/src/utils/navigationGuards');
-  usePatientGuard();
 
   const onLogin = async () => {
     const trimmed = code.trim();
