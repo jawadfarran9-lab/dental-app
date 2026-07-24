@@ -1,6 +1,7 @@
 import { auth, db, functions } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
+import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
@@ -45,6 +46,7 @@ export default function LoginScreen() {
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { setClinicAuth } = useAuth();
+  const { setClinicSession } = useClinic();
 
   // Entrance + badge float animations.
   useEffect(() => {
@@ -181,6 +183,7 @@ export default function LoginScreen() {
           role: ownerMember.role,
           status: ownerMember.status,
         });
+        await setClinicSession(clinicId, ownerMember.id, ownerMember.role, ownerMember.status);
 
         // Biometric opt-in: prompt user after first successful login
         const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
@@ -269,6 +272,7 @@ export default function LoginScreen() {
               role: 'doctor',
               status,
             });
+            await setClinicSession(clinicIdStr, firebaseUid, 'doctor', status);
             console.log('[auth] doctor logged in via real Firebase Auth');
             if (!isSubscribed) {
               Alert.alert(
