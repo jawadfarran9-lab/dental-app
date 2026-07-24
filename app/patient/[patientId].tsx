@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { localizeDate, localizeNumber } from '@/utils/localization';
@@ -11,13 +12,13 @@ import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/fi
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    FlatList,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -46,6 +47,7 @@ export default function PatientView() {
   const [clinicName, setClinicName] = useState<string>('');
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
+  const { checkAuthState } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -120,11 +122,16 @@ export default function PatientView() {
 
   const onLogout = async () => {
     try {
-      await AsyncStorage.removeItem('patientId');
-      await AsyncStorage.removeItem('patientClinicId');
-      router.replace('/patient' as any);
+      // Clear patient keys, LEAVE the guarded patient screen FIRST, then refresh auth.
+      // checkAuthState() flips userRole back to 'clinic' — it must run only after
+      // [patientId] (which uses usePatientGuard) has unmounted, otherwise the guard
+      // would eject to /login. /patient (login) is unguarded, so it's safe to land there.
+      await AsyncStorage.multiRemove(['patientId', 'patientClinicId']);
+      router.dismissAll();
+      router.push('/patient' as any);
+      await checkAuthState();
     } catch (err) {
-      console.error('logout error', err);
+      console.error('patient logout error', err);
     }
   };
 

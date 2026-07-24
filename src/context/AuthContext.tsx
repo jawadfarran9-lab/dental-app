@@ -368,13 +368,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         await AsyncStorage.removeItem(PATIENT_CLINIC_ID_KEY);
       }
-      // Clear clinic session if switching to patient
-      await AsyncStorage.multiRemove([
-        CLINIC_ID_KEY,
-        CLINIC_MEMBER_ID_KEY,
-        CLINIC_ROLE_KEY,
-        CLINIC_STATUS_KEY,
-      ]);
 
       setAuthState({
         userRole: 'patient',
