@@ -121,13 +121,15 @@ export function useClinicRoleGuard(allowedRoles: ClinicRole[]) {
  */
 export function usePatientGuard() {
   const router = useRouter();
-  const { userRole, loading } = useAuth();
+  const { patientId, loading } = useAuth();
 
   useEffect(() => {
-    if (!loading && userRole === 'clinic') {
-      router.replace('/login' as any);
+    // A patient screen requires an active patient session (patientId), independent of userRole —
+    // so a clinic/email user can open patient pages without their clinic session bouncing them.
+    if (!loading && !patientId) {
+      router.replace('/patient' as any);
     }
-  }, [userRole, loading]);
+  }, [patientId, loading]);
 }
 
 /**

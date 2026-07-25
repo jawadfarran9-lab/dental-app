@@ -182,7 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: narrowClinicType(clinicSnap.data()?.clinicType),
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
-            patientId: null,
+            patientId: patientId,
             loading: false,
             error: null,
           });
@@ -203,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: subResult.clinicType,
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
-            patientId: null,
+            patientId: patientId,
             loading: false,
             error: null,
           });
@@ -378,19 +378,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.removeItem(PATIENT_CLINIC_ID_KEY);
       }
 
-      setAuthState({
-        userRole: 'patient',
-        userId: patientId,
-        clinicId: clinicId ?? null,
-        memberId: null,
-        clinicRole: null,
-        memberStatus: null,
-        clinicType: null,
-        isSubscribed: null,
-        isDetailsComplete: null,
-        patientId: patientId,
-        loading: false,
-        error: null,
+      setAuthState((prev) => {
+        if (prev.userRole === 'clinic') {
+          // Clinic/email user opening patient pages: keep the clinic session intact;
+          // add only the patient overlay. NEVER clobber userRole / isSubscribed / clinic fields.
+          return { ...prev, patientId, loading: false, error: null };
+        }
+        // Pure patient (no clinic session): patient is the primary role.
+        return {
+          userRole: 'patient',
+          userId: patientId,
+          clinicId: clinicId ?? null,
+          memberId: null,
+          clinicRole: null,
+          memberStatus: null,
+          clinicType: null,
+          isSubscribed: null,
+          isDetailsComplete: null,
+          patientId,
+          loading: false,
+          error: null,
+        };
       });
     } catch (error) {
       console.error('[AUTH] Error setting patient auth:', error);
