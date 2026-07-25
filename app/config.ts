@@ -22,16 +22,3 @@ export const AI_CHAT_ENDPOINT = `${FUNCTIONS_BASE}/aiChat`;
  * Default: 60 seconds
  */
 export const AI_TIMEOUT_MS = 60000;
-
-/**
- * API Endpoints
- */
-export const API = {
-  clinicSignup: `${FUNCTIONS_BASE}/clinicSignup`,
-  createPatient: `${FUNCTIONS_BASE}/createPatient`,
-  patientLogin: `${FUNCTIONS_BASE}/patientLogin`,
-  createPatientUser: `${FUNCTIONS_BASE}/createPatientUser`,
-  aiChat: AI_CHAT_ENDPOINT,
-};
-
-export default API;
