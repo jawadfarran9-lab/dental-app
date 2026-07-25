@@ -122,12 +122,11 @@ export default function PatientView() {
 
   const onLogout = async () => {
     try {
-      // Clear patient keys, LEAVE the guarded patient screen FIRST, then refresh auth.
-      // checkAuthState() flips userRole back to 'clinic' — it must run only after
-      // [patientId] (which uses usePatientGuard) has unmounted, otherwise the guard
-      // would eject to /login. /patient (login) is unguarded, so it's safe to land there.
       await AsyncStorage.multiRemove(['patientId', 'patientClinicId']);
+      // Reset the active tab to the role switcher (clinic/patient/games), THEN show the patient
+      // login on top — so Back returns to the switcher, not a stale inner clinic page.
       router.dismissAll();
+      router.replace('/(tabs)/clinic' as any);
       router.push('/patient' as any);
       await checkAuthState();
     } catch (err) {
