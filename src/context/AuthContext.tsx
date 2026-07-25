@@ -30,6 +30,7 @@ export interface AuthState {
   clinicType: ClinicType;
   isSubscribed: boolean | null;
   isDetailsComplete: boolean | null;
+  patientId: string | null;
   loading: boolean;
   error: string | null;
 }
@@ -61,6 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clinicType: null,
     isSubscribed: null,
     isDetailsComplete: null,
+    patientId: null,
     loading: true,
     error: null,
   });
@@ -132,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (subResult.clinicMissing) {
           await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
-          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+          setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, patientId: null, loading: false, error: null });
           return;
         }
 
@@ -141,7 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const clinicSnap = await getDoc(doc(db, 'clinics', clinicId));
           if (!clinicSnap.exists()) {
             await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
-            setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, loading: false, error: null });
+            setAuthState({ userRole: null, userId: null, clinicId: null, memberId: null, clinicRole: null, memberStatus: null, clinicType: null, isSubscribed: null, isDetailsComplete: null, patientId: null, loading: false, error: null });
             return;
           }
           const memberId = storedMemberId || clinicId;
@@ -180,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: narrowClinicType(clinicSnap.data()?.clinicType),
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
+            patientId: null,
             loading: false,
             error: null,
           });
@@ -200,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: subResult.clinicType,
             isSubscribed: subResult.subscribed ?? null,
             isDetailsComplete: subResult.detailsComplete,
+            patientId: null,
             loading: false,
             error: null,
           });
@@ -216,6 +220,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clinicType: null,
           isSubscribed: null, // Patients don't have subscription
           isDetailsComplete: null,
+          patientId: patientId,
           loading: false,
           error: null,
         });
@@ -255,6 +260,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: narrowClinicType(clinicDoc.data()?.clinicType),
             isSubscribed: subscribed ?? null,
             isDetailsComplete: detailsComplete,
+            patientId: null,
             loading: false,
             error: null,
           });
@@ -272,6 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             clinicType: null,
             isSubscribed: null,
             isDetailsComplete: null,
+            patientId: null,
             loading: false,
             error: null,
           });
@@ -289,6 +296,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clinicType: null,
           isSubscribed: null,
           isDetailsComplete: null,
+          patientId: null,
           loading: false,
           error: null,
         });
@@ -340,6 +348,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clinicType: subResult.clinicType,
         isSubscribed: subResult.subscribed ?? null,
         isDetailsComplete: subResult.detailsComplete,
+        patientId: null,
         loading: false,
         error: null,
       });
@@ -379,6 +388,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clinicType: null,
         isSubscribed: null,
         isDetailsComplete: null,
+        patientId: patientId,
         loading: false,
         error: null,
       });
@@ -428,6 +438,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       clinicType: null,
       isSubscribed: null,
       isDetailsComplete: null,
+      patientId: null,
       loading: false,
       error: null,
     });

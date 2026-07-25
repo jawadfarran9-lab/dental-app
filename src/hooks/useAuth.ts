@@ -17,6 +17,7 @@ export function useAuth(): AuthState {
       clinicType: null,
       isSubscribed: null,
       isDetailsComplete: null,
+      patientId: null,
       loading: true,
       error: 'AuthContext not available',
     };
