@@ -1,7 +1,8 @@
 // firebaseConfig.ts - Firebase client initialization
 import Constants from 'expo-constants';
 import { initializeApp } from "firebase/app";
-import { connectAuthEmulator, getAuth } from "firebase/auth";
+import { connectAuthEmulator, getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
 import { connectFunctionsEmulator, getFunctions } from "firebase/functions";
 import { connectStorageEmulator, getStorage } from "firebase/storage";
@@ -22,7 +23,14 @@ const app = initializeApp(firebaseConfig);
 // Export Firebase services
 export const db = getFirestore(app);
 export const storage = getStorage(app);
-export const auth = getAuth(app);
+export const auth = (() => {
+  try {
+    return initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    // Fast-refresh / already-initialized: reuse the existing instance
+    return getAuth(app);
+  }
+})();
 export const functions = getFunctions(app);
 
 const useEmulator =
