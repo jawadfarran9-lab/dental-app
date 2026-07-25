@@ -11,7 +11,7 @@
  *   - Safety interval every 60s while active → flush + check limits
  *   - Unsaved seconds survive failed flushes in memory
  */
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { flushUsageSeconds } from '@/src/services/appUsageService';
 import { getClinicPreferences } from '@/src/services/clinicPreferencesService';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -58,7 +58,7 @@ export function useAppUsageTracker(): {
   isBlocked: boolean;
   blockReason: BlockReason;
 } {
-  const { clinicId } = useClinic();
+  const { clinicId } = useAuth();
 
   const [blockReason, setBlockReason] = useState<BlockReason>(null);
 

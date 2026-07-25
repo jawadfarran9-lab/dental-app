@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { clearChatForClinic } from '@/src/services/chatClear';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
@@ -43,7 +43,7 @@ export default function ClinicContactInfoScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { clinicId } = useClinic();
+  const { clinicId } = useAuth();
   const { patientId, name } = useLocalSearchParams<{ patientId: string; name?: string }>();
 
   const [patient, setPatient] = useState<any>(null);

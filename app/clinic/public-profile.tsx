@@ -1,7 +1,6 @@
 import { db, storage } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { useAuth } from '@/src/context/AuthContext';
-import { useClinic } from '@/src/context/ClinicContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { fetchClinicPublicOwner, PublicClinic, reverseGeocode } from '@/src/services/publicClinics';
 import { encodeGeohash } from '@/src/utils/geohash';
@@ -20,7 +19,7 @@ export default function PublicProfileSettings() {
   const { t } = useTranslation();
   const isRTL = ['ar', 'he', 'fa', 'ur'].includes(i18n.language);
   const router = useRouter();
-  const { clinicId } = useClinic();
+  const { clinicId } = useAuth();
   const auth = useAuth();
   const isOwner = auth?.clinicRole === 'owner';
 

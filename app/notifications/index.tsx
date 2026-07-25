@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import {
     fetchQuestionResponses,
     markQuestionResponseRead,
@@ -22,7 +22,7 @@ import { QuestionResponse } from '@/src/types/questionResponse';
 export default function NotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { clinicId } = useClinic();
+  const { clinicId } = useAuth();
 
   const [responses, setResponses] = useState<QuestionResponse[]>([]);
   const [loading, setLoading] = useState(true);
