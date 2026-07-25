@@ -318,7 +318,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         [CLINIC_STATUS_KEY, status],
       ]);
       // Clear patient session if switching to clinic
-      await AsyncStorage.removeItem(PATIENT_ID_KEY);
+      await AsyncStorage.multiRemove([PATIENT_ID_KEY, PATIENT_CLINIC_ID_KEY]);
 
       // Keep loading=true while we resolve subscription
       setAuthState((prev) => ({ ...prev, loading: true, error: null }));

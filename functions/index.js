@@ -28,28 +28,6 @@ const app = express();
 app.use(cors({ origin: true }));
 app.use(bodyParser.json());
 
-// Helper: atomically generate next patient code for a clinic
-// Uses a counter document at clinics/{clinicId}/counters/patient_code
-async function generateNextPatientCode(clinicId) {
-  const db = admin.firestore();
-  const counterRef = db.doc(`clinics/${clinicId}/counters/patient_code`);
-
-  const newCode = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(counterRef);
-    if (!snap.exists) {
-      // initialize starting value at 1000
-      tx.set(counterRef, { last: 1000 });
-      return 1000;
-    }
-    const last = snap.data().last || 1000;
-    const next = last + 1;
-    tx.update(counterRef, { last: next });
-    return next;
-  });
-
-  return newCode;
-}
-
 // A placeholder Stripe webhook handler.
 // In production you must verify the webhook signature using functions.config().stripe.webhook_secret
 app.post('/stripeWebhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
