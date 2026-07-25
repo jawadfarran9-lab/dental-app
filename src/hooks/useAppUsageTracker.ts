@@ -1,7 +1,7 @@
 /**
  * App Usage Tracker — foreground time tracking hook
  *
- * Mount ONCE at app root level (inside ClinicProvider).
+ * Mount ONCE at app root level (inside AuthProvider).
  * Tracks total app foreground time per calendar day.
  * Reads clinic preferences to enforce daily limit & sleep mode.
  *

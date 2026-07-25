@@ -9,7 +9,6 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import i18n from '@/i18n';
 import UsageBlockOverlay from '@/src/components/UsageBlockOverlay';
 import { AuthProvider } from '@/src/context/AuthContext';
-import { ClinicProvider } from '@/src/context/ClinicContext';
 import { LocationSelectionProvider } from '@/src/context/LocationSelectionContext';
 import { SavedItemsProvider } from '@/src/context/SavedItemsContext';
 import { StorySettingsProvider } from '@/src/context/StorySettingsContext';
@@ -134,18 +133,16 @@ export default function RootLayout() {
     <I18nextProvider i18n={i18n}>
       <ThemeProvider>
         <AuthProvider>
-          <ClinicProvider>
-            <StorySettingsProvider>
-              <LocationSelectionProvider>
-                <SavedItemsProvider>
-                  <NavThemeProvider value={navTheme}>
-                    <RootNavigator />
-                    <StatusBar style="dark" translucent backgroundColor="transparent" />
-                  </NavThemeProvider>
-                </SavedItemsProvider>
-              </LocationSelectionProvider>
-            </StorySettingsProvider>
-          </ClinicProvider>
+          <StorySettingsProvider>
+            <LocationSelectionProvider>
+              <SavedItemsProvider>
+                <NavThemeProvider value={navTheme}>
+                  <RootNavigator />
+                  <StatusBar style="dark" translucent backgroundColor="transparent" />
+                </NavThemeProvider>
+              </SavedItemsProvider>
+            </LocationSelectionProvider>
+          </StorySettingsProvider>
         </AuthProvider>
       </ThemeProvider>
     </I18nextProvider>
