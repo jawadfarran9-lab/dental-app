@@ -1,7 +1,7 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
@@ -44,7 +44,8 @@ type SessionDoc = { id: string; [k: string]: any };
 export default function PatientDetails() {
   useClinicGuard();
   const { patientId } = useLocalSearchParams();
-  const { clinicId, clinicUser, loading: clinicLoading } = useClinic();
+  const { clinicId, userRole, loading: clinicLoading } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();

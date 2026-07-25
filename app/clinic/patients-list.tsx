@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
@@ -54,7 +54,8 @@ export default function PatientsListScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
 
   const [patients, setPatients] = useState<PatientRow[]>([]);
   const [loading, setLoading] = useState(true);

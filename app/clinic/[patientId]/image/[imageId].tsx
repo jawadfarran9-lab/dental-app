@@ -9,7 +9,7 @@
  */
 
 import AnnotatorToolbar, { AnnotationTool } from '@/src/components/Imaging/AnnotatorToolbar';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { fetchPatientImage, saveImageAnnotations } from '@/src/services/patientImages';
 import { ImageAnnotations, ImageStroke, ImageText, PatientImage } from '@/src/types/imaging';
@@ -28,7 +28,8 @@ export default function ImageViewerScreen() {
   useClinicGuard(); // 🔐 حماية الصفحة - clinic members only
   
   const { patientId, imageId } = useLocalSearchParams();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();

@@ -4,7 +4,6 @@
  * Handles emergency routing, staff assignment, and specialty-based responses
  */
 
-import { useClinic } from '@/src/context/ClinicContext';
 import { useCallback } from 'react';
 import { ClinicStaff, useClinicAI } from './useClinicAI';
 
@@ -31,7 +30,6 @@ export interface ClinicAIRouterResult {
 }
 
 export function useClinicAIRouter(): ClinicAIRouterResult {
-	const clinicContext = useClinic();
 	const { config, staff } = useClinicAI();
 
 	// Determine if message indicates emergency

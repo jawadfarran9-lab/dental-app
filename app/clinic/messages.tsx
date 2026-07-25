@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
@@ -77,7 +77,8 @@ export default function ClinicMessagesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { clinicId, clinicUser, loading: clinicLoading } = useClinic();
+  const { clinicId, userRole, loading: clinicLoading } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const { height: windowHeight } = useWindowDimensions();
   const SHEET_HEIGHT = Math.round(windowHeight * 0.75);
 

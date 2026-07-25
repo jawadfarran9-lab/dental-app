@@ -1,7 +1,7 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { generateUniquePatientCode, reservePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
@@ -36,7 +36,8 @@ const ACCENT_DARK = '#1E6FD9';
 
 export default function CreatePatientScreen() {
   useClinicGuard();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');

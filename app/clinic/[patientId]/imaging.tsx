@@ -8,7 +8,7 @@
  */
 
 import GalleryGrid from '@/src/components/Imaging/GalleryGrid';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { fetchPatientImages, uploadPatientImage } from '@/src/services/patientImages';
 import { ImageType, PatientImage } from '@/src/types/imaging';
@@ -26,7 +26,8 @@ export default function PatientImagingScreen() {
   useClinicGuard(); // 🔐 حماية الصفحة - clinic members only
   
   const { patientId } = useLocalSearchParams();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const router = useRouter();
   const { t } = useTranslation();
   const { colors } = useTheme();

@@ -1,4 +1,4 @@
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -6,15 +6,15 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ActivityIndicator,
-  Alert,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    Alert,
+    Modal,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 // Import media components and services
@@ -26,21 +26,21 @@ import { ReportGenerator } from '@/app/components/ReportGenerator';
 import { Timeline } from '@/app/components/Timeline';
 import { getClinicSettings } from '@/src/services/clinicSettingsService';
 import {
-  createSession,
-  deletePatientMedia,
-  getPatientMedia,
-  getPatientTimeline,
-  getSessionsForPatient,
-  saveAnnotatedImage,
-  uploadPatientImage,
+    createSession,
+    deletePatientMedia,
+    getPatientMedia,
+    getPatientTimeline,
+    getSessionsForPatient,
+    saveAnnotatedImage,
+    uploadPatientImage,
 } from '@/src/services/mediaService';
 import {
-  ClinicSettings,
-  PatientMedia,
-  PatientSession,
-  StrokeData,
-  TextOverlay,
-  TimelineEntry,
+    ClinicSettings,
+    PatientMedia,
+    PatientSession,
+    StrokeData,
+    TextOverlay,
+    TimelineEntry,
 } from '@/src/types/media';
 
 interface PatientMediaScreenProps {
@@ -54,7 +54,8 @@ export default function PatientMediaScreen() {
   const { patientId: routePatientId } = useLocalSearchParams();
   const router = useRouter();
   const { t } = useTranslation();
-  const { clinicId: contextClinicId, clinicUser } = useClinic();
+  const { clinicId: contextClinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const { colors, isDark } = useTheme();
 
   // State management

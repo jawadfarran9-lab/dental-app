@@ -1,12 +1,12 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { changePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
-import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { fetchClinicData } from '@/src/utils/clinicDataUtils';
+import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
 import { isValidPhoneForCountry, normalizePhone, toStoredPhone } from '@/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,7 +38,8 @@ const ACCENT_DARK = '#1E6FD9';
 export default function PatientEditScreen() {
   useClinicGuard();
   const { patientId } = useLocalSearchParams();
-  const { clinicId, clinicUser } = useClinic();
+  const { clinicId, userRole } = useAuth();
+  const clinicUser = userRole === 'clinic';
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();

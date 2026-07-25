@@ -4,7 +4,7 @@
  * Supports custom staff, clinic-specific behavior, and routing
  */
 
-import { useClinic } from '@/src/context/ClinicContext';
+import { useAuth } from '@/src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 
@@ -42,7 +42,7 @@ interface UseClinicAIResult {
 }
 
 export function useClinicAI(): UseClinicAIResult {
-	const clinicContext = useClinic();
+	const clinicContext = useAuth();
 	const [config, setConfig] = useState<ClinicAIConfig | null>(null);
 	const [staff, setStaff] = useState<ClinicStaff[]>([]);
 	const [isLoading, setIsLoading] = useState(true);
