@@ -55,6 +55,7 @@ export const patientAuth = (() => {
   }
 })();
 export const patientDb = getFirestore(patientApp);
+export const patientStorage = getStorage(patientApp);
 
 const useEmulator =
   __DEV__ && process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
@@ -81,6 +82,7 @@ if (useEmulator) {
   connectFunctionsEmulator(functions, host, 5001);
   connectAuthEmulator(patientAuth, `http://${host}:9099`, { disableWarnings: true });
   connectFirestoreEmulator(patientDb, host, 8080);
+  connectStorageEmulator(patientStorage, host, 9199);
   console.warn(`[firebase] EMULATOR MODE — host=${host} (source=${source})`);
 } else {
   console.log('[firebase] production mode — project=dental-jawad');
