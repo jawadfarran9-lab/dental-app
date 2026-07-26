@@ -1,14 +1,12 @@
-import { db } from '@/firebaseConfig';
+import { functions, patientAuth } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { lookupPatientByCode } from '@/src/services/patientCodeService';
-import { fetchClinicData } from '@/src/utils/clinicDataUtils';
-import { toStoredPhone } from '@/src/utils/phone';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { signInWithCustomToken } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -106,36 +104,27 @@ export default function PatientLogin() {
 
     setLoading(true);
     try {
-      const result = await lookupPatientByCode(trimmed);
-
-      if (!result) {
-        Alert.alert(t('common.error'), t('patient.codeNotFound'));
+      const issueToken = httpsCallable(functions, 'issuePatientToken');
+      const res = await issueToken({ code: code.trim(), phone: phone.trim() });
+      const { token, clinicId, patientId } = (res.data ?? {}) as { token?: string; clinicId?: string; patientId?: string };
+      if (!token || !clinicId || !patientId) {
+        Alert.alert(t('common.error'), t('common.error'));
         setLoading(false);
         return;
       }
-
-      const { clinicId, patientId } = result;
-
-      const clinicData = await fetchClinicData(clinicId);
-      const countryCode = clinicData?.countryCode ?? null;
-      const patientSnap = await getDoc(doc(db, 'clinics', clinicId, 'patients', patientId));
-      const storedPhone = patientSnap.exists() ? String(patientSnap.data().phone ?? '') : '';
-      if (toStoredPhone(phone.trim(), countryCode) !== toStoredPhone(storedPhone, countryCode)) {
-        Alert.alert(t('common.error'), t('patient.codePhoneMismatch'));
-        setLoading(false);
-        return;
-      }
-
-      // PHASE F: Update global auth state via AuthContext
-      // This will store patientId and clinicId
+      await signInWithCustomToken(patientAuth, token);
       await setPatientAuth(patientId, clinicId);
-
-      // Navigate to patient detail screen
       router.push(`/patient/${patientId}` as any);
       setLoading(false);
     } catch (err: any) {
       console.error('patient login error', err);
-      Alert.alert(t('common.error'), err.message || t('common.error'));
+      if (err.code === 'functions/not-found') {
+        Alert.alert(t('common.error'), t('patient.codeNotFound'));
+      } else if (err.code === 'functions/permission-denied') {
+        Alert.alert(t('common.error'), t('patient.codePhoneMismatch'));
+      } else {
+        Alert.alert(t('common.error'), err.message || t('common.error'));
+      }
       setLoading(false);
     }
   };

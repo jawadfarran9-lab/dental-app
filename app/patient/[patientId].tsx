@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { db, patientAuth } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -8,6 +8,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { signOut } from 'firebase/auth';
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -123,6 +124,7 @@ export default function PatientView() {
   const onLogout = async () => {
     try {
       await AsyncStorage.multiRemove(['patientId', 'patientClinicId']);
+      await signOut(patientAuth);
       // Reset the active tab to the role switcher (clinic/patient/games), THEN show the patient
       // login on top — so Back returns to the switcher, not a stale inner clinic page.
       router.dismissAll();
