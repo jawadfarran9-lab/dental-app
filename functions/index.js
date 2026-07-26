@@ -421,9 +421,29 @@ exports.createDoctorAccount = functions.https.onCall(async (data, context) => {
     userRecord = await admin.auth().createUser({ email, password, emailVerified: false });
   } catch (e) {
     if (e && e.code === 'auth/email-already-exists') {
-      throw new functions.https.HttpsError('already-exists', 'A user with this email already exists.');
+      // Auto-reclaim a stale email left by a removed/orphaned account.
+      // Safe ONLY if the existing account is not active anywhere:
+      // users/{uid} missing OR status === 'REMOVED'. An active account
+      // (this clinic or another) is a real duplicate → refuse.
+      try {
+        const existingUser = await admin.auth().getUserByEmail(email);
+        const uSnap = await admin.firestore().doc(`users/${existingUser.uid}`).get();
+        const uStatus = uSnap.exists ? (uSnap.data() || {}).status : null;
+        if (!uSnap.exists || uStatus === 'REMOVED') {
+          await admin.auth().deleteUser(existingUser.uid);
+          userRecord = await admin.auth().createUser({ email, password, emailVerified: false });
+          console.log('[createDoctorAccount] reclaimed stale email for uid=' + existingUser.uid);
+        } else {
+          throw new functions.https.HttpsError('already-exists', 'A user with this email already exists.');
+        }
+      } catch (reclaimErr) {
+        if (reclaimErr instanceof functions.https.HttpsError) throw reclaimErr;
+        console.error('[createDoctorAccount] email reclaim failed', reclaimErr);
+        throw new functions.https.HttpsError('already-exists', 'A user with this email already exists.');
+      }
+    } else {
+      throw new functions.https.HttpsError('internal', 'Could not create the account.');
     }
-    throw new functions.https.HttpsError('internal', 'Could not create the account.');
   }
   const uid = userRecord.uid;
 
