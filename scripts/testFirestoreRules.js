@@ -1,6 +1,6 @@
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 const { readFileSync } = require('fs');
-const { doc, getDoc, setDoc } = require('firebase/firestore');
+const { doc, getDoc, setDoc, collection, query, where, getDocs } = require('firebase/firestore');
 
 const PROJECT_ID = 'demo-rules-test', HOST = '127.0.0.1', PORT = 8080;
 let passed = 0, failed = 0;
@@ -86,6 +86,20 @@ async function main() {
   await check('codes: guest CANNOT read code', assertFails(getDoc(doc(guest, 'patientCodes/CODE1'))));
 
   await check('ai_logs: ownerA CANNOT read', assertFails(getDoc(doc(ownerA, 'ai_logs/L1'))));
+
+  // ── QUERY tests (login-critical + collection scoping) ──
+  await check('query: ownerA finds own clinic by ownerUid (LOGIN query)', assertSucceeds(getDocs(query(collection(ownerA, 'clinics'), where('ownerUid', '==', 'ownerA')))));
+  await check('query: no-claim user finds own clinic by ownerUid (bootstrap login)', assertSucceeds(getDocs(query(collection(ownerA_noclaim, 'clinics'), where('ownerUid', '==', 'ownerA')))));
+  await check('query: doctorA login clinics query returns empty (allowed)', assertSucceeds(getDocs(query(collection(doctorA, 'clinics'), where('ownerUid', '==', 'doctorA')))));
+  await check('query: ownerB scoped clinics query (own only)', assertSucceeds(getDocs(query(collection(ownerB, 'clinics'), where('ownerUid', '==', 'ownerB')))));
+  await check('query: ownerA CANNOT list ALL clinics unscoped', assertFails(getDocs(collection(ownerA, 'clinics'))));
+  await check('query: ownerA lists own clinic patients', assertSucceeds(getDocs(collection(ownerA, 'clinics/clinicA/patients'))));
+  await check('query: P1 CANNOT list all clinicA patients', assertFails(getDocs(collection(p1, 'clinics/clinicA/patients'))));
+  await check('query: P1 lists own sessions', assertSucceeds(getDocs(collection(p1, 'clinics/clinicA/patients/P1/sessions'))));
+  await check('query: P1 queries own messages', assertSucceeds(getDocs(collection(p1, 'patients/P1/messages'))));
+  await check('query: ownerA queries own-clinic patient messages', assertSucceeds(getDocs(collection(ownerA, 'patients/P1/messages'))));
+  await check('query: guest reads public media collection', assertSucceeds(getDocs(collection(guest, 'clinics/clinicA/media'))));
+  await check('query: guest CANNOT list clinic settings', assertFails(getDocs(collection(guest, 'clinics/clinicA/settings'))));
 
   await env.cleanup();
   console.log(`\n${passed} passed, ${failed} failed`);
