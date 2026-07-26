@@ -507,3 +507,86 @@ exports.updateDoctorPassword = functions.https.onCall(async (data, context) => {
   console.log(`[updateDoctorPassword] reset password for doctor uid=${uid} in clinic=${clinicId}`);
   return { ok: true };
 });
+
+// ─────────────────────────────────────────────────────────────
+// Phase 5b — issuePatientToken (HTTPS callable, v1)
+// ─────────────────────────────────────────────────────────────
+// Mints a Firebase custom token for a validated patient so the client can
+// call signInWithCustomToken and hold a real Firebase Auth identity with
+// { role: 'patient', clinicId, patientId } claims (required by Phase 6
+// Firestore/Storage rules — see firebase/storage.rules `isPatientOwner`).
+//
+// INTENTIONAL EXCEPTION: this callable does NOT require context.auth.
+// It is the identity-bootstrap entry for patients, who have no Firebase
+// Auth session yet. All trust flows from the server-side lookup:
+// patientCodes/{code} -> clinics/{clinicId}/patients/{patientId} -> phone
+// equality. Client-supplied patientId is never trusted.
+//
+// Phone normalization MIRRORS the client's toStoredPhone at
+// src/utils/phone.ts:23-33 (both sides normalized before compare, same as
+// the client at app/patient/index.tsx:123) so a doc stored via either
+// branch of toStoredPhone (E.164 via libphonenumber-js parsePhoneNumber,
+// or digits-only fallback via String.replace(/\D/g,'')) matches.
+const { parsePhoneNumber: _parsePhoneNumber, isSupportedCountry: _isSupportedCountry } = require('libphonenumber-js');
+
+function _normalizePhone(raw) {
+  return String(raw || '').replace(/\D/g, '');
+}
+function _toStoredPhone(raw, country) {
+  if (country && _isSupportedCountry(country)) {
+    try {
+      const p = _parsePhoneNumber(raw, country);
+      if (p && p.isValid()) return p.number;
+    } catch (_) { /* fall through */ }
+  }
+  return _normalizePhone(raw);
+}
+
+exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
+  const code = data && typeof data.code === 'string' ? data.code.trim() : '';
+  const phone = data && typeof data.phone === 'string' ? data.phone.trim() : '';
+  const countryCode = data && typeof data.countryCode === 'string' ? data.countryCode.trim() : '';
+  if (!code || !phone || !countryCode) {
+    console.error('[issuePatientToken] invalid-argument: code/phone/countryCode required');
+    throw new functions.https.HttpsError('invalid-argument', 'code, phone, and countryCode are required.');
+  }
+
+  const db = admin.firestore();
+
+  // (a) patientCodes/{code}
+  const codeSnap = await db.doc(`patientCodes/${code}`).get();
+  if (!codeSnap.exists) {
+    console.error(`[issuePatientToken] invalid code=${code}`);
+    throw new functions.https.HttpsError('not-found', 'Invalid code.');
+  }
+  const { clinicId, patientId } = codeSnap.data() || {};
+  if (!clinicId || !patientId) {
+    console.error(`[issuePatientToken] malformed patientCodes doc for code=${code}`);
+    throw new functions.https.HttpsError('not-found', 'Invalid code.');
+  }
+
+  // (b) clinics/{clinicId}/patients/{patientId}
+  // The client reads `patientSnap.data().phone` at app/patient/index.tsx:122.
+  const patientSnap = await db.doc(`clinics/${clinicId}/patients/${patientId}`).get();
+  if (!patientSnap.exists) {
+    console.error(`[issuePatientToken] patient missing clinicId=${clinicId} patientId=${patientId}`);
+    throw new functions.https.HttpsError('not-found', 'Patient not found.');
+  }
+  const storedPhone = String((patientSnap.data() || {}).phone || '');
+
+  // Normalize BOTH sides through _toStoredPhone — matches app/patient/index.tsx:123.
+  if (_toStoredPhone(phone, countryCode) !== _toStoredPhone(storedPhone, countryCode)) {
+    console.error(`[issuePatientToken] phone mismatch clinicId=${clinicId} patientId=${patientId}`);
+    throw new functions.https.HttpsError('permission-denied', 'Phone does not match.');
+  }
+
+  // Mint the token — patientId doubles as the Firebase uid.
+  const token = await admin.auth().createCustomToken(patientId, {
+    role: 'patient',
+    clinicId,
+    patientId,
+  });
+
+  console.log(`[issuePatientToken] issued token clinicId=${clinicId} patientId=${patientId}`);
+  return { token, clinicId, patientId };
+});
