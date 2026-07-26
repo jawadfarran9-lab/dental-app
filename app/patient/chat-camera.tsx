@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { patientDb } from '@/firebaseConfig';
 import { sendImageMessage } from '@/src/services/chatImages';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -126,7 +126,7 @@ export default function PatientChatCameraScreen() {
         setClinicId(storedClinicId);
         try {
           const snap = await getDoc(
-            doc(db, 'clinics', storedClinicId, 'patients', storedPatientId),
+            doc(patientDb, 'clinics', storedClinicId, 'patients', storedPatientId),
           );
           if (!cancelled && snap.exists()) {
             const data = snap.data() as any;
@@ -445,7 +445,7 @@ export default function PatientChatCameraScreen() {
         from: 'patient',
         senderName: 'Patient',
         senderType: 'patient',
-      });
+      }, patientDb);
       router.back();
     } catch (err) {
       console.error('[patient-chat-camera] send error', err);

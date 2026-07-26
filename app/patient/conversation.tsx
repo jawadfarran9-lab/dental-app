@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { sendImageMessage } from '@/src/services/chatImages';
@@ -367,7 +367,7 @@ export default function ClinicConversationScreen() {
     const isClearing = message.reactionPatient === emoji;
     try {
       const next = isClearing ? deleteField() : emoji;
-      await updateDoc(doc(db, `patients/${patientId}/messages/${message.id}`), { reactionPatient: next });
+      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${message.id}`), { reactionPatient: next });
       if (!isClearing && !REACTIONS.includes(emoji)) pushRecent(emoji);
     } catch (e) {
       console.error('[conversation] set reaction error', e);
@@ -377,7 +377,7 @@ export default function ClinicConversationScreen() {
   const toggleStar = async (m: Message) => {
     if (!patientId) return;
     try {
-      await updateDoc(doc(db, `patients/${patientId}/messages/${m.id}`), {
+      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`), {
         starredPatient: m.starredPatient ? deleteField() : true,
       });
     } catch (e) {
@@ -470,7 +470,7 @@ export default function ClinicConversationScreen() {
         setPatientId(pid);
         setClinicId(cid);
         try {
-          const pSnap = await getDoc(doc(db, 'clinics', cid, 'patients', pid));
+          const pSnap = await getDoc(doc(patientDb, 'clinics', cid, 'patients', pid));
           if (!cancelled && pSnap.exists()) {
             const pData = pSnap.data() as any;
             if (pData?.name) setPatientName(String(pData.name));
@@ -479,7 +479,7 @@ export default function ClinicConversationScreen() {
           console.error('[patient/conversation] load patient error', err);
         }
         try {
-          const cSnap = await getDoc(doc(db, 'clinics', cid));
+          const cSnap = await getDoc(doc(patientDb, 'clinics', cid));
           if (!cancelled && cSnap.exists()) {
             const cData = cSnap.data() as any;
             setClinicName(cData?.clinicName || '');
@@ -501,11 +501,11 @@ export default function ClinicConversationScreen() {
       return;
     }
 
-    markThreadReadForPatient(clinicId, patientId);
-    ensureThread(clinicId, patientId, patientName);
+    markThreadReadForPatient(clinicId, patientId, patientDb);
+    ensureThread(clinicId, patientId, patientName, patientDb);
 
     const q = query(
-      collection(db, `patients/${patientId}/messages`),
+      collection(patientDb, `patients/${patientId}/messages`),
       orderBy('createdAt', 'asc')
     );
     const unsub = onSnapshot(
@@ -531,7 +531,7 @@ export default function ClinicConversationScreen() {
   useEffect(() => {
     if (!clinicId || !patientId) return;
     const unsub = onSnapshot(
-      doc(db, 'threads', `${clinicId}_${patientId}`),
+      doc(patientDb, 'threads', `${clinicId}_${patientId}`),
       (snap) => {
         const v = snap.exists() ? (snap.data() as any).clearedForPatientAt : 0;
         setClearedForPatientAt(typeof v === 'number' ? v : 0);
@@ -577,7 +577,7 @@ export default function ClinicConversationScreen() {
         from: 'patient',
         senderName: 'Patient',
         senderType: 'patient',
-      });
+      }, patientDb);
     } catch (err) {
       console.error('[patient-conversation] pick/send image error', err);
       Alert.alert('Upload failed', 'Please try again.');
@@ -593,7 +593,7 @@ export default function ClinicConversationScreen() {
     setSending(true);
     setDraft('');
     try {
-      await addDoc(collection(db, `patients/${patientId}/messages`), {
+      await addDoc(collection(patientDb, `patients/${patientId}/messages`), {
         from: 'patient',
         text,
         senderName: 'Patient',
@@ -604,7 +604,8 @@ export default function ClinicConversationScreen() {
         patientId,
         patientName,
         text,
-        'patient'
+        'patient',
+        patientDb,
       );
     } catch (err) {
       console.error('[patient/conversation] send error', err);
@@ -637,12 +638,12 @@ export default function ClinicConversationScreen() {
     setDraft(preEditDraftRef.current);
     preEditDraftRef.current = '';
     try {
-      await updateDoc(doc(db, `patients/${patientId}/messages/${target.id}`), { text: newText });
+      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${target.id}`), { text: newText });
       const list = messages;
       const last = list[list.length - 1];
       if (last && last.id === target.id && clinicId) {
         try {
-          await updateDoc(doc(db, 'threads', `${clinicId}_${patientId}`), { lastMessageText: newText });
+          await updateDoc(doc(patientDb, 'threads', `${clinicId}_${patientId}`), { lastMessageText: newText });
         } catch {
           // best-effort preview update
         }
@@ -666,11 +667,11 @@ export default function ClinicConversationScreen() {
             const wasLast = messages.length > 0 && messages[messages.length - 1].id === m.id;
             const prev = wasLast ? messages[messages.length - 2] : undefined;
             try {
-              await deleteDoc(doc(db, `patients/${patientId}/messages/${m.id}`));
+              await deleteDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`));
               if (wasLast && clinicId) {
                 const preview = prev ? (prev.type === 'image' ? 'Photo' : prev.text) : '';
                 try {
-                  await updateDoc(doc(db, 'threads', `${clinicId}_${patientId}`), { lastMessageText: preview });
+                  await updateDoc(doc(patientDb, 'threads', `${clinicId}_${patientId}`), { lastMessageText: preview });
                 } catch {
                   // best-effort preview refresh
                 }
