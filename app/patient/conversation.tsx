@@ -1,6 +1,7 @@
 import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
+import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { sendImageMessage } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
@@ -125,6 +126,7 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
 
 export default function ClinicConversationScreen() {
   usePatientGuard();
+  const patientAuthReady = usePatientAuthReady();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -457,6 +459,7 @@ export default function ClinicConversationScreen() {
   };
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     let cancelled = false;
     (async () => {
       try {
@@ -492,9 +495,10 @@ export default function ClinicConversationScreen() {
       }
     })();
     return () => { cancelled = true; };
-  }, [router]);
+  }, [router, patientAuthReady]);
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     if (sessionLoading) return;
     if (!clinicId || !patientId) {
       setLoading(false);
@@ -526,9 +530,10 @@ export default function ClinicConversationScreen() {
     );
 
     return () => unsub();
-  }, [sessionLoading, clinicId, patientId, patientName]);
+  }, [sessionLoading, clinicId, patientId, patientName, patientAuthReady]);
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     if (!clinicId || !patientId) return;
     const unsub = onSnapshot(
       doc(patientDb, 'threads', `${clinicId}_${patientId}`),
@@ -539,7 +544,7 @@ export default function ClinicConversationScreen() {
       (e) => console.error('[conversation] thread marker sub error', e),
     );
     return () => unsub();
-  }, [clinicId, patientId]);
+  }, [clinicId, patientId, patientAuthReady]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();

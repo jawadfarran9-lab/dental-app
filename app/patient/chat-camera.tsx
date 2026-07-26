@@ -1,4 +1,5 @@
 import { patientDb } from '@/firebaseConfig';
+import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { sendImageMessage } from '@/src/services/chatImages';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -104,6 +105,7 @@ const zoomToDisplayLabel = (z: number): string => {
 
 export default function PatientChatCameraScreen() {
   usePatientGuard();
+  const patientAuthReady = usePatientAuthReady();
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -112,6 +114,7 @@ export default function PatientChatCameraScreen() {
   const [patientName, setPatientName] = useState<string>('');
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     let cancelled = false;
     (async () => {
       try {
@@ -142,7 +145,7 @@ export default function PatientChatCameraScreen() {
     return () => {
       cancelled = true;
     };
-  }, [router]);
+  }, [router, patientAuthReady]);
 
   const [permission, requestPermission] = useCameraPermissions();
   const cameraRef = useRef<CameraView>(null);

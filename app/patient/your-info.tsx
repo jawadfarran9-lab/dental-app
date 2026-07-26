@@ -1,6 +1,7 @@
 import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
+import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -38,6 +39,7 @@ function initialsOf(name: string): string {
 
 export default function PatientYourInfoScreen() {
   usePatientGuard();
+  const patientAuthReady = usePatientAuthReady();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
@@ -50,6 +52,7 @@ export default function PatientYourInfoScreen() {
   const [starredCount, setStarredCount] = useState(0);
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     if (!patientId) return;
     const qy = query(
       collection(patientDb, `patients/${patientId}/messages`),
@@ -73,9 +76,10 @@ export default function PatientYourInfoScreen() {
       (e) => console.error('[your-info] media sub error', e),
     );
     return () => unsub();
-  }, [patientId]);
+  }, [patientId, patientAuthReady]);
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     if (!clinicId || !patientId) {
       setLoading(false);
       return;
@@ -86,7 +90,7 @@ export default function PatientYourInfoScreen() {
       })
       .catch((e) => console.error('[your-info] load error', e))
       .finally(() => setLoading(false));
-  }, [clinicId, patientId]);
+  }, [clinicId, patientId, patientAuthReady]);
 
   const displayName = patient?.name || 'Patient';
   const code = patient?.code;

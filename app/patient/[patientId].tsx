@@ -2,6 +2,7 @@ import { patientAuth, patientDb } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { localizeDate, localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,7 @@ const formatTime = (v: any): string => {
 
 export default function PatientView() {
   usePatientGuard();
+  const patientAuthReady = usePatientAuthReady();
   const { patientId: routePatientId } = useLocalSearchParams();
   const [patient, setPatient] = useState<any>(null);
   const [sessions, setSessions] = useState<any[]>([]);
@@ -52,6 +54,7 @@ export default function PatientView() {
   const router = useRouter();
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     const loadPatientSession = async () => {
       try {
         const storedPatientId = await AsyncStorage.getItem('patientId');
@@ -107,9 +110,10 @@ export default function PatientView() {
     };
 
     loadPatientSession();
-  }, [router, routePatientId, t]);
+  }, [router, routePatientId, t, patientAuthReady]);
 
   useEffect(() => {
+    if (!patientAuthReady) return;
     if (!clinicId || !authenticatedPatientId) return;
     const sessionsQ = query(
       collection(patientDb, `clinics/${clinicId}/patients/${authenticatedPatientId}/sessions`),
@@ -119,7 +123,7 @@ export default function PatientView() {
       setSessions(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
     });
     return () => unsub();
-  }, [clinicId, authenticatedPatientId]);
+  }, [clinicId, authenticatedPatientId, patientAuthReady]);
 
   const onLogout = async () => {
     try {
