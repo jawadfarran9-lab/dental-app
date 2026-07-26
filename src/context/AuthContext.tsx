@@ -228,6 +228,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ── Fallback: AsyncStorage empty but Firebase Auth session exists ──
         // This recovers the clinic identity on web (localStorage cleared)
         // or after cache-clear on mobile, using the persistent Firebase token.
+        const tokenResult = await auth.currentUser.getIdTokenResult();
+        const claimRole = tokenResult.claims.role;
+        if (claimRole && claimRole !== 'owner') {
+          // Explicit non-owner (doctor/patient) Firebase session → never restore a clinic shell.
+          await AsyncStorage.multiRemove(ALL_AUTH_KEYS);
+          setAuthState({
+            userRole: null,
+            userId: null,
+            clinicId: null,
+            memberId: null,
+            clinicRole: null,
+            memberStatus: null,
+            clinicType: null,
+            isSubscribed: null,
+            isDetailsComplete: null,
+            patientId: null,
+            loading: false,
+            error: null,
+          });
+          return;
+        }
         const firebaseUid = auth.currentUser.uid;
         const clinicQuery = query(
           collection(db, 'clinics'),
