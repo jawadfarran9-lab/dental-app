@@ -1,6 +1,6 @@
 import { db, functions } from '@/firebaseConfig';
 import { useAuth } from '@/src/context/AuthContext';
-import { listClinicMembers, removeMember } from '@/src/services/clinicMembersService';
+import { listClinicMembers } from '@/src/services/clinicMembersService';
 import { ClinicMember } from '@/src/types/members';
 import { useClinicRoleGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -276,11 +276,8 @@ export default function ClinicTeamScreen() {
           style: 'destructive',
           onPress: async () => {
             try {
-              await removeMember({
-                clinicId,
-                actingRole: 'owner',
-                memberId: member.id,
-              });
+              const removeDoctor = httpsCallable(functions, 'removeDoctorAccount');
+              await removeDoctor({ memberId: member.id });
               await refreshMembers();
             } catch (err) {
               console.error('[TEAM] remove doctor failed', err);
