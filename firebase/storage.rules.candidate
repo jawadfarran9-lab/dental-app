@@ -1,0 +1,34 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthed() { return request.auth != null; }
+    function member(cid) { return isAuthed() && request.auth.token.clinicId == cid && (request.auth.token.role == 'owner' || request.auth.token.role == 'doctor'); }
+    function owner(cid) { return isAuthed() && request.auth.token.clinicId == cid && request.auth.token.role == 'owner'; }
+    function patient(cid, pid) { return isAuthed() && request.auth.token.role == 'patient' && request.auth.token.clinicId == cid && request.auth.token.patientId == pid; }
+
+    match /clinics/{clinicId}/clinicImage.jpg {
+      allow read: if true;
+      allow write: if isAuthed();
+    }
+    match /clinics/{clinicId}/profile.jpg {
+      allow read: if true;
+      allow write: if owner(clinicId);
+    }
+    match /clinics/{clinicId}/branding/{fileName} {
+      allow read: if true;
+      allow write: if owner(clinicId);
+    }
+    match /public/clinics/{clinicId}/{fileName=**} {
+      allow read: if true;
+      allow write: if member(clinicId);
+    }
+    match /clinics/{clinicId}/patients/{patientId}/messages/{allPaths=**} {
+      allow read: if member(clinicId) || patient(clinicId, patientId);
+      allow write: if member(clinicId) || patient(clinicId, patientId);
+    }
+    match /clinics/{clinicId}/patients/{patientId}/{allPaths=**} {
+      allow read: if member(clinicId) || patient(clinicId, patientId);
+      allow write: if member(clinicId);
+    }
+  }
+}
