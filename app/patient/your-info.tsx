@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
@@ -52,7 +52,7 @@ export default function PatientYourInfoScreen() {
   useEffect(() => {
     if (!patientId) return;
     const qy = query(
-      collection(db, `patients/${patientId}/messages`),
+      collection(patientDb, `patients/${patientId}/messages`),
       orderBy('createdAt', 'asc'),
     );
     const unsub = onSnapshot(
@@ -80,7 +80,7 @@ export default function PatientYourInfoScreen() {
       setLoading(false);
       return;
     }
-    getDoc(doc(db, 'clinics', clinicId as string, 'patients', patientId as string))
+    getDoc(doc(patientDb, 'clinics', clinicId as string, 'patients', patientId as string))
       .then((snap) => {
         if (snap.exists()) setPatient({ id: snap.id, ...(snap.data() as any) });
       })

@@ -1,4 +1,4 @@
-import { db, patientAuth } from '@/firebaseConfig';
+import { patientAuth, patientDb } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -79,7 +79,7 @@ export default function PatientView() {
 
         const patientId = storedPatientId;
 
-        const pRef = doc(db, 'clinics', storedClinicId, 'patients', patientId);
+        const pRef = doc(patientDb, 'clinics', storedClinicId, 'patients', patientId);
         const pSnap = await getDoc(pRef);
         if (pSnap.exists()) {
           const patientData = { id: pSnap.id, ...(pSnap.data() as any) };
@@ -87,7 +87,7 @@ export default function PatientView() {
 
           if (patientData.clinicId) {
             try {
-              const clinicRef = doc(db, 'clinics', patientData.clinicId);
+              const clinicRef = doc(patientDb, 'clinics', patientData.clinicId);
               const clinicSnap = await getDoc(clinicRef);
               if (clinicSnap.exists()) {
                 const clinicData = clinicSnap.data();
@@ -112,7 +112,7 @@ export default function PatientView() {
   useEffect(() => {
     if (!clinicId || !authenticatedPatientId) return;
     const sessionsQ = query(
-      collection(db, `clinics/${clinicId}/patients/${authenticatedPatientId}/sessions`),
+      collection(patientDb, `clinics/${clinicId}/patients/${authenticatedPatientId}/sessions`),
       orderBy('date', 'desc'),
     );
     const unsub = onSnapshot(sessionsQ, (snap) => {
