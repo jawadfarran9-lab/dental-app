@@ -1,9 +1,10 @@
 import { db } from '@/firebaseConfig';
+import type { Firestore } from 'firebase/firestore';
 import { collection, doc, getCountFromServer, getDoc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 
-async function countThreadMessages(patientId: string): Promise<number> {
+async function countThreadMessages(patientId: string, dbInstance: Firestore = db): Promise<number> {
   try {
-    const snap = await getCountFromServer(collection(db, `patients/${patientId}/messages`));
+    const snap = await getCountFromServer(collection(dbInstance, `patients/${patientId}/messages`));
     return snap.data().count;
   } catch {
     return 0;
@@ -19,11 +20,12 @@ export async function updateThreadOnMessage(
   patientId: string,
   patientName: string,
   messageText: string,
-  senderType: 'clinic' | 'patient'
+  senderType: 'clinic' | 'patient',
+  dbInstance: Firestore = db,
 ) {
   try {
     const threadId = `${clinicId}_${patientId}`;
-    const threadRef = doc(db, 'threads', threadId);
+    const threadRef = doc(dbInstance, 'threads', threadId);
 
     // Check if thread exists
     const threadSnap = await getDoc(threadRef);
@@ -61,14 +63,15 @@ export async function ensureThread(
   clinicId: string,
   patientId: string,
   patientName: string,
+  dbInstance: Firestore = db,
 ): Promise<void> {
   try {
     const threadId = `${clinicId}_${patientId}`;
-    const threadRef = doc(db, 'threads', threadId);
+    const threadRef = doc(dbInstance, 'threads', threadId);
     const snap = await getDoc(threadRef);
     const cleanName = patientName && patientName.trim() ? patientName.trim() : 'Patient';
     if (!snap.exists()) {
-      const count = await countThreadMessages(patientId);
+      const count = await countThreadMessages(patientId, dbInstance);
       await setDoc(threadRef, {
         clinicId,
         patientId,
@@ -93,7 +96,7 @@ export async function ensureThread(
       patch.patientName = cleanName;
     }
     if (data.messageCount == null) {
-      patch.messageCount = await countThreadMessages(patientId);
+      patch.messageCount = await countThreadMessages(patientId, dbInstance);
     }
     if (Object.keys(patch).length > 0) {
       await updateDoc(threadRef, patch);
@@ -123,10 +126,10 @@ export async function markThreadReadForClinic(clinicId: string, patientId: strin
  * Mark thread as read for patient
  * Uses setDoc with merge to safely handle non-existent threads
  */
-export async function markThreadReadForPatient(clinicId: string, patientId: string) {
+export async function markThreadReadForPatient(clinicId: string, patientId: string, dbInstance: Firestore = db) {
   try {
     const threadId = `${clinicId}_${patientId}`;
-    const threadRef = doc(db, 'threads', threadId);
+    const threadRef = doc(dbInstance, 'threads', threadId);
 
     // Merge ensures we don't crash if the thread doc has not been created yet
     await setDoc(threadRef, { unreadForPatient: 0 }, { merge: true });

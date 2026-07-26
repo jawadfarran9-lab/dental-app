@@ -1,6 +1,7 @@
 import { db, storage } from '@/firebaseConfig';
 import { compressImage } from '@/src/utils/imageCompress';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
+import type { Firestore } from 'firebase/firestore';
 import { addDoc, collection } from 'firebase/firestore';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
@@ -12,7 +13,7 @@ export async function sendImageMessage(params: {
   from?: 'clinic' | 'patient';
   senderName?: string;
   senderType?: 'clinic' | 'patient';
-}): Promise<void> {
+}, dbInstance: Firestore = db): Promise<void> {
   const {
     clinicId,
     patientId,
@@ -30,7 +31,7 @@ export async function sendImageMessage(params: {
     contentType: 'image/jpeg',
   });
   const imageUrl = await getDownloadURL(snap.ref);
-  await addDoc(collection(db, `patients/${patientId}/messages`), {
+  await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
     text: '',
     type: 'image',
@@ -41,5 +42,5 @@ export async function sendImageMessage(params: {
     senderName,
     createdAt: Date.now(),
   });
-  await updateThreadOnMessage(clinicId, patientId, patientName, 'Photo', senderType);
+  await updateThreadOnMessage(clinicId, patientId, patientName, 'Photo', senderType, dbInstance);
 }
