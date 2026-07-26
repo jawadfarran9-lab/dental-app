@@ -519,14 +519,20 @@ exports.updateDoctorPassword = functions.https.onCall(async (data, context) => {
 // INTENTIONAL EXCEPTION: this callable does NOT require context.auth.
 // It is the identity-bootstrap entry for patients, who have no Firebase
 // Auth session yet. All trust flows from the server-side lookup:
-// patientCodes/{code} -> clinics/{clinicId}/patients/{patientId} -> phone
-// equality. Client-supplied patientId is never trusted.
+// patientCodes/{code} -> clinics/{clinicId} (countryCode) +
+// clinics/{clinicId}/patients/{patientId} (phone) -> phone equality.
+// Client-supplied patientId is never trusted.
+//
+// Client contract: `{ code, phone }` ONLY. countryCode is derived
+// server-side from `clinics/{clinicId}.countryCode` — the Admin SDK
+// bypasses Firestore rules, so the client no longer needs to read the
+// clinic doc before it has an identity (Phase-6-safe).
 //
 // Phone normalization MIRRORS the client's toStoredPhone at
-// src/utils/phone.ts:23-33 (both sides normalized before compare, same as
-// the client at app/patient/index.tsx:123) so a doc stored via either
-// branch of toStoredPhone (E.164 via libphonenumber-js parsePhoneNumber,
-// or digits-only fallback via String.replace(/\D/g,'')) matches.
+// src/utils/phone.ts:23-33 (both sides normalized before compare) so a
+// doc stored via either branch of toStoredPhone (E.164 via
+// libphonenumber-js parsePhoneNumber, or digits-only fallback via
+// String.replace(/\D/g,'')) matches.
 const { parsePhoneNumber: _parsePhoneNumber, isSupportedCountry: _isSupportedCountry } = require('libphonenumber-js');
 
 function _normalizePhone(raw) {
@@ -545,10 +551,9 @@ function _toStoredPhone(raw, country) {
 exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
   const code = data && typeof data.code === 'string' ? data.code.trim() : '';
   const phone = data && typeof data.phone === 'string' ? data.phone.trim() : '';
-  const countryCode = data && typeof data.countryCode === 'string' ? data.countryCode.trim() : '';
-  if (!code || !phone || !countryCode) {
-    console.error('[issuePatientToken] invalid-argument: code/phone/countryCode required');
-    throw new functions.https.HttpsError('invalid-argument', 'code, phone, and countryCode are required.');
+  if (!code || !phone) {
+    console.error('[issuePatientToken] invalid-argument: code/phone required');
+    throw new functions.https.HttpsError('invalid-argument', 'code and phone are required.');
   }
 
   const db = admin.firestore();
@@ -565,8 +570,15 @@ exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
     throw new functions.https.HttpsError('not-found', 'Invalid code.');
   }
 
-  // (b) clinics/{clinicId}/patients/{patientId}
-  // The client reads `patientSnap.data().phone` at app/patient/index.tsx:122.
+  // (b) clinics/{clinicId} — server-derived countryCode (Phase-6-safe).
+  const clinicSnap = await db.doc(`clinics/${clinicId}`).get();
+  if (!clinicSnap.exists) {
+    console.error(`[issuePatientToken] clinic missing clinicId=${clinicId}`);
+    throw new functions.https.HttpsError('not-found', 'Clinic not found.');
+  }
+  const countryCode = (clinicSnap.data() || {}).countryCode ?? null;
+
+  // (c) clinics/{clinicId}/patients/{patientId}
   const patientSnap = await db.doc(`clinics/${clinicId}/patients/${patientId}`).get();
   if (!patientSnap.exists) {
     console.error(`[issuePatientToken] patient missing clinicId=${clinicId} patientId=${patientId}`);
@@ -574,7 +586,7 @@ exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
   }
   const storedPhone = String((patientSnap.data() || {}).phone || '');
 
-  // Normalize BOTH sides through _toStoredPhone — matches app/patient/index.tsx:123.
+  // Normalize BOTH sides through _toStoredPhone using the SERVER-derived countryCode.
   if (_toStoredPhone(phone, countryCode) !== _toStoredPhone(storedPhone, countryCode)) {
     console.error(`[issuePatientToken] phone mismatch clinicId=${clinicId} patientId=${patientId}`);
     throw new functions.https.HttpsError('permission-denied', 'Phone does not match.');
