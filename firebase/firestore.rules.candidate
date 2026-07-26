@@ -1,0 +1,72 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function role() { return request.auth.token.role; }
+    function claimClinic() { return request.auth.token.clinicId; }
+    function claimPatient() { return request.auth.token.patientId; }
+    function isMember(cid) { return signedIn() && claimClinic() == cid && (role() == 'owner' || role() == 'doctor'); }
+    function isOwner(cid) { return signedIn() && claimClinic() == cid && role() == 'owner'; }
+    function isPatientOfClinic(cid) { return signedIn() && role() == 'patient' && claimClinic() == cid; }
+    function isPatient(cid, pid) { return isPatientOfClinic(cid) && claimPatient() == pid; }
+
+    match /clinics_public/{clinicId} {
+      allow read: if true;
+      allow write: if isOwner(clinicId);
+    }
+
+    match /clinics/{clinicId} {
+      allow read: if isMember(clinicId) || isPatientOfClinic(clinicId)
+                  || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow write: if isOwner(clinicId)
+                  || (signedIn() && request.resource.data.ownerUid == request.auth.uid);
+    }
+
+    match /clinics/{clinicId}/media/{mediaId} {
+      allow read: if true;
+      allow write: if isMember(clinicId);
+    }
+    match /clinics/{clinicId}/media/{mediaId}/likes/{likeId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    match /clinics/{clinicId}/patients/{patientId}/{document=**} {
+      allow read: if isMember(clinicId) || isPatient(clinicId, patientId);
+      allow write: if isMember(clinicId);
+    }
+
+    match /clinics/{clinicId}/{sub}/{document=**} {
+      allow read, write: if isMember(clinicId);
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isMember(resource.data.clinicId));
+      allow write: if signedIn() && (request.auth.uid == uid || isOwner(request.resource.data.clinicId));
+    }
+    match /users/{uid}/saved/{savedId} {
+      allow read, write: if true;
+    }
+
+    match /patients/{patientId}/{document=**} {
+      allow read, write: if (signedIn() && role() == 'patient' && claimPatient() == patientId)
+                         || (signedIn() && (role() == 'owner' || role() == 'doctor')
+                             && exists(/databases/$(database)/documents/clinics/$(claimClinic())/patients/$(patientId)));
+    }
+
+    match /threads/{threadId} {
+      allow read, write: if isMember(threadId.split('_')[0])
+                         || isPatient(threadId.split('_')[0], threadId.split('_')[1]);
+    }
+
+    match /patientCodes/{code} {
+      allow read: if signedIn() && isMember(resource.data.clinicId);
+      allow write: if signedIn() && isMember(request.resource.data.clinicId);
+    }
+
+    match /ai_logs/{logId} {
+      allow read, write: if false;
+    }
+  }
+}
