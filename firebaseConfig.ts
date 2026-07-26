@@ -1,6 +1,6 @@
 // firebaseConfig.ts - Firebase client initialization
 import Constants from 'expo-constants';
-import { initializeApp } from "firebase/app";
+import { getApps, initializeApp } from "firebase/app";
 import { connectAuthEmulator, getAuth, initializeAuth, getReactNativePersistence } from "firebase/auth";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { connectFirestoreEmulator, getFirestore } from "firebase/firestore";
@@ -33,6 +33,29 @@ export const auth = (() => {
 })();
 export const functions = getFunctions(app);
 
+// ─────────────────────────────────────────────────────────────
+// Patient identity — SECOND app instance (Phase 5b, block 2/5)
+// ─────────────────────────────────────────────────────────────
+// Separate FirebaseApp so a patient's signInWithCustomToken session
+// coexists with the clinic owner's default-app session without
+// clobbering auth.currentUser. Same project/config; the "patient"
+// name isolates the Auth + Firestore instances so patient Firestore
+// reads evaluate rules under the patient's own request.auth. Nothing
+// consumes these yet — wired in block 3.
+const patientApp =
+  getApps().find((a) => a.name === 'patient') ??
+  initializeApp(firebaseConfig, 'patient');
+
+export const patientAuth = (() => {
+  try {
+    return initializeAuth(patientApp, { persistence: getReactNativePersistence(AsyncStorage) });
+  } catch {
+    // Fast-refresh / already-initialized: reuse the existing instance
+    return getAuth(patientApp);
+  }
+})();
+export const patientDb = getFirestore(patientApp);
+
 const useEmulator =
   __DEV__ && process.env.EXPO_PUBLIC_USE_EMULATOR === 'true';
 
@@ -56,6 +79,8 @@ if (useEmulator) {
   connectFirestoreEmulator(db, host, 8080);
   connectStorageEmulator(storage, host, 9199);
   connectFunctionsEmulator(functions, host, 5001);
+  connectAuthEmulator(patientAuth, `http://${host}:9099`, { disableWarnings: true });
+  connectFirestoreEmulator(patientDb, host, 8080);
   console.warn(`[firebase] EMULATOR MODE — host=${host} (source=${source})`);
 } else {
   console.log('[firebase] production mode — project=dental-jawad');
