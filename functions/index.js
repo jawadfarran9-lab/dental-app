@@ -509,6 +509,55 @@ exports.updateDoctorPassword = functions.https.onCall(async (data, context) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// Owner-only hard-delete of a doctor's Firebase Auth account.
+// Frees the email (so it can be reused), revokes login, and clears
+// custom claims. Firestore member/user docs are kept as REMOVED for
+// history. Cross-tenant guarded: the target memberId MUST be a doctor
+// member of the caller-owner's clinic.
+// ─────────────────────────────────────────────────────────────
+exports.removeDoctorAccount = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const callerRole = context.auth.token.role;
+  const clinicId = context.auth.token.clinicId;
+  if (callerRole !== 'owner' || !clinicId) {
+    throw new functions.https.HttpsError('permission-denied', 'Only a clinic owner can remove doctor accounts.');
+  }
+  const memberId = (data && data.memberId ? String(data.memberId) : '').trim();
+  if (!memberId) {
+    throw new functions.https.HttpsError('invalid-argument', 'memberId is required.');
+  }
+
+  const db = admin.firestore();
+  const memberSnap = await db.doc(`clinics/${clinicId}/members/${memberId}`).get();
+  if (!memberSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Member not found.');
+  }
+  const member = memberSnap.data() || {};
+  if (member.role !== 'doctor') {
+    throw new functions.https.HttpsError('failed-precondition', 'Only doctor members can be removed.');
+  }
+
+  try {
+    await admin.auth().deleteUser(memberId);
+  } catch (e) {
+    if (!e || e.code !== 'auth/user-not-found') {
+      console.error('[removeDoctorAccount] deleteUser failed memberId=' + memberId, e);
+      throw new functions.https.HttpsError('internal', 'Could not remove the account.');
+    }
+  }
+
+  const { FieldValue } = require('firebase-admin/firestore');
+  const ts = FieldValue.serverTimestamp();
+  await db.doc(`clinics/${clinicId}/members/${memberId}`).set({ status: 'REMOVED', updatedAt: ts }, { merge: true });
+  await db.doc(`users/${memberId}`).set({ status: 'REMOVED', updatedAt: ts }, { merge: true });
+
+  console.log('[removeDoctorAccount] removed doctor uid=' + memberId + ' clinic=' + clinicId);
+  return { memberId };
+});
+
+// ─────────────────────────────────────────────────────────────
 // Phase 5b — issuePatientToken (HTTPS callable, v1)
 // ─────────────────────────────────────────────────────────────
 // Mints a Firebase custom token for a validated patient so the client can
