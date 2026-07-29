@@ -76,7 +76,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/renew-subscribe" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/feedback" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/clinic-settings" options={{ headerShown: false }} />
-      <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: true }} />
+      <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: false }} />
       <Stack.Screen name="patient/conversation" options={{ headerShown: false }} />
       <Stack.Screen name="patient/your-info" options={{ headerShown: false }} />
       <Stack.Screen name="patient/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
