@@ -2,7 +2,6 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { sendImageMessage } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
@@ -479,12 +478,9 @@ export default function ClinicConversationScreen() {
       if (result.canceled) return;
       const uri = result.assets?.[0]?.uri;
       if (!uri) return;
-      setAttachBusy(true);
-      await sendImageMessage({
-        clinicId: clinicId as string,
-        patientId: patientId as string,
-        patientName: patientName ?? '',
-        localUri: uri,
+      router.push({
+        pathname: '/clinic/media-preview' as any,
+        params: { uri, patientId, name: patientName, clinicId, senderName: 'Clinic' },
       });
     } catch (err) {
       console.error('[conversation] pick/send image error', err);

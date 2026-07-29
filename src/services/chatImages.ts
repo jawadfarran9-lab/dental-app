@@ -14,6 +14,7 @@ export async function sendImageMessage(params: {
   from?: 'clinic' | 'patient';
   senderName?: string;
   senderType?: 'clinic' | 'patient';
+  caption?: string;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -34,7 +35,7 @@ export async function sendImageMessage(params: {
   const imageUrl = await getDownloadURL(snap.ref);
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
-    text: '',
+    text: params.caption ?? '',
     type: 'image',
     imageUrl,
     imageWidth: compressed.width,
