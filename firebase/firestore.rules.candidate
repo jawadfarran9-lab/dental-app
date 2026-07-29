@@ -10,10 +10,11 @@ service cloud.firestore {
     function isOwner(cid) { return signedIn() && claimClinic() == cid && role() == 'owner'; }
     function isPatientOfClinic(cid) { return signedIn() && role() == 'patient' && claimClinic() == cid; }
     function isPatient(cid, pid) { return isPatientOfClinic(cid) && claimPatient() == pid; }
+    function ownsClinicDoc(cid) { return signedIn() && get(/databases/$(database)/documents/clinics/$(cid)).data.ownerUid == request.auth.uid; }
 
     match /clinics_public/{clinicId} {
       allow read: if true;
-      allow write: if isOwner(clinicId);
+      allow write: if isOwner(clinicId) || ownsClinicDoc(clinicId);
     }
 
     match /clinics/{clinicId} {

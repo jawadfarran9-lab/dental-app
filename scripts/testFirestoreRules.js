@@ -101,6 +101,11 @@ async function main() {
   await check('query: guest reads public media collection', assertSucceeds(getDocs(collection(guest, 'clinics/clinicA/media'))));
   await check('query: guest CANNOT list clinic settings', assertFails(getDocs(collection(guest, 'clinics/clinicA/settings'))));
 
+  // ── onboarding bootstrap (writes that happen BEFORE owner claims) ──
+  await check('bootstrap: no-claim owner publishes own clinics_public', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics_public/clinicA'), { name: 'pub' }, { merge: true })));
+  await check('bootstrap: ownerB CANNOT publish clinicA public (cross-tenant)', assertFails(setDoc(doc(ownerB, 'clinics_public/clinicA'), { name: 'x' }, { merge: true })));
+  await check('bootstrap: no-claim owner merges own clinic without restating ownerUid', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics/clinicA'), { subscribed: true }, { merge: true })));
+
   await env.cleanup();
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
