@@ -3,6 +3,7 @@ import { compressImage } from '@/src/utils/imageCompress';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import type { Firestore } from 'firebase/firestore';
 import { addDoc, collection } from 'firebase/firestore';
+import type { FirebaseStorage } from 'firebase/storage';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
 export async function sendImageMessage(params: {
@@ -13,7 +14,7 @@ export async function sendImageMessage(params: {
   from?: 'clinic' | 'patient';
   senderName?: string;
   senderType?: 'clinic' | 'patient';
-}, dbInstance: Firestore = db): Promise<void> {
+}, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
     patientId,
@@ -27,7 +28,7 @@ export async function sendImageMessage(params: {
   const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.jpg`;
   const blob = await (await fetch(compressed.uri)).blob();
-  const snap = await uploadBytes(ref(storage, storagePath), blob, {
+  const snap = await uploadBytes(ref(storageInstance, storagePath), blob, {
     contentType: 'image/jpeg',
   });
   const imageUrl = await getDownloadURL(snap.ref);
