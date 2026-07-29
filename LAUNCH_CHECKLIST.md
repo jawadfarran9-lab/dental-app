@@ -20,13 +20,13 @@ the final step, which requires explicit owner approval.
 ## Activation steps (in order, at launch)
 
 ### 1. Wire patient storage to patientStorage
-- Parametrize sendImageMessage (src/services/chatImages.ts) with an optional trailing
-  storageInstance = storage (same pattern as the dbInstance param).
-- Update the two patient callers to pass patientStorage:
+- DONE (prep): sendImageMessage already accepts an optional trailing storageInstance = storage
+  (backward-compatible; default unchanged).
+- REMAINING at launch: pass patientStorage as the 3rd arg in the two patient callers:
   - app/patient/conversation.tsx
   - app/patient/chat-camera.tsx
-- tsc EXIT 0. Must land TOGETHER with step 2 (under locked storage rules a patient
-  upload via the default storage would be denied).
+- tsc EXIT 0. Must land TOGETHER with step 2 (under locked storage rules a patient upload via
+  the default storage would be denied).
 
 ### 2. Swap candidates into the live rule files
 - firebase/firestore.rules.candidate -> firebase/firestore.rules
@@ -39,16 +39,14 @@ the final step, which requires explicit owner approval.
 - Guest: public clinic directory + public wall load.
 - Cross-tenant: clinic A actor cannot read clinic B data.
 
-#### KNOWN RISK to resolve here — the SIGNUP bootstrap
-Signup writes docs BEFORE the owner has role/clinicId claims:
-- clinics/{clinicId}         (candidate allows via ownerUid match — OK)
-- clinics_public/{clinicId}  (candidate write = isOwner -> NO claim yet -> WILL FAIL)
-- clinics/{clinicId}/members/{uid}, users/{uid} (isMember/isOwner -> NO claim yet -> WILL FAIL)
-Options:
-  a) Defer these writes until AFTER assignOwnerClaims + token refresh, or
-  b) Add narrow bootstrap clauses (write allowed when request.resource.data.ownerUid
-     == request.auth.uid), then re-run the isolated suites with added bootstrap tests.
-Do NOT deploy until signup works end-to-end under the locked rules.
+#### Onboarding bootstrap — RESOLVED in the candidate (block 6.4d); confirm live
+Full timeline traced. Under the candidate rules:
+- clinics/{clinicId} signup writes + confirm-subscription merge: PASS (ownerUid bootstrap disjunct).
+- clinics_public/{clinicId} (published at confirm-subscription, before claims): now PASS via the
+  ownsClinicDoc() bootstrap disjunct added in block 6.4d.
+- clinics/{clinicId}/members/{uid} + users/{uid}: first written at LOGIN, after claims — never a gap.
+Verified by the isolated suite (56 passed). Live validation only needs to confirm onboarding
+end-to-end; no remaining code/rules change expected for the bootstrap.
 
 ### 4. Deploy (LIVE BOMB — explicit owner approval only)
 - firebase deploy --only firestore:rules,storage:rules
