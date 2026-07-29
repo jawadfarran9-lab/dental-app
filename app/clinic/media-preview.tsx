@@ -1,9 +1,9 @@
 import { db } from '@/firebaseConfig';
-import { sendImageMessage } from '@/src/services/chatImages';
+import { sendAlbumMessage, sendImageMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -11,6 +11,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     Pressable,
+    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
@@ -22,16 +23,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 export default function MediaPreviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { uri, patientId, name, clinicId, senderName } = useLocalSearchParams<{
-    uri: string;
+  const params = useLocalSearchParams<{
+    uris: string;
     patientId: string;
     name: string;
     clinicId: string;
     senderName: string;
   }>();
+  const { patientId, name, clinicId, senderName } = params;
 
+  const uris = useMemo<string[]>(() => {
+    try {
+      const parsed = JSON.parse(params.uris || '[]');
+      return Array.isArray(parsed) ? parsed.filter((u) => typeof u === 'string') : [];
+    } catch {
+      return [];
+    }
+  }, [params.uris]);
+
+  const [activeIndex, setActiveIndex] = useState(0);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
+
+  const activeUri = uris[activeIndex];
 
   const handleClose = () => {
     if (router.canGoBack()) router.back();
@@ -39,25 +53,41 @@ export default function MediaPreviewScreen() {
 
   const handleSend = async () => {
     if (sending) return;
-    if (!uri || !clinicId || !patientId) {
+    if (uris.length === 0 || !clinicId || !patientId) {
       Alert.alert('Missing info', 'Cannot send right now.');
       return;
     }
     try {
       setSending(true);
-      await sendImageMessage(
-        {
-          clinicId: clinicId as string,
-          patientId: patientId as string,
-          patientName: (name as string) ?? '',
-          localUri: uri as string,
-          from: 'clinic',
-          senderName: (senderName as string) ?? 'Clinic',
-          senderType: 'clinic',
-          caption: caption.trim() || undefined,
-        },
-        db,
-      );
+      if (uris.length <= 1) {
+        await sendImageMessage(
+          {
+            clinicId: clinicId as string,
+            patientId: patientId as string,
+            patientName: (name as string) ?? '',
+            localUri: uris[0],
+            from: 'clinic',
+            senderName: (senderName as string) ?? 'Clinic',
+            senderType: 'clinic',
+            caption: caption.trim() || undefined,
+          },
+          db,
+        );
+      } else {
+        await sendAlbumMessage(
+          {
+            clinicId: clinicId as string,
+            patientId: patientId as string,
+            patientName: (name as string) ?? '',
+            localUris: uris,
+            from: 'clinic',
+            senderName: (senderName as string) ?? 'Clinic',
+            senderType: 'clinic',
+            caption: caption.trim() || undefined,
+          },
+          db,
+        );
+      }
       router.back();
     } catch (e) {
       setSending(false);
@@ -79,9 +109,9 @@ export default function MediaPreviewScreen() {
       </Pressable>
 
       <View style={styles.imageWrap}>
-        {uri ? (
+        {activeUri ? (
           <Image
-            source={{ uri: uri as string }}
+            source={{ uri: activeUri }}
             style={styles.image}
             resizeMode="contain"
           />
@@ -102,6 +132,24 @@ export default function MediaPreviewScreen() {
               Clinic
             </Text>
           </View>
+
+          {uris.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.strip}
+            >
+              {uris.map((u, i) => (
+                <Pressable key={`${u}-${i}`} onPress={() => setActiveIndex(i)} hitSlop={4}>
+                  <Image
+                    source={{ uri: u }}
+                    style={[styles.thumb, i === activeIndex && styles.thumbActive]}
+                    resizeMode="cover"
+                  />
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
 
           <View style={styles.captionRow}>
             <View style={styles.captionPill}>
@@ -226,5 +274,20 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: {
     opacity: 0.6,
+  },
+  strip: {
+    gap: 6,
+    paddingVertical: 2,
+  },
+  thumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  thumbActive: {
+    borderColor: '#4DA3FF',
   },
 });

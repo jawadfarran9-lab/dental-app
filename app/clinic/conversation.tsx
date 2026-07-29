@@ -86,11 +86,20 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image';
+  type?: 'image' | 'album';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   storagePath?: string;
+  media?: {
+    kind: 'image' | 'video';
+    url: string;
+    storagePath: string;
+    width?: number;
+    height?: number;
+    posterUrl?: string;
+    durationMs?: number;
+  }[];
   reactionClinic?: string;
   reactionPatient?: string;
   seenAt?: number;
@@ -473,14 +482,15 @@ export default function ClinicConversationScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false,
+        allowsMultipleSelection: true,
         quality: 1,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
+      const uris = (result.assets ?? []).map((a) => a.uri).filter(Boolean) as string[];
+      if (uris.length === 0) return;
       router.push({
         pathname: '/clinic/media-preview' as any,
-        params: { uri, patientId, name: patientName, clinicId, senderName: 'Clinic' },
+        params: { uris: JSON.stringify(uris), patientId, name: patientName, clinicId, senderName: 'Clinic' },
       });
     } catch (err) {
       console.error('[conversation] pick/send image error', err);
@@ -690,6 +700,103 @@ export default function ClinicConversationScreen() {
       </View>
     ) : null;
 
+    if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
+      const ALBUM_W = 220;
+      const GAP = 3;
+      const cellSquare = Math.floor((ALBUM_W - GAP) / 2);
+      const wideH = 130;
+      const media = item.media;
+      const extra = media.length - 3;
+      let grid: React.ReactNode = null;
+      if (media.length === 1) {
+        grid = (
+          <Image
+            source={{ uri: media[0].url }}
+            style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
+            resizeMode="cover"
+          />
+        );
+      } else if (media.length === 2) {
+        grid = (
+          <View style={[styles.albumRow, { width: ALBUM_W }]}>
+            <Image
+              source={{ uri: media[0].url }}
+              style={[styles.albumCell, { width: cellSquare, height: cellSquare, marginRight: GAP }]}
+              resizeMode="cover"
+            />
+            <Image
+              source={{ uri: media[1].url }}
+              style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+              resizeMode="cover"
+            />
+          </View>
+        );
+      } else {
+        grid = (
+          <View style={{ width: ALBUM_W }}>
+            <View style={[styles.albumRow, { marginBottom: GAP }]}>
+              <Image
+                source={{ uri: media[0].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare, marginRight: GAP }]}
+                resizeMode="cover"
+              />
+              <Image
+                source={{ uri: media[1].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                resizeMode="cover"
+              />
+            </View>
+            <View style={{ position: 'relative' }}>
+              <Image
+                source={{ uri: media[2].url }}
+                style={[styles.albumCellWide, { width: ALBUM_W, height: wideH }]}
+                resizeMode="cover"
+              />
+              {extra > 0 && (
+                <View style={styles.albumMore}>
+                  <Text style={styles.albumMoreText}>+{extra}</Text>
+                </View>
+              )}
+            </View>
+          </View>
+        );
+      }
+      return (
+        <View style={{ position: 'relative' }}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <View style={styles.albumWrap}>{grid}</View>
+            {!!item.text && (
+              <Text
+                style={[
+                  styles.albumCaption,
+                  sent ? styles.bubbleSentText : [styles.bubbleRecvText, { color: recvText }],
+                ]}
+              >
+                {item.text}
+              </Text>
+            )}
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
+          {reactionBadge}
+          {starBadge}
+        </View>
+      );
+    }
     if (item.type === 'image' && item.imageUrl) {
       const BUBBLE_MAX_W = 220;
       const ratio =
@@ -1703,6 +1810,43 @@ const styles = StyleSheet.create({
     marginTop: 4,
     marginRight: 4,
     alignSelf: 'flex-end',
+  },
+
+  albumWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  albumRow: {
+    flexDirection: 'row',
+  },
+  albumCell: {
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  albumCellWide: {
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  albumMore: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
+  albumMoreText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  albumCaption: {
+    marginTop: 6,
+    marginHorizontal: 4,
   },
 
   emptyCard: {
