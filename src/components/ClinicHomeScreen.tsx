@@ -1,3 +1,4 @@
+import { db } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
@@ -9,7 +10,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useRef } from 'react';
+import { doc, getDoc } from 'firebase/firestore';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
     Animated,
@@ -297,11 +299,27 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   const insets = useSafeAreaInsets();
   const config = CLINIC_HOME_CONFIG[clinicType];
 
-  const { isSubscribed, clinicRole, logout } = useAuth();
+  const { isSubscribed, clinicRole, clinicId, logout } = useAuth();
   const { hasAIPro } = useAIProStatus();
   const showBadge = isSubscribed === true;
   const showAIPro = showBadge && hasAIPro === true;
   const isDoctor = clinicRole !== 'owner';
+
+  const [clinicName, setClinicName] = useState('');
+  useEffect(() => {
+    if (!clinicId) return;
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, 'clinics', clinicId));
+        if (snap.exists()) {
+          const data = snap.data();
+          setClinicName(data.clinicName || data.name || '');
+        }
+      } catch (e) {
+        console.warn('[ClinicHome] name fetch failed', e);
+      }
+    })();
+  }, [clinicId]);
 
   const heroAnim = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
@@ -337,7 +355,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
   }, [waveAnim, hasAIPro]);
 
   const nameLetters = useMemo(() => {
-    const source = config.name || 'Clinic';
+    const source = clinicName || config.name || 'Clinic';
     return Array.from(source).map((ch, i) => {
       if (ch === ' ') return { ch, transform: null };
       const phase = i * 0.027;
@@ -352,7 +370,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
       });
       return { ch, transform: { translateY, rotate } };
     });
-  }, [config.name, waveAnim]);
+  }, [clinicName, config.name, waveAnim]);
 
   useEffect(() => {
     if (!showAIPro) {
@@ -602,7 +620,7 @@ export default function ClinicHomeScreen({ clinicType }: ClinicHomeScreenProps) 
                     </View>
                   ) : (
                     <Text style={styles.clinicName} numberOfLines={1}>
-                      {config.name}
+                      {clinicName || config.name}
                     </Text>
                   )}
                 </View>
