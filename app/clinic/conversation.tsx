@@ -34,7 +34,10 @@ import {
   TextInput,
   TouchableWithoutFeedback,
   View,
+  type ViewStyle,
 } from 'react-native';
+import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
+import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EmojiPicker from 'rn-emoji-keyboard';
 
@@ -132,6 +135,101 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   );
 };
 
+function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: string; width: number; height: number; imgW?: number; imgH?: number; onZoomChange: (zoomed: boolean) => void }) {
+  const scale = useSharedValue(1);
+  const savedScale = useSharedValue(1);
+  const tx = useSharedValue(0);
+  const ty = useSharedValue(0);
+  const stx = useSharedValue(0);
+  const sty = useSharedValue(0);
+
+  const aspect = imgW && imgH ? imgW / imgH : width / height;
+  const containerAspect = width / height;
+  let baseW = width;
+  let baseH = height;
+  if (aspect >= containerAspect) {
+    baseW = width;
+    baseH = width / aspect;
+  } else {
+    baseH = height;
+    baseW = height * aspect;
+  }
+
+  const pinch = Gesture.Pinch()
+    .onUpdate((e) => {
+      const next = savedScale.value * e.scale;
+      scale.value = next < 1 ? 1 : next > 4 ? 4 : next;
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+      if (scale.value <= 1) {
+        scale.value = withTiming(1);
+        tx.value = withTiming(0);
+        ty.value = withTiming(0);
+        stx.value = 0;
+        sty.value = 0;
+        savedScale.value = 1;
+        runOnJS(onZoomChange)(false);
+      } else {
+        const maxX = Math.max(0, (baseW * scale.value - width) / 2);
+        const maxY = Math.max(0, (baseH * scale.value - height) / 2);
+        tx.value = tx.value < -maxX ? -maxX : tx.value > maxX ? maxX : tx.value;
+        ty.value = ty.value < -maxY ? -maxY : ty.value > maxY ? maxY : ty.value;
+        stx.value = tx.value;
+        sty.value = ty.value;
+        runOnJS(onZoomChange)(true);
+      }
+    });
+
+  const pan = Gesture.Pan()
+    .onUpdate((e) => {
+      if (scale.value > 1) {
+        const maxX = Math.max(0, (baseW * scale.value - width) / 2);
+        const maxY = Math.max(0, (baseH * scale.value - height) / 2);
+        const nx = stx.value + e.translationX;
+        const ny = sty.value + e.translationY;
+        tx.value = nx < -maxX ? -maxX : nx > maxX ? maxX : nx;
+        ty.value = ny < -maxY ? -maxY : ny > maxY ? maxY : ny;
+      }
+    })
+    .onEnd(() => {
+      stx.value = tx.value;
+      sty.value = ty.value;
+    });
+
+  const doubleTap = Gesture.Tap()
+    .numberOfTaps(2)
+    .onEnd(() => {
+      if (scale.value > 1) {
+        scale.value = withTiming(1);
+        savedScale.value = 1;
+        tx.value = withTiming(0);
+        ty.value = withTiming(0);
+        stx.value = 0;
+        sty.value = 0;
+        runOnJS(onZoomChange)(false);
+      } else {
+        scale.value = withTiming(2);
+        savedScale.value = 2;
+        runOnJS(onZoomChange)(true);
+      }
+    });
+
+  const composed = Gesture.Race(doubleTap, Gesture.Simultaneous(pinch, pan));
+
+  const aStyle = useAnimatedStyle((): ViewStyle => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { scale: scale.value }],
+  }));
+
+  return (
+    <GestureDetector gesture={composed}>
+      <Reanimated.View style={[{ width, flex: 1, justifyContent: 'center', alignItems: 'center' }, aStyle]}>
+        <Image source={{ uri }} resizeMode="contain" style={{ width, height: '100%' }} />
+      </Reanimated.View>
+    </GestureDetector>
+  );
+}
+
 export default function ClinicConversationScreen() {
   useClinicGuard();
   const router = useRouter();
@@ -170,7 +268,8 @@ export default function ClinicConversationScreen() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerMessage, setViewerMessage] = useState<Message | null>(null);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const viewerListRef = useRef<FlatList<{ url: string }>>(null);
+  const viewerListRef = useRef<FlatList<{ url: string; width?: number; height?: number }>>(null);
+  const [viewerZoomed, setViewerZoomed] = useState(false);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
@@ -374,13 +473,14 @@ export default function ClinicConversationScreen() {
   const openViewer = (m: Message, index: number) => {
     setViewerMessage(m);
     setViewerIndex(index);
+    setViewerZoomed(false);
     setViewerOpen(true);
   };
   const closeViewer = () => { setViewerOpen(false); setViewerMessage(null); setViewerIndex(0); };
-  const viewerMediaOf = (m: Message | null): { url: string }[] => {
+  const viewerMediaOf = (m: Message | null): { url: string; width?: number; height?: number }[] => {
     if (!m) return [];
-    if (m.type === 'album' && Array.isArray(m.media)) return m.media.map((x) => ({ url: x.url }));
-    if (m.type === 'image' && m.imageUrl) return [{ url: m.imageUrl }];
+    if (m.type === 'album' && Array.isArray(m.media)) return m.media.map((x) => ({ url: x.url, width: x.width, height: x.height }));
+    if (m.type === 'image' && m.imageUrl) return [{ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight }];
     return [];
   };
   const shareViewerCurrent = async () => {
@@ -1677,11 +1777,13 @@ export default function ClinicConversationScreen() {
       <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
         {viewerOpen && viewerMessage ? (() => {
           const SCREEN_W = Dimensions.get('window').width;
+          const SCREEN_H = Dimensions.get('window').height;
           const media = viewerMediaOf(viewerMessage);
           const live = messages.find((m) => m.id === viewerMessage.id);
           const isOwn = viewerMessage.from === 'clinic';
           const isStarred = !!live?.starredClinic;
           return (
+            <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={{ flex: 1, backgroundColor: '#000' }}>
               <FlatList
                 ref={viewerListRef}
@@ -1691,14 +1793,16 @@ export default function ClinicConversationScreen() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 initialScrollIndex={viewerIndex}
+                scrollEnabled={!viewerZoomed}
                 getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
                 onMomentumScrollEnd={(e) => {
                   const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
                   setViewerIndex(idx);
+                  setViewerZoomed(false);
                 }}
                 renderItem={({ item: page }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                    <Image source={{ uri: page.url }} resizeMode="contain" style={{ width: SCREEN_W, flex: 1 }} />
+                    <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
                   </View>
                 )}
               />
@@ -1764,6 +1868,7 @@ export default function ClinicConversationScreen() {
                 </View>
               </View>
             </View>
+            </GestureHandlerRootView>
           );
         })() : null}
       </Modal>
