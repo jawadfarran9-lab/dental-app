@@ -383,6 +383,17 @@ export default function ClinicConversationScreen() {
     if (m.type === 'image' && m.imageUrl) return [{ url: m.imageUrl }];
     return [];
   };
+  const shareViewerCurrent = async () => {
+    const list = viewerMediaOf(viewerMessage);
+    const url = list[viewerIndex]?.url;
+    if (!url) return;
+    const caption = viewerMessage?.text;
+    try {
+      await Share.share({ message: caption ? `${caption}\n${url}` : url });
+    } catch {
+      // user cancelled or share failed — no-op
+    }
+  };
 
   const openReactionSheet = (m: Message) => {
     Haptics.selectionAsync().catch(() => {});
@@ -567,6 +578,12 @@ export default function ClinicConversationScreen() {
     );
     return () => unsub();
   }, [clinicId, patientId]);
+
+  useEffect(() => {
+    if (viewerOpen && viewerMessage && !messages.some((m) => m.id === viewerMessage.id)) {
+      closeViewer();
+    }
+  }, [messages, viewerOpen, viewerMessage]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -1661,6 +1678,9 @@ export default function ClinicConversationScreen() {
         {viewerOpen && viewerMessage ? (() => {
           const SCREEN_W = Dimensions.get('window').width;
           const media = viewerMediaOf(viewerMessage);
+          const live = messages.find((m) => m.id === viewerMessage.id);
+          const isOwn = viewerMessage.from === 'clinic';
+          const isStarred = !!live?.starredClinic;
           return (
             <View style={{ flex: 1, backgroundColor: '#000' }}>
               <FlatList
@@ -1697,7 +1717,7 @@ export default function ClinicConversationScreen() {
                 <View style={{ width: 40 }} />
               </View>
               {media.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + 20 }]}>
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
                   {media.map((thumb, i) => (
                     <Pressable
                       key={`thumb_${i}`}
@@ -1712,6 +1732,37 @@ export default function ClinicConversationScreen() {
                   ))}
                 </View>
               )}
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.92)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <View style={styles.viewerBarRow}>
+                  <Pressable onPress={shareViewerCurrent} hitSlop={8} style={styles.viewerBarBtn}>
+                    <View style={styles.viewerBarIcon}>
+                      <Ionicons name="share-outline" size={24} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.viewerBarLabel}>Share</Text>
+                  </Pressable>
+                  <Pressable onPress={() => toggleStar(live ?? viewerMessage)} hitSlop={8} style={styles.viewerBarBtn}>
+                    <View style={[styles.viewerBarIcon, isStarred && styles.viewerBarIconStar]}>
+                      <Ionicons name={isStarred ? 'star' : 'star-outline'} size={24} color={isStarred ? '#F5A623' : '#FFFFFF'} />
+                    </View>
+                    <Text style={styles.viewerBarLabel}>Star</Text>
+                  </Pressable>
+                  {isOwn && (
+                    <Pressable onPress={() => handleRemoveMessage(viewerMessage)} hitSlop={8} style={styles.viewerBarBtn}>
+                      <View style={[styles.viewerBarIcon, styles.viewerBarIconDanger]}>
+                        <Ionicons name="trash-outline" size={24} color="#FF8A80" />
+                      </View>
+                      <Text style={[styles.viewerBarLabel, styles.viewerBarLabelDanger]}>Delete</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
             </View>
           );
         })() : null}
@@ -2250,4 +2301,12 @@ const styles = StyleSheet.create({
   viewerThumbActive: {
     borderColor: '#FFFFFF',
   },
+  viewerBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 18 },
+  viewerBarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
+  viewerBarBtn: { alignItems: 'center', justifyContent: 'center' },
+  viewerBarIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  viewerBarIconStar: { backgroundColor: 'rgba(245,166,35,0.18)', borderColor: 'rgba(245,166,35,0.55)' },
+  viewerBarIconDanger: { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: 'rgba(239,68,68,0.5)' },
+  viewerBarLabel: { fontSize: 11, marginTop: 7, color: '#FFFFFF', fontWeight: '600' },
+  viewerBarLabelDanger: { color: '#FF8A80' },
 });
