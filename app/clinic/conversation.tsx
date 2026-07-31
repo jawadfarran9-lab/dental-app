@@ -278,6 +278,8 @@ export default function ClinicConversationScreen() {
   const [viewerIndex, setViewerIndex] = useState(0);
   const viewerListRef = useRef<FlatList<ViewerPage>>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryMessage, setGalleryMessage] = useState<Message | null>(null);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
@@ -478,23 +480,41 @@ export default function ClinicConversationScreen() {
   };
   const closeActionMenu = () => setActionMenuOpen(false);
 
+  const buildAllChatImages = (): ViewerPage[] => {
+    const out: ViewerPage[] = [];
+    for (const m of messages) {
+      if (m.type === 'image' && m.imageUrl) {
+        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
+      } else if (m.type === 'album' && Array.isArray(m.media)) {
+        for (const it of m.media) {
+          out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id });
+        }
+      }
+    }
+    return out;
+  };
   const openViewerSingle = (m: Message) => {
-    const singles = messages.filter((x) => x.type === 'image' && !!x.imageUrl);
-    const pages: ViewerPage[] = singles.map((x) => ({ url: x.imageUrl as string, width: x.imageWidth, height: x.imageHeight, msgId: x.id }));
-    const start = Math.max(0, singles.findIndex((x) => x.id === m.id));
+    const pages = buildAllChatImages();
+    const start = Math.max(0, pages.findIndex((p) => p.msgId === m.id));
     setViewerPages(pages);
     setViewerIndex(start);
     setViewerZoomed(false);
     setViewerOpen(true);
   };
-  const openViewerAlbum = (m: Message, index: number) => {
-    const pages: ViewerPage[] = (m.media ?? []).map((x) => ({ url: x.url, width: x.width, height: x.height, msgId: m.id }));
+  const openViewerFromGallery = (albumMsg: Message, mediaIndex: number) => {
+    const pages = buildAllChatImages();
+    const albumStart = pages.findIndex((p) => p.msgId === albumMsg.id);
+    const start = albumStart >= 0 ? albumStart + mediaIndex : 0;
+    setGalleryOpen(false);
+    setGalleryMessage(null);
     setViewerPages(pages);
-    setViewerIndex(index);
+    setViewerIndex(Math.max(0, start));
     setViewerZoomed(false);
     setViewerOpen(true);
   };
   const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const openAlbumGallery = (m: Message) => { setGalleryMessage(m); setGalleryOpen(true); };
+  const closeGallery = () => { setGalleryOpen(false); setGalleryMessage(null); };
   const shareViewerCurrent = async (url?: string, caption?: string) => {
     if (!url) return;
     try {
@@ -1036,7 +1056,7 @@ export default function ClinicConversationScreen() {
     return (
       <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
-          <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => (item.type === 'album' ? openViewerAlbum(item, idx) : openViewerSingle(item))} />
+          <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => (item.type === 'album' ? openAlbumGallery(item) : openViewerSingle(item))} />
         </MessageBubble>
       </View>
     );
@@ -1785,6 +1805,60 @@ export default function ClinicConversationScreen() {
         </View>
       </Modal>
 
+      <Modal visible={galleryOpen} transparent={false} animationType="slide" onRequestClose={closeGallery} statusBarTranslucent>
+        {galleryOpen && galleryMessage ? (() => {
+          const SCREEN_W = Dimensions.get('window').width;
+          const gm = galleryMessage;
+          const gMedia = gm?.media ?? [];
+          const isOwn = gm?.from === 'clinic';
+          const GAP = 10;
+          return (
+            <View style={{ flex: 1, backgroundColor: '#000' }}>
+              <ScrollView
+                contentContainerStyle={{ paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {gMedia.map((it, i) => {
+                  const imgW = SCREEN_W - 16;
+                  const aspect = it.width && it.height ? it.width / it.height : 1;
+                  const h = imgW / aspect;
+                  return (
+                    <Pressable
+                      key={`galimg_${i}`}
+                      onPress={() => { if (gm) openViewerFromGallery(gm, i); }}
+                      style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8 }}
+                    >
+                      <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <View style={[styles.galleryHeader, { paddingTop: insets.top + 8 }]}>
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.75)', 'transparent']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Pressable onPress={closeGallery} style={styles.viewerClose} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#FFFFFF" />
+                </Pressable>
+                <View style={styles.viewerWho}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                    {isOwn ? 'You' : patientName}
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
+                    {gMedia.length} photos
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+            </View>
+          );
+        })() : null}
+      </Modal>
+
       <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
         {viewerOpen && viewerPages.length > 0 ? (() => {
           const SCREEN_W = Dimensions.get('window').width;
@@ -1834,18 +1908,24 @@ export default function ClinicConversationScreen() {
               </View>
               {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
-                  {pages.map((thumb, i) => (
-                    <Pressable
-                      key={`thumb_${i}`}
-                      onPress={() => {
-                        setViewerIndex(i);
-                        viewerListRef.current?.scrollToIndex({ index: i, animated: true });
-                      }}
-                      style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
-                    >
-                      <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                    </Pressable>
-                  ))}
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.viewerStripContent}
+                  >
+                    {pages.map((thumb, i) => (
+                      <Pressable
+                        key={`thumb_${i}`}
+                        onPress={() => {
+                          setViewerIndex(i);
+                          viewerListRef.current?.scrollToIndex({ index: i, animated: true });
+                        }}
+                        style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
+                      >
+                        <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
                 </View>
               )}
               <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
@@ -2402,9 +2482,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+  },
+  viewerStripContent: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 6,
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 16,
   },
   viewerThumb: {
@@ -2416,7 +2498,9 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   viewerThumbActive: {
-    borderColor: '#FFFFFF',
+    borderColor: '#4DA3FF',
+    backgroundColor: '#FFFFFF',
+    padding: 2,
   },
   viewerBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 18 },
   viewerBarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
@@ -2426,4 +2510,15 @@ const styles = StyleSheet.create({
   viewerBarIconDanger: { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: 'rgba(239,68,68,0.5)' },
   viewerBarLabel: { fontSize: 11, marginTop: 7, color: '#FFFFFF', fontWeight: '600' },
   viewerBarLabelDanger: { color: '#FF8A80' },
+  galleryHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    zIndex: 10,
+  },
 });
