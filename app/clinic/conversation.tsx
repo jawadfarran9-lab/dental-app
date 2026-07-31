@@ -16,24 +16,24 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Animated,
-    Dimensions,
-    FlatList,
-    Image,
-    Keyboard,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Pressable,
-    ScrollView,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableWithoutFeedback,
-    View,
+  ActivityIndicator,
+  Alert,
+  Animated,
+  Dimensions,
+  FlatList,
+  Image,
+  Keyboard,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableWithoutFeedback,
+  View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EmojiPicker from 'rn-emoji-keyboard';
@@ -167,6 +167,10 @@ export default function ClinicConversationScreen() {
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
   const [messageInfoOpen, setMessageInfoOpen] = useState(false);
   const [messageInfoTarget, setMessageInfoTarget] = useState<Message | null>(null);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerMessage, setViewerMessage] = useState<Message | null>(null);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const viewerListRef = useRef<FlatList<{ url: string }>>(null);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
@@ -366,6 +370,19 @@ export default function ClinicConversationScreen() {
     setActionMenuOpen(true);
   };
   const closeActionMenu = () => setActionMenuOpen(false);
+
+  const openViewer = (m: Message, index: number) => {
+    setViewerMessage(m);
+    setViewerIndex(index);
+    setViewerOpen(true);
+  };
+  const closeViewer = () => { setViewerOpen(false); setViewerMessage(null); setViewerIndex(0); };
+  const viewerMediaOf = (m: Message | null): { url: string }[] => {
+    if (!m) return [];
+    if (m.type === 'album' && Array.isArray(m.media)) return m.media.map((x) => ({ url: x.url }));
+    if (m.type === 'image' && m.imageUrl) return [{ url: m.imageUrl }];
+    return [];
+  };
 
   const openReactionSheet = (m: Message) => {
     Haptics.selectionAsync().catch(() => {});
@@ -680,7 +697,7 @@ export default function ClinicConversationScreen() {
 
   const palette = AVATAR_PALETTE[hashName(patientName) % AVATAR_PALETTE.length];
 
-  const BubbleBody = ({ item, sent, time }: { item: Message; sent: boolean; time: string }) => {
+  const BubbleBody = ({ item, sent, time, onOpenViewer }: { item: Message; sent: boolean; time: string; onOpenViewer?: (index: number) => void }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     const reactionBadge = hasReaction ? (
       <Pressable
@@ -710,43 +727,53 @@ export default function ClinicConversationScreen() {
       let grid: React.ReactNode = null;
       if (media.length === 1) {
         grid = (
-          <Image
-            source={{ uri: media[0].url }}
-            style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
-            resizeMode="cover"
-          />
+          <Pressable onPress={() => onOpenViewer?.(0)}>
+            <Image
+              source={{ uri: media[0].url }}
+              style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
+              resizeMode="cover"
+            />
+          </Pressable>
         );
       } else if (media.length === 2) {
         grid = (
           <View style={[styles.albumRow, { width: ALBUM_W }]}>
-            <Image
-              source={{ uri: media[0].url }}
-              style={[styles.albumCell, { width: cellSquare, height: cellSquare, marginRight: GAP }]}
-              resizeMode="cover"
-            />
-            <Image
-              source={{ uri: media[1].url }}
-              style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
-              resizeMode="cover"
-            />
+            <Pressable onPress={() => onOpenViewer?.(0)} style={{ marginRight: GAP }}>
+              <Image
+                source={{ uri: media[0].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                resizeMode="cover"
+              />
+            </Pressable>
+            <Pressable onPress={() => onOpenViewer?.(1)}>
+              <Image
+                source={{ uri: media[1].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                resizeMode="cover"
+              />
+            </Pressable>
           </View>
         );
       } else {
         grid = (
           <View style={{ width: ALBUM_W }}>
             <View style={[styles.albumRow, { marginBottom: GAP }]}>
-              <Image
-                source={{ uri: media[0].url }}
-                style={[styles.albumCell, { width: cellSquare, height: cellSquare, marginRight: GAP }]}
-                resizeMode="cover"
-              />
-              <Image
-                source={{ uri: media[1].url }}
-                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
-                resizeMode="cover"
-              />
+              <Pressable onPress={() => onOpenViewer?.(0)} style={{ marginRight: GAP }}>
+                <Image
+                  source={{ uri: media[0].url }}
+                  style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                  resizeMode="cover"
+                />
+              </Pressable>
+              <Pressable onPress={() => onOpenViewer?.(1)}>
+                <Image
+                  source={{ uri: media[1].url }}
+                  style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                  resizeMode="cover"
+                />
+              </Pressable>
             </View>
-            <View style={{ position: 'relative' }}>
+            <Pressable onPress={() => onOpenViewer?.(2)} style={{ position: 'relative' }}>
               <Image
                 source={{ uri: media[2].url }}
                 style={[styles.albumCellWide, { width: ALBUM_W, height: wideH }]}
@@ -757,7 +784,7 @@ export default function ClinicConversationScreen() {
                   <Text style={styles.albumMoreText}>+{extra}</Text>
                 </View>
               )}
-            </View>
+            </Pressable>
           </View>
         );
       }
@@ -813,11 +840,13 @@ export default function ClinicConversationScreen() {
               !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
             ]}
           >
-            <Image
-              source={{ uri: item.imageUrl }}
-              style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
-              resizeMode="cover"
-            />
+            <Pressable onPress={() => onOpenViewer?.(0)}>
+              <Image
+                source={{ uri: item.imageUrl }}
+                style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+                resizeMode="cover"
+              />
+            </Pressable>
             {!!time && (
               <Text
                 style={[
@@ -879,7 +908,7 @@ export default function ClinicConversationScreen() {
     return (
       <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
-          <BubbleBody item={item} sent={sent} time={time} />
+          <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => openViewer(item, idx)} />
         </MessageBubble>
       </View>
     );
@@ -1628,6 +1657,66 @@ export default function ClinicConversationScreen() {
         </View>
       </Modal>
 
+      <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
+        {viewerOpen && viewerMessage ? (() => {
+          const SCREEN_W = Dimensions.get('window').width;
+          const media = viewerMediaOf(viewerMessage);
+          return (
+            <View style={{ flex: 1, backgroundColor: '#000' }}>
+              <FlatList
+                ref={viewerListRef}
+                data={media}
+                keyExtractor={(_, i) => `viewer_${i}`}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={viewerIndex}
+                getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+                onMomentumScrollEnd={(e) => {
+                  const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                  setViewerIndex(idx);
+                }}
+                renderItem={({ item: page }) => (
+                  <View style={[styles.viewerPage, { width: SCREEN_W }]}>
+                    <Image source={{ uri: page.url }} resizeMode="contain" style={{ width: SCREEN_W, flex: 1 }} />
+                  </View>
+                )}
+              />
+              <View style={[styles.viewerHeader, { top: insets.top + 8 }]}>
+                <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#FFFFFF" />
+                </Pressable>
+                <View style={styles.viewerWho}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                    {viewerMessage.from === 'clinic' ? 'You' : patientName}
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
+                    {formatInfoTime(viewerMessage.createdAt)}
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+              {media.length > 1 && (
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + 20 }]}>
+                  {media.map((thumb, i) => (
+                    <Pressable
+                      key={`thumb_${i}`}
+                      onPress={() => {
+                        setViewerIndex(i);
+                        viewerListRef.current?.scrollToIndex({ index: i, animated: true });
+                      }}
+                      style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
+                    >
+                      <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+          );
+        })() : null}
+      </Modal>
+
       {copiedVisible && (
         <Animated.View
           pointerEvents="none"
@@ -2115,4 +2204,50 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   copiedPillText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  viewerHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    zIndex: 10,
+  },
+  viewerClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerWho: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  viewerPage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerStrip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+  },
+  viewerThumb: {
+    width: 40,
+    height: 54,
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  viewerThumbActive: {
+    borderColor: '#FFFFFF',
+  },
 });
