@@ -5,9 +5,13 @@
     "source.sortMembers": "explicit"
   },
   "files.watcherExclude": {
-    "**/SynologyDrive/**": true
+    "**/SynologyDrive/**": true,
+    "**/node_modules/**": true
   },
   "search.exclude": {
     "**/SynologyDrive/**": true
+  },
+  "typescript.tsserver.watchOptions": {
+    "excludeDirectories": ["**/node_modules"]
   }
 }
