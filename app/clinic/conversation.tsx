@@ -277,6 +277,7 @@ export default function ClinicConversationScreen() {
   const [viewerPages, setViewerPages] = useState<ViewerPage[]>([]);
   const [viewerIndex, setViewerIndex] = useState(0);
   const viewerListRef = useRef<FlatList<ViewerPage>>(null);
+  const stripRef = useRef<ScrollView>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryMessage, setGalleryMessage] = useState<Message | null>(null);
@@ -715,6 +716,18 @@ export default function ClinicConversationScreen() {
       closeViewer();
     }
   }, [messages, viewerOpen, viewerPages, viewerIndex]);
+
+  useEffect(() => {
+    if (!viewerOpen || viewerPages.length <= 1) return;
+    const SCREEN_W = Dimensions.get('window').width;
+    const contentWidth = 32 + viewerPages.length * 40 + (viewerPages.length - 1) * 8;
+    const maxX = Math.max(0, contentWidth - SCREEN_W);
+    const targetX = Math.min(maxX, Math.max(0, 36 + viewerIndex * 48 - SCREEN_W / 2));
+    const t = setTimeout(() => {
+      stripRef.current?.scrollTo({ x: targetX, animated: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [viewerOpen, viewerIndex, viewerPages.length]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -1909,6 +1922,7 @@ export default function ClinicConversationScreen() {
               {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
                   <ScrollView
+                    ref={stripRef}
                     horizontal
                     showsHorizontalScrollIndicator={false}
                     contentContainerStyle={styles.viewerStripContent}
