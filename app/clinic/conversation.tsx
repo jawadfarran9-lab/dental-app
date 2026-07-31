@@ -109,6 +109,8 @@ type Message = {
   starredClinic?: boolean;
 };
 
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string };
+
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
 const RECENTS_KEY = 'reactions:recent:v3';
@@ -182,15 +184,21 @@ function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: 
     });
 
   const pan = Gesture.Pan()
-    .onUpdate((e) => {
+    .manualActivation(true)
+    .onTouchesMove((_e, state) => {
       if (scale.value > 1) {
-        const maxX = Math.max(0, (baseW * scale.value - width) / 2);
-        const maxY = Math.max(0, (baseH * scale.value - height) / 2);
-        const nx = stx.value + e.translationX;
-        const ny = sty.value + e.translationY;
-        tx.value = nx < -maxX ? -maxX : nx > maxX ? maxX : nx;
-        ty.value = ny < -maxY ? -maxY : ny > maxY ? maxY : ny;
+        state.activate();
+      } else {
+        state.fail();
       }
+    })
+    .onUpdate((e) => {
+      const maxX = Math.max(0, (baseW * scale.value - width) / 2);
+      const maxY = Math.max(0, (baseH * scale.value - height) / 2);
+      const nx = stx.value + e.translationX;
+      const ny = sty.value + e.translationY;
+      tx.value = nx < -maxX ? -maxX : nx > maxX ? maxX : nx;
+      ty.value = ny < -maxY ? -maxY : ny > maxY ? maxY : ny;
     })
     .onEnd(() => {
       stx.value = tx.value;
@@ -266,9 +274,9 @@ export default function ClinicConversationScreen() {
   const [messageInfoOpen, setMessageInfoOpen] = useState(false);
   const [messageInfoTarget, setMessageInfoTarget] = useState<Message | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerMessage, setViewerMessage] = useState<Message | null>(null);
+  const [viewerPages, setViewerPages] = useState<ViewerPage[]>([]);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const viewerListRef = useRef<FlatList<{ url: string; width?: number; height?: number }>>(null);
+  const viewerListRef = useRef<FlatList<ViewerPage>>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
   const closeMessageInfo = () => setMessageInfoOpen(false);
@@ -470,24 +478,25 @@ export default function ClinicConversationScreen() {
   };
   const closeActionMenu = () => setActionMenuOpen(false);
 
-  const openViewer = (m: Message, index: number) => {
-    setViewerMessage(m);
+  const openViewerSingle = (m: Message) => {
+    const singles = messages.filter((x) => x.type === 'image' && !!x.imageUrl);
+    const pages: ViewerPage[] = singles.map((x) => ({ url: x.imageUrl as string, width: x.imageWidth, height: x.imageHeight, msgId: x.id }));
+    const start = Math.max(0, singles.findIndex((x) => x.id === m.id));
+    setViewerPages(pages);
+    setViewerIndex(start);
+    setViewerZoomed(false);
+    setViewerOpen(true);
+  };
+  const openViewerAlbum = (m: Message, index: number) => {
+    const pages: ViewerPage[] = (m.media ?? []).map((x) => ({ url: x.url, width: x.width, height: x.height, msgId: m.id }));
+    setViewerPages(pages);
     setViewerIndex(index);
     setViewerZoomed(false);
     setViewerOpen(true);
   };
-  const closeViewer = () => { setViewerOpen(false); setViewerMessage(null); setViewerIndex(0); };
-  const viewerMediaOf = (m: Message | null): { url: string; width?: number; height?: number }[] => {
-    if (!m) return [];
-    if (m.type === 'album' && Array.isArray(m.media)) return m.media.map((x) => ({ url: x.url, width: x.width, height: x.height }));
-    if (m.type === 'image' && m.imageUrl) return [{ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight }];
-    return [];
-  };
-  const shareViewerCurrent = async () => {
-    const list = viewerMediaOf(viewerMessage);
-    const url = list[viewerIndex]?.url;
+  const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const shareViewerCurrent = async (url?: string, caption?: string) => {
     if (!url) return;
-    const caption = viewerMessage?.text;
     try {
       await Share.share({ message: caption ? `${caption}\n${url}` : url });
     } catch {
@@ -680,10 +689,12 @@ export default function ClinicConversationScreen() {
   }, [clinicId, patientId]);
 
   useEffect(() => {
-    if (viewerOpen && viewerMessage && !messages.some((m) => m.id === viewerMessage.id)) {
+    if (!viewerOpen) return;
+    const cur = viewerPages[viewerIndex];
+    if (cur && !messages.some((m) => m.id === cur.msgId)) {
       closeViewer();
     }
-  }, [messages, viewerOpen, viewerMessage]);
+  }, [messages, viewerOpen, viewerPages, viewerIndex]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -1025,7 +1036,7 @@ export default function ClinicConversationScreen() {
     return (
       <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
-          <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => openViewer(item, idx)} />
+          <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => (item.type === 'album' ? openViewerAlbum(item, idx) : openViewerSingle(item))} />
         </MessageBubble>
       </View>
     );
@@ -1775,19 +1786,20 @@ export default function ClinicConversationScreen() {
       </Modal>
 
       <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
-        {viewerOpen && viewerMessage ? (() => {
+        {viewerOpen && viewerPages.length > 0 ? (() => {
           const SCREEN_W = Dimensions.get('window').width;
           const SCREEN_H = Dimensions.get('window').height;
-          const media = viewerMediaOf(viewerMessage);
-          const live = messages.find((m) => m.id === viewerMessage.id);
-          const isOwn = viewerMessage.from === 'clinic';
-          const isStarred = !!live?.starredClinic;
+          const pages = viewerPages;
+          const current = pages[viewerIndex] ?? pages[0];
+          const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
+          const isOwn = curMsg?.from === 'clinic';
+          const isStarred = !!curMsg?.starredClinic;
           return (
             <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={{ flex: 1, backgroundColor: '#000' }}>
               <FlatList
                 ref={viewerListRef}
-                data={media}
+                data={pages}
                 keyExtractor={(_, i) => `viewer_${i}`}
                 horizontal
                 pagingEnabled
@@ -1812,17 +1824,17 @@ export default function ClinicConversationScreen() {
                 </Pressable>
                 <View style={styles.viewerWho}>
                   <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
-                    {viewerMessage.from === 'clinic' ? 'You' : patientName}
+                    {isOwn ? 'You' : patientName}
                   </Text>
                   <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
-                    {formatInfoTime(viewerMessage.createdAt)}
+                    {formatInfoTime(curMsg?.createdAt)}
                   </Text>
                 </View>
                 <View style={{ width: 40 }} />
               </View>
-              {media.length > 1 && (
+              {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
-                  {media.map((thumb, i) => (
+                  {pages.map((thumb, i) => (
                     <Pressable
                       key={`thumb_${i}`}
                       onPress={() => {
@@ -1845,20 +1857,20 @@ export default function ClinicConversationScreen() {
                   pointerEvents="none"
                 />
                 <View style={styles.viewerBarRow}>
-                  <Pressable onPress={shareViewerCurrent} hitSlop={8} style={styles.viewerBarBtn}>
+                  <Pressable onPress={() => shareViewerCurrent(current?.url, curMsg?.text)} hitSlop={8} style={styles.viewerBarBtn}>
                     <View style={styles.viewerBarIcon}>
                       <Ionicons name="share-outline" size={24} color="#FFFFFF" />
                     </View>
                     <Text style={styles.viewerBarLabel}>Share</Text>
                   </Pressable>
-                  <Pressable onPress={() => toggleStar(live ?? viewerMessage)} hitSlop={8} style={styles.viewerBarBtn}>
+                  <Pressable onPress={() => { if (curMsg) toggleStar(curMsg); }} hitSlop={8} style={styles.viewerBarBtn}>
                     <View style={[styles.viewerBarIcon, isStarred && styles.viewerBarIconStar]}>
                       <Ionicons name={isStarred ? 'star' : 'star-outline'} size={24} color={isStarred ? '#F5A623' : '#FFFFFF'} />
                     </View>
                     <Text style={styles.viewerBarLabel}>Star</Text>
                   </Pressable>
-                  {isOwn && (
-                    <Pressable onPress={() => handleRemoveMessage(viewerMessage)} hitSlop={8} style={styles.viewerBarBtn}>
+                  {isOwn && curMsg && (
+                    <Pressable onPress={() => handleRemoveMessage(curMsg)} hitSlop={8} style={styles.viewerBarBtn}>
                       <View style={[styles.viewerBarIcon, styles.viewerBarIconDanger]}>
                         <Ionicons name="trash-outline" size={24} color="#FF8A80" />
                       </View>
