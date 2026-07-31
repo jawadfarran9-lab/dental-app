@@ -1826,7 +1826,8 @@ export default function ClinicConversationScreen() {
           const isOwn = gm?.from === 'clinic';
           const GAP = 10;
           return (
-            <View style={{ flex: 1, backgroundColor: '#000' }}>
+            <View style={{ flex: 1 }}>
+              <PremiumGradientBackground isDark={isDark} showSparkles={!isDark} />
               <ScrollView
                 contentContainerStyle={{ paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 }}
                 showsVerticalScrollIndicator={false}
@@ -1848,20 +1849,20 @@ export default function ClinicConversationScreen() {
               </ScrollView>
               <View style={[styles.galleryHeader, { paddingTop: insets.top + 8 }]}>
                 <LinearGradient
-                  colors={['rgba(0,0,0,0.75)', 'transparent']}
+                  colors={isDark ? ['rgba(0,0,0,0.75)', 'transparent'] : ['rgba(224,242,254,0.95)', 'rgba(224,242,254,0)']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 0, y: 1 }}
                   style={StyleSheet.absoluteFill}
                   pointerEvents="none"
                 />
-                <Pressable onPress={closeGallery} style={styles.viewerClose} hitSlop={8}>
-                  <Ionicons name="close" size={22} color="#FFFFFF" />
+                <Pressable onPress={closeGallery} style={[styles.viewerClose, !isDark && { backgroundColor: '#FFFFFF' }]} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={isDark ? '#FFFFFF' : textPrimary} />
                 </Pressable>
                 <View style={styles.viewerWho}>
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                  <Text style={{ color: isDark ? '#FFFFFF' : textPrimary, fontSize: 14, fontWeight: '700' }}>
                     {isOwn ? 'You' : patientName}
                   </Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
+                  <Text style={{ color: isDark ? 'rgba(255,255,255,0.72)' : textSecondary, fontSize: 12, marginTop: 2 }}>
                     {gMedia.length} photos
                   </Text>
                 </View>
