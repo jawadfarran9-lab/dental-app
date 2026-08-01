@@ -14,7 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -134,7 +134,9 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   };
   return (
     <Pressable ref={ref} onLongPress={handleLongPress} delayLongPress={350} style={{ maxWidth: '78%' }}>
-      {children}
+      {isValidElement(children)
+        ? cloneElement(children as any, { onLongPress: handleLongPress })
+        : children}
     </Pressable>
   );
 };
@@ -399,14 +401,6 @@ export default function ClinicConversationScreen() {
     if (!m) return [];
     const isOwn = m.from === 'clinic';
     const isImage = m.type === 'image';
-    if (isOwn && isImage) {
-      return [
-        { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
-        { key: 'info', label: 'Info', icon: 'information-circle-outline' },
-        { key: 'star', label: 'Star', icon: 'star-outline' },
-        { key: 'remove', label: 'Remove', icon: 'trash-outline', danger: true },
-      ];
-    }
     if (isOwn) {
       return [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
@@ -888,7 +882,7 @@ export default function ClinicConversationScreen() {
 
   const palette = AVATAR_PALETTE[hashName(patientName) % AVATAR_PALETTE.length];
 
-  const BubbleBody = ({ item, sent, time, onOpenViewer }: { item: Message; sent: boolean; time: string; onOpenViewer?: (index: number) => void }) => {
+  const BubbleBody = ({ item, sent, time, onOpenViewer, onLongPress }: { item: Message; sent: boolean; time: string; onOpenViewer?: (index: number) => void; onLongPress?: () => void }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     const reactionBadge = hasReaction ? (
       <Pressable
@@ -918,7 +912,7 @@ export default function ClinicConversationScreen() {
       let grid: React.ReactNode = null;
       if (media.length === 1) {
         grid = (
-          <Pressable onPress={() => onOpenViewer?.(0)}>
+          <Pressable onPress={() => onOpenViewer?.(0)} onLongPress={onLongPress} delayLongPress={350}>
             <Image
               source={{ uri: media[0].url }}
               style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
@@ -929,14 +923,14 @@ export default function ClinicConversationScreen() {
       } else if (media.length === 2) {
         grid = (
           <View style={[styles.albumRow, { width: ALBUM_W }]}>
-            <Pressable onPress={() => onOpenViewer?.(0)} style={{ marginRight: GAP }}>
+            <Pressable onPress={() => onOpenViewer?.(0)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
               <Image
                 source={{ uri: media[0].url }}
                 style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                 resizeMode="cover"
               />
             </Pressable>
-            <Pressable onPress={() => onOpenViewer?.(1)}>
+            <Pressable onPress={() => onOpenViewer?.(1)} onLongPress={onLongPress} delayLongPress={350}>
               <Image
                 source={{ uri: media[1].url }}
                 style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
@@ -949,14 +943,14 @@ export default function ClinicConversationScreen() {
         grid = (
           <View style={{ width: ALBUM_W }}>
             <View style={[styles.albumRow, { marginBottom: GAP }]}>
-              <Pressable onPress={() => onOpenViewer?.(0)} style={{ marginRight: GAP }}>
+              <Pressable onPress={() => onOpenViewer?.(0)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
                 <Image
                   source={{ uri: media[0].url }}
                   style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                   resizeMode="cover"
                 />
               </Pressable>
-              <Pressable onPress={() => onOpenViewer?.(1)}>
+              <Pressable onPress={() => onOpenViewer?.(1)} onLongPress={onLongPress} delayLongPress={350}>
                 <Image
                   source={{ uri: media[1].url }}
                   style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
@@ -964,7 +958,7 @@ export default function ClinicConversationScreen() {
                 />
               </Pressable>
             </View>
-            <Pressable onPress={() => onOpenViewer?.(2)} style={{ position: 'relative' }}>
+            <Pressable onPress={() => onOpenViewer?.(2)} onLongPress={onLongPress} delayLongPress={350} style={{ position: 'relative' }}>
               <Image
                 source={{ uri: media[2].url }}
                 style={[styles.albumCellWide, { width: ALBUM_W, height: wideH }]}
@@ -1031,7 +1025,7 @@ export default function ClinicConversationScreen() {
               !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
             ]}
           >
-            <Pressable onPress={() => onOpenViewer?.(0)}>
+            <Pressable onPress={() => onOpenViewer?.(0)} onLongPress={onLongPress} delayLongPress={350}>
               <Image
                 source={{ uri: item.imageUrl }}
                 style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
