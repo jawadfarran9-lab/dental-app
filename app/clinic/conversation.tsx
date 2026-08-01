@@ -2126,6 +2126,17 @@ export default function ClinicConversationScreen() {
                   />
                   <View style={styles.stickerKbSheet}>
                     <View style={styles.stickerKbHeader}>
+                      {curSticker ? (
+                        <Pressable
+                          onPress={() => { if (stickerTarget && curSticker) setImageSticker(stickerTarget, curSticker); }}
+                          style={styles.stickerKbCurrent}
+                          hitSlop={8}
+                        >
+                          <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                        </Pressable>
+                      ) : (
+                        <View />
+                      )}
                       <Pressable
                         onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
                         style={styles.stickerKbClose}
@@ -2756,7 +2767,7 @@ const styles = StyleSheet.create({
   stickerKbHeader: {
     height: 40,
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 12,
   },
@@ -2764,6 +2775,15 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stickerKbCurrent: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 6,
     backgroundColor: 'rgba(0,0,0,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
