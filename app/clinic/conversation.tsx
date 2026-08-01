@@ -1932,8 +1932,14 @@ export default function ClinicConversationScreen() {
       <Modal visible={galleryOpen} transparent={false} animationType="slide" onRequestClose={closeGallery} statusBarTranslucent>
         {galleryOpen && galleryMessage ? (() => {
           const SCREEN_W = Dimensions.get('window').width;
-          const gm = galleryMessage;
+          const gm = messages.find((m) => m.id === galleryMessage.id) ?? galleryMessage;
           const gMedia = gm?.media ?? [];
+          const gkbMsg = stickerTarget ? (messages.find((x) => x.id === stickerTarget.msgId) ?? null) : null;
+          const gkbSticker = gkbMsg
+            ? (gkbMsg.type === 'album' && typeof stickerTarget?.mediaIndex === 'number'
+                ? gkbMsg.media?.[stickerTarget.mediaIndex]?.sticker
+                : gkbMsg.stickerClinic)
+            : undefined;
           const isOwn = gm?.from === 'clinic';
           const GAP = 10;
           return (
@@ -1955,14 +1961,56 @@ export default function ClinicConversationScreen() {
                     >
                       <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
                       {it.sticker ? (
-                        <View style={styles.galStickerBadge} pointerEvents="none">
+                        <Pressable
+                          style={styles.galStickerBadge}
+                          hitSlop={8}
+                          onPress={() => { setStickerTarget({ msgId: gm.id, mediaIndex: i }); setStickerKbOpen(true); }}
+                        >
                           <Text style={styles.galStickerText}>{it.sticker}</Text>
-                        </View>
+                        </Pressable>
                       ) : null}
                     </Pressable>
                   );
                 })}
               </ScrollView>
+              {stickerKbOpen ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }} />
+                  <View style={styles.stickerKbSheet}>
+                    <View style={styles.stickerKbHeader}>
+                      {gkbSticker ? (
+                        <Pressable
+                          onPress={() => { if (stickerTarget && gkbSticker) setImageSticker(stickerTarget, gkbSticker); }}
+                          style={styles.stickerKbCurrent}
+                          hitSlop={8}
+                        >
+                          <Text style={{ fontSize: 22 }}>{gkbSticker}</Text>
+                        </Pressable>
+                      ) : (
+                        <View />
+                      )}
+                      <Pressable
+                        onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                        style={styles.stickerKbClose}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={20} color="#111111" />
+                      </Pressable>
+                    </View>
+                    <EmojiKeyboard
+                      onEmojiSelected={(e) => {
+                        const picked = e?.emoji;
+                        if (picked && stickerTarget) setImageSticker(stickerTarget, picked);
+                        setStickerKbOpen(false);
+                        setStickerTarget(null);
+                      }}
+                      enableSearchBar
+                      enableRecentlyUsed
+                      defaultHeight={380}
+                    />
+                  </View>
+                </View>
+              ) : null}
               <View style={[styles.galleryHeader, { paddingTop: insets.top + 8 }]}>
                 <LinearGradient
                   colors={isDark ? ['rgba(0,0,0,0.75)', 'transparent'] : ['rgba(224,242,254,0.95)', 'rgba(224,242,254,0)']}
