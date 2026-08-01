@@ -557,6 +557,11 @@ export default function ClinicConversationScreen() {
   };
   const closeStickerSheet = () => setStickerSheetOpen(false);
 
+  const removeSticker = (entry: { index: number; sticker?: string }) => {
+    if (!stickerSheetTarget || !entry.sticker) return;
+    setImageSticker({ msgId: stickerSheetTarget.id, mediaIndex: entry.index }, entry.sticker);
+  };
+
   const setMessageReaction = async (message: Message, emoji: string) => {
     if (!patientId) return;
     const isClearing = message.reactionClinic === emoji;
@@ -1839,14 +1844,20 @@ export default function ClinicConversationScreen() {
           <Text style={[styles.reactionSheetTitle, { color: textPrimary }]}>
             {stickerSheetEntries.length} Sticker{stickerSheetEntries.length === 1 ? '' : 's'}
           </Text>
+          {stickerSheetEntries.length > 0 && (
+            <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, marginLeft: 4, marginTop: 2, marginBottom: 8 }}>
+              You
+            </Text>
+          )}
           {stickerSheetEntries.map((e) => (
-            <View key={`st-${e.index}`} style={styles.reactionSheetRow}>
+            <Pressable key={`st-${e.index}`} onPress={() => removeSticker(e)} style={styles.reactionSheetRow}>
               <Image source={{ uri: e.url }} style={{ width: 44, height: 44, borderRadius: 10 }} />
               <View style={{ flex: 1 }}>
-                <Text style={styles.reactionSheetRowName}>Photo {e.index + 1}</Text>
+                <Text style={[styles.reactionSheetRowName, { color: textPrimary }]}>Photo {e.index + 1}</Text>
+                <Text style={[styles.reactionSheetRowSub, { color: textSecondary }]}>Tap to remove</Text>
               </View>
               <Text style={styles.reactionSheetRowEmoji}>{e.sticker}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       </Modal>
