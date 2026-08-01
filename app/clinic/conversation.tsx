@@ -39,7 +39,7 @@ import {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EmojiPicker from 'rn-emoji-keyboard';
+import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -102,14 +102,16 @@ type Message = {
     height?: number;
     posterUrl?: string;
     durationMs?: number;
+    sticker?: string;
   }[];
   reactionClinic?: string;
   reactionPatient?: string;
+  stickerClinic?: string;
   seenAt?: number;
   starredClinic?: boolean;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
@@ -269,6 +271,8 @@ export default function ClinicConversationScreen() {
   const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
+  const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
+  const [stickerKbOpen, setStickerKbOpen] = useState(false);
   const [reactionSheetOpen, setReactionSheetOpen] = useState(false);
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
   const [messageInfoOpen, setMessageInfoOpen] = useState(false);
@@ -487,9 +491,9 @@ export default function ClinicConversationScreen() {
       if (m.type === 'image' && m.imageUrl) {
         out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
       } else if (m.type === 'album' && Array.isArray(m.media)) {
-        for (const it of m.media) {
-          out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id });
-        }
+        m.media.forEach((it, idx) => {
+          out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+        });
       }
     }
     return out;
@@ -541,6 +545,32 @@ export default function ClinicConversationScreen() {
       if (!isClearing && !REACTIONS.includes(emoji)) pushRecent(emoji);
     } catch (e) {
       console.error('[conversation] set reaction error', e);
+    }
+  };
+
+  const setImageSticker = async (target: { msgId: string; mediaIndex?: number }, emoji: string) => {
+    if (!patientId) return;
+    const msg = messages.find((m) => m.id === target.msgId);
+    if (!msg) return;
+    const ref = doc(db, `patients/${patientId}/messages/${target.msgId}`);
+    try {
+      if (msg.type === 'album' && typeof target.mediaIndex === 'number' && Array.isArray(msg.media)) {
+        const mi = target.mediaIndex;
+        const newMedia = msg.media.map((it, idx) => {
+          if (idx !== mi) return it;
+          if (it.sticker === emoji) {
+            const { sticker, ...rest } = it;
+            return rest;
+          }
+          return { ...it, sticker: emoji };
+        });
+        await updateDoc(ref, { media: newMedia });
+      } else {
+        const isClearing = msg.stickerClinic === emoji;
+        await updateDoc(ref, { stickerClinic: isClearing ? deleteField() : emoji });
+      }
+    } catch (e) {
+      console.error('[conversation] set sticker error', e);
     }
   };
 
@@ -1882,6 +1912,12 @@ export default function ClinicConversationScreen() {
           const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
           const isOwn = curMsg?.from === 'clinic';
           const isStarred = !!curMsg?.starredClinic;
+          const curMediaIndex = current?.mediaIndex;
+          const curSticker = curMsg
+            ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
+                ? curMsg.media?.[curMediaIndex]?.sticker
+                : curMsg.stickerClinic)
+            : undefined;
           return (
             <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -1919,6 +1955,27 @@ export default function ClinicConversationScreen() {
                   </Text>
                 </View>
                 <View style={{ width: 40 }} />
+              </View>
+              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
+                <Pressable
+                  onPress={() => {
+                    if (!current) return;
+                    setReactionTarget(null);
+                    setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
+                    setStickerKbOpen(true);
+                  }}
+                  style={styles.viewerClose}
+                  hitSlop={8}
+                >
+                  {curSticker ? (
+                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                  ) : (
+                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                  )}
+                </Pressable>
+                <Pressable style={styles.viewerClose} hitSlop={8}>
+                  <Ionicons name="arrow-undo-outline" size={22} color="#FFFFFF" />
+                </Pressable>
               </View>
               {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
@@ -1975,6 +2032,38 @@ export default function ClinicConversationScreen() {
                 </View>
               </View>
             </View>
+              {stickerKbOpen ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                  />
+                  <View style={styles.stickerKbSheet}>
+                    <View style={styles.stickerKbHeader}>
+                      <Pressable
+                        onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                        style={styles.stickerKbClose}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={20} color="#111111" />
+                      </Pressable>
+                    </View>
+                    <EmojiKeyboard
+                      onEmojiSelected={(e) => {
+                        const picked = e?.emoji;
+                        if (picked && stickerTarget) {
+                          setImageSticker(stickerTarget, picked);
+                        }
+                        setStickerKbOpen(false);
+                        setStickerTarget(null);
+                      }}
+                      enableSearchBar
+                      enableRecentlyUsed
+                      defaultHeight={380}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </GestureHandlerRootView>
           );
         })() : null}
@@ -2535,5 +2624,45 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingBottom: 12,
     zIndex: 10,
+  },
+  viewerStickerOverlay: {
+    position: 'absolute',
+    left: 16,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    borderRadius: 16,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  viewerBottomActions: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  stickerKbSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 420,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  stickerKbHeader: {
+    height: 40,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  stickerKbClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
