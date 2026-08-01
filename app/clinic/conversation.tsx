@@ -1881,9 +1881,14 @@ export default function ClinicConversationScreen() {
                     <Pressable
                       key={`galimg_${i}`}
                       onPress={() => { if (gm) openViewerFromGallery(gm, i); }}
-                      style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8 }}
+                      style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
                     >
                       <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                      {it.sticker ? (
+                        <View style={styles.galStickerBadge} pointerEvents="none">
+                          <Text style={styles.galStickerText}>{it.sticker}</Text>
+                        </View>
+                      ) : null}
                     </Pressable>
                   );
                 })}
@@ -2506,6 +2511,23 @@ const styles = StyleSheet.create({
   reactionBadgeText: {
     fontSize: 13,
   },
+  galStickerBadge: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  galStickerText: { fontSize: 18 },
   reactionSheetBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   reactionSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 16, overflow: 'hidden' },
   reactionSheetKnob: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(128,128,128,0.35)', marginBottom: 12 },
