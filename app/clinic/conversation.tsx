@@ -8,6 +8,7 @@ import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -271,6 +272,13 @@ export default function ClinicConversationScreen() {
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [anchorRect, setAnchorRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [rowPos, setRowPos] = useState<{ top: number; left: number } | null>(null);
+  const actionLift = useSharedValue(0);
+  const actionLiftStyle = useAnimatedStyle((): ViewStyle => ({
+    transform: [
+      { translateY: -4 * actionLift.value },
+      { scale: 1 + 0.05 * actionLift.value },
+    ],
+  }));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
@@ -752,6 +760,10 @@ export default function ClinicConversationScreen() {
     }, 60);
     return () => clearTimeout(t);
   }, [viewerOpen, viewerIndex, viewerPages.length]);
+
+  useEffect(() => {
+    actionLift.value = withTiming(actionMenuOpen ? 1 : 0, { duration: actionMenuOpen ? 160 : 120 });
+  }, [actionMenuOpen]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -1496,23 +1508,33 @@ export default function ClinicConversationScreen() {
         animationType="fade"
         onRequestClose={closeActionMenu}
       >
+        <BlurView
+          intensity={30}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
         <Pressable style={styles.actionBackdrop} onPress={closeActionMenu} />
         {anchorRect && selectedMessage && (
-          <View
+          <Reanimated.View
             pointerEvents="none"
-            style={{
-              position: 'absolute',
-              top: anchorRect.y,
-              left: anchorRect.x,
-              width: anchorRect.w,
-            }}
+            style={[
+              {
+                position: 'absolute',
+                top: anchorRect.y,
+                left: anchorRect.x,
+                width: anchorRect.w,
+              },
+              actionLiftStyle,
+            ]}
           >
             <BubbleBody
               item={selectedMessage}
               sent={selectedMessage.from === 'clinic'}
               time={formatBubbleTime(selectedMessage.createdAt)}
             />
-          </View>
+          </Reanimated.View>
         )}
         {rowPos && selectedMessage && (
           <View
@@ -2405,7 +2427,7 @@ const styles = StyleSheet.create({
   },
   actionBackdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
   actionCard: {
     position: 'absolute',
