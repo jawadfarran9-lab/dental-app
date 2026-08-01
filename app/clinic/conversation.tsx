@@ -1536,7 +1536,7 @@ export default function ClinicConversationScreen() {
             />
           </Reanimated.View>
         )}
-        {rowPos && selectedMessage && (
+        {rowPos && selectedMessage && selectedMessage.type !== 'album' && (
           <View
             style={[
               styles.reactionRow,
