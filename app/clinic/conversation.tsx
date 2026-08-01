@@ -896,11 +896,22 @@ export default function ClinicConversationScreen() {
 
   const BubbleBody = ({ item, sent, time, onOpenViewer, onLongPress }: { item: Message; sent: boolean; time: string; onOpenViewer?: (index: number) => void; onLongPress?: () => void }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
+    const stickerList = item.type === 'album'
+      ? (item.media || []).map((mm) => mm.sticker).filter(Boolean)
+      : [];
+    const hasSticker = stickerList.length > 0;
+    const stickerBadge = hasSticker ? (
+      <View style={[styles.reactionBadge, styles.reactionBadgeLeft]}>
+        <Text style={styles.reactionBadgeText}>
+          {stickerList.slice(0, 2).join(' ')}{stickerList.length > 2 ? ` +${stickerList.length - 2}` : ''}
+        </Text>
+      </View>
+    ) : null;
     const reactionBadge = hasReaction ? (
       <Pressable
         onPress={() => openReactionSheet(item)}
         hitSlop={8}
-        style={[styles.reactionBadge, styles.reactionBadgeLeft]}
+        style={[styles.reactionBadge, hasSticker ? styles.reactionBadgeRight : styles.reactionBadgeLeft]}
       >
         <Text style={styles.reactionBadgeText}>
           {[item.reactionClinic, item.reactionPatient].filter(Boolean).join(' ')}
@@ -1016,6 +1027,7 @@ export default function ClinicConversationScreen() {
               </Text>
             )}
           </View>
+          {stickerBadge}
           {reactionBadge}
           {starBadge}
         </View>
@@ -1102,8 +1114,9 @@ export default function ClinicConversationScreen() {
     const time = formatBubbleTime(item.createdAt);
     const align = sent ? styles.bubbleRowRight : styles.bubbleRowLeft;
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
+    const hasAlbumSticker = item.type === 'album' && (item.media || []).some((mm) => !!mm.sticker);
     return (
-      <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
+      <View style={[styles.bubbleRow, align, (hasReaction || hasAlbumSticker) && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
         <MessageBubble item={item} onOpen={openActionMenu}>
           <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => (item.type === 'album' ? openAlbumGallery(item) : openViewerSingle(item))} />
         </MessageBubble>
