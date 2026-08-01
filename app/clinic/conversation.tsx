@@ -1609,32 +1609,27 @@ export default function ClinicConversationScreen() {
                 <Pressable
                   key={a.key}
                   onPress={() => {
+                    const live = messages.find((m) => m.id === selectedMessage?.id) ?? selectedMessage;
                     if (a.key === 'forward') {
-                      const target = selectedMessage;
                       Haptics.selectionAsync().catch(() => {});
                       closeActionMenu();
-                      if (target) setTimeout(() => handleShareMessage(target), 250);
+                      if (live) setTimeout(() => handleShareMessage(live), 250);
                     } else if (a.key === 'copy') {
-                      const target = selectedMessage;
                       closeActionMenu();
-                      if (target) setTimeout(() => handleCopyMessage(target), 250);
+                      if (live) setTimeout(() => handleCopyMessage(live), 250);
                     } else if (a.key === 'edit') {
-                      const target = selectedMessage;
                       closeActionMenu();
-                      if (target) startEditMessage(target);
+                      if (live) startEditMessage(live);
                     } else if (a.key === 'info') {
-                      const target = selectedMessage;
                       closeActionMenu();
-                      if (target) setTimeout(() => openMessageInfo(target), 220);
+                      if (live) setTimeout(() => openMessageInfo(live), 220);
                     } else if (a.key === 'star') {
-                      const target = selectedMessage;
                       Haptics.selectionAsync().catch(() => {});
                       closeActionMenu();
-                      if (target) toggleStar(target);
+                      if (live) toggleStar(live);
                     } else if (a.key === 'remove') {
-                      const target = selectedMessage;
                       closeActionMenu();
-                      if (target) setTimeout(() => handleRemoveMessage(target), 250);
+                      if (live) setTimeout(() => handleRemoveMessage(live), 250);
                     } else {
                       closeActionMenu();
                     }
