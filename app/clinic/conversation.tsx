@@ -285,6 +285,8 @@ export default function ClinicConversationScreen() {
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
   const [reactionSheetOpen, setReactionSheetOpen] = useState(false);
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
+  const [stickerSheetOpen, setStickerSheetOpen] = useState(false);
+  const [stickerSheetTarget, setStickerSheetTarget] = useState<Message | null>(null);
   const [messageInfoOpen, setMessageInfoOpen] = useState(false);
   const [messageInfoTarget, setMessageInfoTarget] = useState<Message | null>(null);
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -390,6 +392,16 @@ export default function ClinicConversationScreen() {
     reactionSheetEntries.forEach((e) => { m[e.emoji] = (m[e.emoji] || 0) + 1; });
     return Object.entries(m);
   }, [reactionSheetEntries]);
+
+  const stickerSheetEntries = useMemo(() => {
+    const t = stickerSheetTarget;
+    if (!t) return [];
+    const m = messages.find((x) => x.id === t.id) ?? t;
+    if (m.type !== 'album' || !Array.isArray(m.media)) return [];
+    return m.media
+      .map((mm, idx) => ({ index: idx, url: mm.url, sticker: mm.sticker }))
+      .filter((e) => !!e.sticker);
+  }, [stickerSheetTarget, messages]);
 
   const infoMsg = useMemo(
     () => (messageInfoTarget ? messages.find((m) => m.id === messageInfoTarget.id) ?? messageInfoTarget : null),
@@ -537,6 +549,13 @@ export default function ClinicConversationScreen() {
     setReactionSheetOpen(true);
   };
   const closeReactionSheet = () => setReactionSheetOpen(false);
+
+  const openStickerSheet = (m: Message) => {
+    Haptics.selectionAsync().catch(() => {});
+    setStickerSheetTarget(m);
+    setStickerSheetOpen(true);
+  };
+  const closeStickerSheet = () => setStickerSheetOpen(false);
 
   const setMessageReaction = async (message: Message, emoji: string) => {
     if (!patientId) return;
@@ -901,11 +920,11 @@ export default function ClinicConversationScreen() {
       : [];
     const hasSticker = stickerList.length > 0;
     const stickerBadge = hasSticker ? (
-      <View style={[styles.reactionBadge, styles.reactionBadgeLeft]}>
+      <Pressable onPress={() => openStickerSheet(item)} hitSlop={8} style={[styles.reactionBadge, styles.reactionBadgeLeft]}>
         <Text style={styles.reactionBadgeText}>
           {stickerList.slice(0, 2).join(' ')}{stickerList.length > 2 ? ` +${stickerList.length - 2}` : ''}
         </Text>
-      </View>
+      </Pressable>
     ) : null;
     const reactionBadge = hasReaction ? (
       <Pressable
@@ -1801,6 +1820,33 @@ export default function ClinicConversationScreen() {
               </View>
               <Text style={styles.reactionSheetRowEmoji}>{e.emoji}</Text>
             </Pressable>
+          ))}
+        </View>
+      </Modal>
+
+      <Modal
+        visible={stickerSheetOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={closeStickerSheet}
+      >
+        <Pressable style={styles.reactionSheetBackdrop} onPress={closeStickerSheet} />
+        <View style={[styles.reactionSheet, { paddingBottom: insets.bottom + 20 }]}>
+          <View style={StyleSheet.absoluteFill}>
+            <PremiumGradientBackground isDark={isDark} showSparkles={false} />
+          </View>
+          <View style={styles.reactionSheetKnob} />
+          <Text style={[styles.reactionSheetTitle, { color: textPrimary }]}>
+            {stickerSheetEntries.length} Sticker{stickerSheetEntries.length === 1 ? '' : 's'}
+          </Text>
+          {stickerSheetEntries.map((e) => (
+            <View key={`st-${e.index}`} style={styles.reactionSheetRow}>
+              <Image source={{ uri: e.url }} style={{ width: 44, height: 44, borderRadius: 10 }} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.reactionSheetRowName}>Photo {e.index + 1}</Text>
+              </View>
+              <Text style={styles.reactionSheetRowEmoji}>{e.sticker}</Text>
+            </View>
           ))}
         </View>
       </Modal>
