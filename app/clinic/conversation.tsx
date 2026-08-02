@@ -2156,7 +2156,7 @@ export default function ClinicConversationScreen() {
           const curSticker = curMsg
             ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
                 ? curMsg.media?.[curMediaIndex]?.sticker
-                : curMsg.stickerClinic)
+                : curMsg.reactionClinic)
             : undefined;
           return (
             <GestureHandlerRootView style={{ flex: 1 }}>
@@ -2282,7 +2282,15 @@ export default function ClinicConversationScreen() {
                     <View style={styles.stickerKbHeader}>
                       {curSticker ? (
                         <Pressable
-                          onPress={() => { if (stickerTarget && curSticker) setImageSticker(stickerTarget, curSticker); }}
+                          onPress={() => {
+                            if (!stickerTarget || !curSticker) return;
+                            const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
+                            if (tmsg && tmsg.type === 'image') {
+                              setMessageReaction(tmsg, curSticker);
+                            } else {
+                              setImageSticker(stickerTarget, curSticker);
+                            }
+                          }}
                           style={styles.stickerKbCurrent}
                           hitSlop={8}
                         >
@@ -2303,8 +2311,13 @@ export default function ClinicConversationScreen() {
                       onEmojiSelected={(e) => {
                         const picked = e?.emoji;
                         if (picked && stickerTarget) {
-                          setImageSticker(stickerTarget, picked);
-                          if (!STICKER_QUICKS.includes(picked)) pushStickerRecent(picked);
+                          const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
+                          if (tmsg && tmsg.type === 'image') {
+                            setMessageReaction(tmsg, picked);
+                          } else {
+                            setImageSticker(stickerTarget, picked);
+                            if (!STICKER_QUICKS.includes(picked)) pushStickerRecent(picked);
+                          }
                         }
                         setStickerKbOpen(false);
                         setStickerTarget(null);
