@@ -118,6 +118,7 @@ const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
 const RECENT_MAX = 6;
 const RECENTS_KEY = 'reactions:recent:v3';
+const STICKER_RECENTS_KEY = 'stickers:recent:v1';
 
 type MessageBubbleProps = {
   item: Message;
@@ -307,6 +308,8 @@ export default function ClinicConversationScreen() {
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
+  const [stickerRecents, setStickerRecents] = useState<string[]>([]);
+  const [stickerRecentsLoaded, setStickerRecentsLoaded] = useState(false);
   const [copiedVisible, setCopiedVisible] = useState(false);
   const copiedAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
@@ -679,11 +682,34 @@ export default function ClinicConversationScreen() {
       .catch(() => setRecentsLoaded(true));
   }, []);
 
+  useEffect(() => {
+    AsyncStorage.getItem(STICKER_RECENTS_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) setStickerRecents(arr.filter((x) => typeof x === 'string'));
+          } catch {}
+        }
+        setStickerRecentsLoaded(true);
+      })
+      .catch(() => setStickerRecentsLoaded(true));
+  }, []);
+
   const pushRecent = (emoji: string) => {
     if (!recentsLoaded) return;
     setRecents((prev) => {
       const next = [emoji, ...prev.filter((x) => x !== emoji)].slice(0, RECENT_MAX);
       AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const pushStickerRecent = (emoji: string) => {
+    if (!stickerRecentsLoaded) return;
+    setStickerRecents((prev) => {
+      const next = [emoji, ...prev.filter((x) => x !== emoji)].slice(0, RECENT_MAX);
+      AsyncStorage.setItem(STICKER_RECENTS_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
   };
@@ -1945,6 +1971,10 @@ export default function ClinicConversationScreen() {
           const gm = messages.find((m) => m.id === galleryMessage.id) ?? galleryMessage;
           const gMedia = gm?.media ?? [];
           const galQuickSticker = galQuickTarget ? gMedia[galQuickTarget.mediaIndex]?.sticker : undefined;
+          const stickerStrip = [...stickerRecents];
+          if (galQuickSticker && !STICKER_QUICKS.includes(galQuickSticker) && !stickerStrip.includes(galQuickSticker)) {
+            stickerStrip.unshift(galQuickSticker);
+          }
           const gkbMsg = stickerTarget ? (messages.find((x) => x.id === stickerTarget.msgId) ?? null) : null;
           const gkbSticker = gkbMsg
             ? (gkbMsg.type === 'album' && typeof stickerTarget?.mediaIndex === 'number'
@@ -2015,7 +2045,10 @@ export default function ClinicConversationScreen() {
                     <EmojiKeyboard
                       onEmojiSelected={(e) => {
                         const picked = e?.emoji;
-                        if (picked && stickerTarget) setImageSticker(stickerTarget, picked);
+                        if (picked && stickerTarget) {
+                          setImageSticker(stickerTarget, picked);
+                          if (!STICKER_QUICKS.includes(picked)) pushStickerRecent(picked);
+                        }
                         setStickerKbOpen(false);
                         setStickerTarget(null);
                       }}
@@ -2068,6 +2101,22 @@ export default function ClinicConversationScreen() {
                         return (
                           <Pressable
                             key={e}
+                            onPress={() => { if (galQuickTarget) setImageSticker(galQuickTarget, e); setGalQuickTarget(null); }}
+                            style={({ pressed }) => [
+                              styles.reactionChip,
+                              isSelected && styles.reactionChipSelected,
+                              pressed && { opacity: 0.5 },
+                            ]}
+                          >
+                            <Text style={styles.reactionEmoji}>{e}</Text>
+                          </Pressable>
+                        );
+                      })}
+                      {stickerStrip.map((e) => {
+                        const isSelected = galQuickSticker === e;
+                        return (
+                          <Pressable
+                            key={`strip-${e}`}
                             onPress={() => { if (galQuickTarget) setImageSticker(galQuickTarget, e); setGalQuickTarget(null); }}
                             style={({ pressed }) => [
                               styles.reactionChip,
@@ -2255,6 +2304,7 @@ export default function ClinicConversationScreen() {
                         const picked = e?.emoji;
                         if (picked && stickerTarget) {
                           setImageSticker(stickerTarget, picked);
+                          if (!STICKER_QUICKS.includes(picked)) pushStickerRecent(picked);
                         }
                         setStickerKbOpen(false);
                         setStickerTarget(null);
