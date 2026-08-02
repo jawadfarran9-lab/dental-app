@@ -276,7 +276,6 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
   const [durationMs, setDurationMs] = useState(0);
   const mutedRef = useRef(false);
   const playingRef = useRef(false);
-  const isActiveRef = useRef(false);
   const seekingRef = useRef(false);
   const scrubbingRef = useRef(false);
   const durRef = useRef(0);
@@ -295,24 +294,8 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { playingRef.current = playing; }, [playing]);
-  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { openSV.value = withTiming(volOpen ? 1 : 0, { duration: 180 }); }, [volOpen]);
   useEffect(() => { ctrlsSV.value = withTiming(ctrlsVisible ? 1 : 0, { duration: 180 }); }, [ctrlsVisible]);
-
-  const startTween = useCallback(() => {
-    cancelAnimation(curPosSV);
-    if (playingRef.current && isActiveRef.current && durRef.current > 0 && !scrubbingRef.current) {
-      const remaining = Math.max(0, durRef.current - curPosSV.value);
-      if (remaining > 0) {
-        curPosSV.value = withTiming(durRef.current, { duration: remaining, easing: Easing.linear });
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    startTween();
-    return () => cancelAnimation(curPosSV);
-  }, [playing, isActive, durationMs, startTween]);
 
   const clearHide = () => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } };
   const scheduleHide = () => { clearHide(); if (playingRef.current) hideTimer.current = setTimeout(() => setCtrlsVisible(false), 3000); };
@@ -350,14 +333,14 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
       if (target < 0) target = 0;
       else if (dur > 0 && target > dur) target = dur;
       await ref.current.setPositionAsync(target);
+      cancelAnimation(curPosSV);
       curPosSV.value = target;
       setPositionMs(target);
-      startTween();
     } catch {
     } finally {
       seekingRef.current = false;
     }
-  }, [startTween]);
+  }, []);
 
   const bump = () => { setCtrlsVisible(true); scheduleHide(); };
 
@@ -385,8 +368,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
     setPositionMs(ms);
     scrubbingRef.current = false;
     onScrubbingChange?.(false);
-    startTween();
-  }, [onScrubbingChange, startTween]);
+  }, [onScrubbingChange]);
 
   const toggleMute = () => {
     setMuted((m) => {
@@ -486,7 +468,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
         resizeMode={ResizeMode.CONTAIN}
         isLooping={false}
         useNativeControls={false}
-        progressUpdateIntervalMillis={500}
+        progressUpdateIntervalMillis={250}
         onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
         onPlaybackStatusUpdate={(s) => {
           if (!s.isLoaded) return;
@@ -496,19 +478,17 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
             curPosSV.value = 0;
             setPositionMs(0);
             ref.current?.setPositionAsync(0).catch(() => {});
-          } else if (!scrubbingRef.current) {
-            const drift = Math.abs(curPosSV.value - s.positionMillis);
-            if (drift > 700) {
-              curPosSV.value = s.positionMillis;
-              startTween();
-            }
+            return;
+          }
+          if (!scrubbingRef.current) {
+            curPosSV.value = withTiming(s.positionMillis, { duration: 300, easing: Easing.linear });
             const now = Date.now();
-            if (now - posThrottleRef.current > 250) {
+            if (now - posThrottleRef.current > 200) {
               posThrottleRef.current = now;
               setPositionMs(s.positionMillis);
             }
           }
-          if (s.durationMillis && s.durationMillis !== durRef.current) {
+          if (s.durationMillis && durRef.current === 0) {
             durRef.current = s.durationMillis;
             durSV.value = s.durationMillis;
             setDurationMs(s.durationMillis);
@@ -565,11 +545,8 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
         </Pressable>
       </Reanimated.View>
 
-      <Reanimated.View pointerEvents={ctrlsVisible ? 'box-none' : 'none'} style={[styles.scrubberWrap, { bottom: bottomInset + 6 }, ctrlsAnim]}>
-        <View style={styles.scrubTimes}>
-          <Text style={styles.scrubTime}>{fmtMs(positionMs)}</Text>
-          <Text style={styles.scrubTime}>{fmtMs(durationMs)}</Text>
-        </View>
+      <Reanimated.View pointerEvents={ctrlsVisible ? 'box-none' : 'none'} style={[styles.scrubberWrap, { bottom: bottomInset + 8 }, ctrlsAnim]}>
+        <Text style={[styles.scrubTime, { marginRight: 8 }]}>{fmtMs(positionMs)}</Text>
         <GestureDetector gesture={scrubPan}>
           <View style={styles.scrubTouch} onLayout={(e) => { trackWSV.value = e.nativeEvent.layout.width; }}>
             <View style={styles.scrubTrack}>
@@ -578,6 +555,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
             <Reanimated.View style={[styles.scrubHandle, handleAnim]} />
           </View>
         </GestureDetector>
+        <Text style={[styles.scrubTime, { marginLeft: 8, textAlign: 'right' }]}>{`-${fmtMs(Math.max(0, durationMs - positionMs))}`}</Text>
       </Reanimated.View>
     </View>
   );
@@ -2631,7 +2609,7 @@ export default function ClinicConversationScreen() {
                 </Pressable>
               </View>
               {pages.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 178 : 132) }]}>
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 162 : 132) }]}>
                   <ScrollView
                     ref={stripRef}
                     horizontal
@@ -2653,7 +2631,7 @@ export default function ClinicConversationScreen() {
                   </ScrollView>
                 </View>
               )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 60 : 14) }]} pointerEvents="box-none">
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 44 : 14) }]} pointerEvents="box-none">
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.92)']}
                   start={{ x: 0, y: 0 }}
@@ -3355,10 +3333,10 @@ const styles = StyleSheet.create({
   skipBtn: { alignItems: 'center', justifyContent: 'center', marginHorizontal: 24 },
   skipLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: -3 },
   centerPlay: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  scrubberWrap: { position: 'absolute', left: 14, right: 14, zIndex: 9 },
+  scrubberWrap: { position: 'absolute', left: 14, right: 14, flexDirection: 'row', alignItems: 'center', zIndex: 9 },
   scrubTimes: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  scrubTime: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '600' },
-  scrubTouch: { height: 20, justifyContent: 'center', position: 'relative' },
+  scrubTime: { color: 'rgba(255,255,255,0.9)', fontSize: 11, fontWeight: '600', minWidth: 40, fontVariant: ['tabular-nums'] },
+  scrubTouch: { flex: 1, height: 20, justifyContent: 'center', position: 'relative' },
   scrubTrack: { height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
   scrubFill: { position: 'absolute', left: 0, top: 0, height: 3, borderRadius: 1.5, backgroundColor: '#4DA3FF' },
   scrubHandle: { position: 'absolute', width: 11, height: 11, borderRadius: 5.5, backgroundColor: '#FFFFFF', top: 4.5, marginLeft: -5.5 },
