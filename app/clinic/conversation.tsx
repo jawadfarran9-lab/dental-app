@@ -265,7 +265,7 @@ const fmtMs = (ms: number): string => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number }) {
+function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onScrubbingChange }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number; onScrubbingChange?: (b: boolean) => void }) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -277,9 +277,12 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
   const mutedRef = useRef(false);
   const playingRef = useRef(false);
   const seekingRef = useRef(false);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scrubbingRef = useRef(false);
   const durRef = useRef(0);
   const posThrottleRef = useRef(0);
+  const scrubSeekTs = useRef(0);
+  const labelTs = useRef(0);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volSV = useSharedValue(1);
   const startVol = useSharedValue(1);
   const openSV = useSharedValue(0);
@@ -287,6 +290,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
   const curPosSV = useSharedValue(0);
   const durSV = useSharedValue(0);
   const trackWSV = useSharedValue(0);
+  const startPosSV = useSharedValue(0);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { playingRef.current = playing; }, [playing]);
@@ -330,13 +334,37 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
       else if (dur > 0 && target > dur) target = dur;
       await ref.current.setPositionAsync(target);
     } catch {
-      // ignore seeking-interrupted
     } finally {
       seekingRef.current = false;
     }
   }, []);
 
   const bump = () => { setCtrlsVisible(true); scheduleHide(); };
+
+  const onScrubMove = useCallback((ms: number) => {
+    const now = Date.now();
+    if (now - scrubSeekTs.current >= 33) {
+      scrubSeekTs.current = now;
+      ref.current?.setPositionAsync(ms).catch(() => {});
+    }
+    if (now - labelTs.current >= 120) {
+      labelTs.current = now;
+      setPositionMs(ms);
+    }
+  }, []);
+
+  const startScrub = useCallback(() => {
+    scrubbingRef.current = true;
+    onScrubbingChange?.(true);
+  }, [onScrubbingChange]);
+
+  const endScrub = useCallback(() => {
+    const ms = curPosSV.value;
+    ref.current?.setPositionAsync(ms).catch(() => {});
+    setPositionMs(ms);
+    scrubbingRef.current = false;
+    onScrubbingChange?.(false);
+  }, [onScrubbingChange]);
 
   const toggleMute = () => {
     setMuted((m) => {
@@ -372,6 +400,31 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
           runOnJS(applyVol)(v);
         }),
     [applyVol]
+  );
+
+  const scrubPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-6, 6])
+        .failOffsetY([-12, 12])
+        .onStart(() => {
+          startPosSV.value = curPosSV.value;
+          runOnJS(startScrub)();
+        })
+        .onUpdate((e) => {
+          const w = trackWSV.value;
+          const total = durSV.value;
+          if (w <= 0 || total <= 0) return;
+          let ms = startPosSV.value + (e.translationX / w) * total;
+          if (ms < 0) ms = 0;
+          else if (ms > total) ms = total;
+          curPosSV.value = ms;
+          runOnJS(onScrubMove)(ms);
+        })
+        .onFinalize(() => {
+          runOnJS(endScrub)();
+        }),
+    [startScrub, onScrubMove, endScrub]
   );
 
   const dockAnim = useAnimatedStyle((): ViewStyle => ({
@@ -419,11 +472,13 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
           if (s.didJustFinish) {
             ref.current?.setPositionAsync(0).catch(() => {});
           }
-          curPosSV.value = withTiming(s.positionMillis, { duration: 280 });
-          const now = Date.now();
-          if (now - posThrottleRef.current > 250) {
-            posThrottleRef.current = now;
-            setPositionMs(s.positionMillis);
+          if (!scrubbingRef.current) {
+            curPosSV.value = withTiming(s.positionMillis, { duration: 280 });
+            const now = Date.now();
+            if (now - posThrottleRef.current > 250) {
+              posThrottleRef.current = now;
+              setPositionMs(s.positionMillis);
+            }
           }
           if (s.durationMillis && s.durationMillis !== durRef.current) {
             durRef.current = s.durationMillis;
@@ -482,17 +537,19 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { 
         </Pressable>
       </Reanimated.View>
 
-      <Reanimated.View pointerEvents="none" style={[styles.scrubberWrap, { bottom: bottomInset + 6 }, ctrlsAnim]}>
+      <Reanimated.View pointerEvents={ctrlsVisible ? 'box-none' : 'none'} style={[styles.scrubberWrap, { bottom: bottomInset + 6 }, ctrlsAnim]}>
         <View style={styles.scrubTimes}>
           <Text style={styles.scrubTime}>{fmtMs(positionMs)}</Text>
           <Text style={styles.scrubTime}>{fmtMs(durationMs)}</Text>
         </View>
-        <View style={styles.scrubTouch} onLayout={(e) => { trackWSV.value = e.nativeEvent.layout.width; }}>
-          <View style={styles.scrubTrack}>
-            <Reanimated.View style={[styles.scrubFill, fillAnim]} />
+        <GestureDetector gesture={scrubPan}>
+          <View style={styles.scrubTouch} onLayout={(e) => { trackWSV.value = e.nativeEvent.layout.width; }}>
+            <View style={styles.scrubTrack}>
+              <Reanimated.View style={[styles.scrubFill, fillAnim]} />
+            </View>
+            <Reanimated.View style={[styles.scrubHandle, handleAnim]} />
           </View>
-          <Reanimated.View style={[styles.scrubHandle, handleAnim]} />
-        </View>
+        </GestureDetector>
       </Reanimated.View>
     </View>
   );
@@ -555,6 +612,7 @@ export default function ClinicConversationScreen() {
   const viewerListRef = useRef<FlatList<ViewerPage>>(null);
   const stripRef = useRef<ScrollView>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryMessage, setGalleryMessage] = useState<Message | null>(null);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
@@ -2490,7 +2548,7 @@ export default function ClinicConversationScreen() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 initialScrollIndex={viewerIndex}
-                scrollEnabled={!viewerZoomed}
+                scrollEnabled={!(viewerZoomed || scrubbing)}
                 getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
                 onMomentumScrollEnd={(e) => {
                   const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
@@ -2500,7 +2558,7 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} onScrubbingChange={setScrubbing} />
                     ) : (
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
                     )}
