@@ -112,6 +112,7 @@ export default function ChatCameraScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [ready, setReady] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [camMode, setCamMode] = useState<'picture' | 'video'>('picture');
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
@@ -391,6 +392,7 @@ export default function ChatCameraScreen() {
   };
 
   const handleTakePhoto = async () => {
+    if (camMode !== 'picture') return;
     if (!cameraRef.current || !ready || taking) return;
     if (!clinicId || !patientId) {
       Alert.alert('Missing info', 'Cannot send right now.');
@@ -457,11 +459,11 @@ export default function ChatCameraScreen() {
       <StatusBar barStyle="light-content" />
 
       <CameraView
-        key={facing}
+        key={`${facing}-${camMode}`}
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing={facing}
-        mode="picture"
+        mode={camMode}
         zoom={zoomLevel}
         onCameraReady={() => setReady(true)}
       />
@@ -480,7 +482,7 @@ export default function ChatCameraScreen() {
 
       <Pressable
         onPress={flipCamera}
-        style={[styles.flipBtn, { bottom: insets.bottom + 36 }]}
+        style={[styles.flipBtn, { bottom: insets.bottom + 72 }]}
         hitSlop={10}
       >
         <Ionicons name="camera-reverse" size={26} color="#FFFFFF" />
@@ -587,7 +589,7 @@ export default function ChatCameraScreen() {
       </Animated.View>
 
       <View
-        style={[styles.captureButtonContainer, { bottom: insets.bottom + 28 }]}
+        style={[styles.captureButtonContainer, { bottom: insets.bottom + 64 }]}
         pointerEvents="box-none"
       >
         <Pressable onPress={handleTakePhoto} disabled={!ready || taking}>
@@ -595,6 +597,48 @@ export default function ChatCameraScreen() {
             <View style={styles.captureInnerButton} />
           </View>
         </Pressable>
+      </View>
+
+      <View
+        style={[styles.modeToggleContainer, { bottom: insets.bottom + 20 }]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.modeToggleRow}>
+          <Pressable
+            onPress={() => setCamMode('picture')}
+            style={[
+              styles.modeSegment,
+              camMode === 'picture' && styles.modeSegmentActive,
+            ]}
+            hitSlop={8}
+          >
+            <Text
+              style={[
+                styles.modeSegmentText,
+                camMode === 'picture' && styles.modeSegmentTextActive,
+              ]}
+            >
+              Photo
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setCamMode('video')}
+            style={[
+              styles.modeSegment,
+              camMode === 'video' && styles.modeSegmentActive,
+            ]}
+            hitSlop={8}
+          >
+            <Text
+              style={[
+                styles.modeSegmentText,
+                camMode === 'video' && styles.modeSegmentTextActive,
+              ]}
+            >
+              Video
+            </Text>
+          </Pressable>
+        </View>
       </View>
     </GestureHandlerRootView>
   );
@@ -752,4 +796,37 @@ const styles = StyleSheet.create({
   permBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   permClose: { marginTop: 4, paddingHorizontal: 12, paddingVertical: 8 },
   permCloseText: { color: 'rgba(255,255,255,0.7)', fontSize: 14, fontWeight: '600' },
+
+  modeToggleContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  modeToggleRow: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 12,
+    padding: 2,
+  },
+  modeSegment: {
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: 10,
+    minWidth: 52,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeSegmentActive: {
+    backgroundColor: '#FFFFFF',
+  },
+  modeSegmentText: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  modeSegmentTextActive: {
+    color: '#111111',
+  },
 });
