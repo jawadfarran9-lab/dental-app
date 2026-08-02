@@ -39,7 +39,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Reanimated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
 import Svg, { ClipPath, Defs, G, Line, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
@@ -276,6 +276,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
   const [durationMs, setDurationMs] = useState(0);
   const mutedRef = useRef(false);
   const playingRef = useRef(false);
+  const isActiveRef = useRef(false);
   const seekingRef = useRef(false);
   const scrubbingRef = useRef(false);
   const durRef = useRef(0);
@@ -294,8 +295,24 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { playingRef.current = playing; }, [playing]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
   useEffect(() => { openSV.value = withTiming(volOpen ? 1 : 0, { duration: 180 }); }, [volOpen]);
   useEffect(() => { ctrlsSV.value = withTiming(ctrlsVisible ? 1 : 0, { duration: 180 }); }, [ctrlsVisible]);
+
+  const startTween = useCallback(() => {
+    cancelAnimation(curPosSV);
+    if (playingRef.current && isActiveRef.current && durRef.current > 0 && !scrubbingRef.current) {
+      const remaining = Math.max(0, durRef.current - curPosSV.value);
+      if (remaining > 0) {
+        curPosSV.value = withTiming(durRef.current, { duration: remaining, easing: Easing.linear });
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    startTween();
+    return () => cancelAnimation(curPosSV);
+  }, [playing, isActive, durationMs, startTween]);
 
   const clearHide = () => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } };
   const scheduleHide = () => { clearHide(); if (playingRef.current) hideTimer.current = setTimeout(() => setCtrlsVisible(false), 3000); };
@@ -333,11 +350,14 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
       if (target < 0) target = 0;
       else if (dur > 0 && target > dur) target = dur;
       await ref.current.setPositionAsync(target);
+      curPosSV.value = target;
+      setPositionMs(target);
+      startTween();
     } catch {
     } finally {
       seekingRef.current = false;
     }
-  }, []);
+  }, [startTween]);
 
   const bump = () => { setCtrlsVisible(true); scheduleHide(); };
 
@@ -355,6 +375,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
 
   const startScrub = useCallback(() => {
     scrubbingRef.current = true;
+    cancelAnimation(curPosSV);
     onScrubbingChange?.(true);
   }, [onScrubbingChange]);
 
@@ -364,7 +385,8 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
     setPositionMs(ms);
     scrubbingRef.current = false;
     onScrubbingChange?.(false);
-  }, [onScrubbingChange]);
+    startTween();
+  }, [onScrubbingChange, startTween]);
 
   const toggleMute = () => {
     setMuted((m) => {
@@ -464,16 +486,22 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
         resizeMode={ResizeMode.CONTAIN}
         isLooping={false}
         useNativeControls={false}
-        progressUpdateIntervalMillis={300}
+        progressUpdateIntervalMillis={500}
         onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
         onPlaybackStatusUpdate={(s) => {
           if (!s.isLoaded) return;
           setPlaying(s.isPlaying);
           if (s.didJustFinish) {
+            cancelAnimation(curPosSV);
+            curPosSV.value = 0;
+            setPositionMs(0);
             ref.current?.setPositionAsync(0).catch(() => {});
-          }
-          if (!scrubbingRef.current) {
-            curPosSV.value = withTiming(s.positionMillis, { duration: 280 });
+          } else if (!scrubbingRef.current) {
+            const drift = Math.abs(curPosSV.value - s.positionMillis);
+            if (drift > 700) {
+              curPosSV.value = s.positionMillis;
+              startTween();
+            }
             const now = Date.now();
             if (now - posThrottleRef.current > 250) {
               posThrottleRef.current = now;
@@ -3328,12 +3356,12 @@ const styles = StyleSheet.create({
   skipLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: -3 },
   centerPlay: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   scrubberWrap: { position: 'absolute', left: 14, right: 14, zIndex: 9 },
-  scrubTimes: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  scrubTime: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600' },
-  scrubTouch: { height: 22, justifyContent: 'center', position: 'relative' },
-  scrubTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
-  scrubFill: { position: 'absolute', left: 0, top: 0, height: 4, borderRadius: 2, backgroundColor: '#4DA3FF' },
-  scrubHandle: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', top: 4, marginLeft: -7 },
+  scrubTimes: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  scrubTime: { color: 'rgba(255,255,255,0.85)', fontSize: 10, fontWeight: '600' },
+  scrubTouch: { height: 20, justifyContent: 'center', position: 'relative' },
+  scrubTrack: { height: 3, borderRadius: 1.5, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
+  scrubFill: { position: 'absolute', left: 0, top: 0, height: 3, borderRadius: 1.5, backgroundColor: '#4DA3FF' },
+  scrubHandle: { position: 'absolute', width: 11, height: 11, borderRadius: 5.5, backgroundColor: '#FFFFFF', top: 4.5, marginLeft: -5.5 },
   stickerKbSheet: {
     position: 'absolute',
     left: 0,
