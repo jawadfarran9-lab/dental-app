@@ -42,6 +42,7 @@ import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-g
 import Reanimated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
+import Svg, { ClipPath, Defs, G, Line, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -252,9 +253,19 @@ function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: 
   );
 }
 
-function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: number; height: number; isActive: boolean }) {
+const WEDGE_W = 52;
+const WEDGE_H = 150;
+const W_TOP = 6;
+const W_BOT = 144;
+const W_RANGE = W_BOT - W_TOP; // 138
+const WEDGE_POINTS = '9,6 43,6 31,144 21,144';
+
+function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; width: number; height: number; isActive: boolean; topInset: number }) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
+  const [volume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const [volOpen, setVolOpen] = useState(false);
 
   useEffect(() => {
     if (isActive) {
@@ -271,6 +282,25 @@ function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: num
       ref.current?.playAsync().catch(() => {});
     }
   };
+
+  const toggleMute = () => {
+    setMuted((m) => {
+      const next = !m;
+      ref.current?.setIsMutedAsync(next).catch(() => {});
+      return next;
+    });
+  };
+
+  const effVol = muted ? 0 : volume;
+  const fillTop = W_BOT - W_RANGE * effVol;
+  const fillH = W_RANGE * effVol;
+  const spkName = muted || volume <= 0 ? 'volume-mute' : volume > 0.6 ? 'volume-high' : volume > 0.25 ? 'volume-medium' : 'volume-low';
+
+  const ridges = [];
+  for (let i = 1; i <= 9; i++) {
+    const y = W_TOP + (W_RANGE * i) / 10;
+    ridges.push(<Line key={`r${i}`} x1={7} x2={45} y1={y} y2={y} stroke="rgba(255,255,255,0.5)" strokeWidth={1.2} />);
+  }
 
   return (
     <View style={{ width, height, position: 'relative' }}>
@@ -296,6 +326,36 @@ function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: num
           <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
             <Ionicons name="play" size={40} color="rgba(255,255,255,0.95)" style={{ marginLeft: 4 }} />
           </View>
+        </View>
+      )}
+
+      {/* top-right volume button (mirrors the close button on the left) */}
+      <Pressable onPress={() => setVolOpen((o) => !o)} style={[styles.viewerClose, styles.volBtnTR, { top: topInset + 8 }]} hitSlop={8}>
+        <Ionicons name={(muted ? 'volume-mute' : spkName) as any} size={22} color={muted ? '#FF8A80' : '#FFFFFF'} />
+      </Pressable>
+
+      {/* volume dock — only when open */}
+      {volOpen && (
+        <View style={[styles.volDock, { top: topInset + 56 }]}>
+          <Svg width={WEDGE_W} height={WEDGE_H}>
+            <Defs>
+              <SvgLinearGradient id="vgrad" x1="0" y1="1" x2="0" y2="0">
+                <Stop offset="0" stopColor="#1E6FD9" />
+                <Stop offset="0.55" stopColor="#4DA3FF" />
+                <Stop offset="1" stopColor="#8FD0FF" />
+              </SvgLinearGradient>
+              <ClipPath id="vclip"><Polygon points={WEDGE_POINTS} /></ClipPath>
+            </Defs>
+            <Polygon points={WEDGE_POINTS} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.28)" strokeWidth={1.4} strokeLinejoin="round" />
+            <G clipPath="url(#vclip)">
+              <Rect x={0} y={fillTop} width={WEDGE_W} height={fillH} fill="url(#vgrad)" opacity={muted ? 0.3 : 1} />
+              <Rect x={0} y={fillTop - 2} width={WEDGE_W} height={4} fill="#CDEBFF" opacity={muted || effVol <= 0 ? 0 : 0.9} />
+              {ridges}
+            </G>
+          </Svg>
+          <Pressable onPress={toggleMute} style={[styles.muteBtn, muted && styles.muteBtnOn]} hitSlop={8}>
+            <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={18} color={muted ? '#FF8A80' : '#FFFFFF'} />
+          </Pressable>
         </View>
       )}
     </View>
@@ -2304,14 +2364,14 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} />
                     ) : (
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
                     )}
                   </View>
                 )}
               />
-              <View style={[styles.viewerHeader, { top: insets.top + 8 }]}>
+              <View style={[styles.viewerHeader, { top: insets.top + 8 }]} pointerEvents="box-none">
                 <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
                   <Ionicons name="close" size={22} color="#FFFFFF" />
                 </Pressable>
@@ -3054,6 +3114,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
   },
+  volDock: {
+    position: 'absolute',
+    right: 12,
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 18,
+    backgroundColor: 'rgba(16,20,28,0.5)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    zIndex: 8,
+  },
+  volPct: { color: '#FFFFFF', fontSize: 14, fontWeight: '800', marginTop: 2 },
+  muteBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
+  muteBtnOn: { backgroundColor: 'rgba(239,68,68,0.22)', borderColor: 'rgba(239,68,68,0.6)' },
+  volBtnTR: { position: 'absolute', right: 12, zIndex: 9 },
   stickerKbSheet: {
     position: 'absolute',
     left: 0,
