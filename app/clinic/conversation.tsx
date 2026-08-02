@@ -13,6 +13,7 @@ import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { ResizeMode, Video } from 'expo-av';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -118,7 +119,7 @@ type Message = {
   starredClinic?: boolean;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video' };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
@@ -248,6 +249,33 @@ function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: 
         <Image source={{ uri }} resizeMode="contain" style={{ width, height: '100%' }} />
       </Reanimated.View>
     </GestureDetector>
+  );
+}
+
+function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: number; height: number; isActive: boolean }) {
+  const ref = useRef<Video>(null);
+  useEffect(() => {
+    if (isActive) {
+      ref.current?.playAsync().catch(() => {});
+    } else {
+      ref.current?.pauseAsync().catch(() => {});
+    }
+  }, [isActive]);
+  return (
+    <Video
+      ref={ref}
+      source={{ uri }}
+      style={{ width, height }}
+      resizeMode={ResizeMode.CONTAIN}
+      isLooping={false}
+      useNativeControls
+      onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
+      onPlaybackStatusUpdate={(s) => {
+        if (s.isLoaded && s.didJustFinish) {
+          ref.current?.setPositionAsync(0).catch(() => {});
+        }
+      }}
+    />
   );
 }
 
@@ -522,6 +550,15 @@ export default function ClinicConversationScreen() {
       } else if (m.type === 'album' && Array.isArray(m.media)) {
         m.media.forEach((it, idx) => {
           out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+        });
+      } else if (m.type === 'video' && (m.videoUrl || m.posterUrl)) {
+        out.push({
+          url: m.posterUrl ?? '',
+          videoUrl: m.videoUrl,
+          width: m.videoWidth ?? undefined,
+          height: m.videoHeight ?? undefined,
+          msgId: m.id,
+          kind: 'video',
         });
       }
     }
@@ -1159,7 +1196,7 @@ export default function ClinicConversationScreen() {
               !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
             ]}
           >
-            <Pressable onLongPress={onLongPress} delayLongPress={350}>
+            <Pressable onPress={() => onOpenViewer?.(0)} onLongPress={onLongPress} delayLongPress={350}>
               {item.posterUrl ? (
                 <Image
                   source={{ uri: item.posterUrl }}
@@ -2213,6 +2250,7 @@ export default function ClinicConversationScreen() {
           const SCREEN_H = Dimensions.get('window').height;
           const pages = viewerPages;
           const current = pages[viewerIndex] ?? pages[0];
+          const isVideo = current?.kind === 'video';
           const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
           const isOwn = curMsg?.from === 'clinic';
           const isStarred = !!curMsg?.starredClinic;
@@ -2240,9 +2278,13 @@ export default function ClinicConversationScreen() {
                   setViewerIndex(idx);
                   setViewerZoomed(false);
                 }}
-                renderItem={({ item: page }) => (
+                renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                    <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                    {page.kind === 'video' && page.videoUrl ? (
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} />
+                    ) : (
+                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                    )}
                   </View>
                 )}
               />
@@ -2261,28 +2303,30 @@ export default function ClinicConversationScreen() {
                 <View style={{ width: 40 }} />
               </View>
               <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
-                <Pressable
-                  onPress={() => {
-                    if (!current) return;
-                    setReactionTarget(null);
-                    setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
-                    setStickerKbOpen(true);
-                  }}
-                  style={styles.viewerClose}
-                  hitSlop={8}
-                >
-                  {curSticker ? (
-                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                  ) : (
-                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
-                  )}
-                </Pressable>
+                {!isVideo && (
+                  <Pressable
+                    onPress={() => {
+                      if (!current) return;
+                      setReactionTarget(null);
+                      setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
+                      setStickerKbOpen(true);
+                    }}
+                    style={styles.viewerClose}
+                    hitSlop={8}
+                  >
+                    {curSticker ? (
+                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                    ) : (
+                      <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                    )}
+                  </Pressable>
+                )}
                 <Pressable style={styles.viewerClose} hitSlop={8}>
                   <Ionicons name="arrow-undo-outline" size={22} color="#FFFFFF" />
                 </Pressable>
               </View>
               {pages.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 192 : 132) }]}>
                   <ScrollView
                     ref={stripRef}
                     horizontal
@@ -2304,7 +2348,7 @@ export default function ClinicConversationScreen() {
                   </ScrollView>
                 </View>
               )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 74 : 14) }]} pointerEvents="box-none">
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.92)']}
                   start={{ x: 0, y: 0 }}
