@@ -1,6 +1,7 @@
 import { db, storage } from '@/firebaseConfig';
 import { compressImage } from '@/src/utils/imageCompress';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { Firestore } from 'firebase/firestore';
 import { addDoc, collection } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
@@ -45,6 +46,76 @@ export async function sendImageMessage(params: {
     createdAt: Date.now(),
   });
   await updateThreadOnMessage(clinicId, patientId, patientName, 'Photo', senderType, dbInstance);
+}
+
+export async function sendVideoMessage(params: {
+  clinicId: string;
+  patientId: string;
+  patientName: string;
+  localUri: string;
+  from?: 'clinic' | 'patient';
+  senderName?: string;
+  senderType?: 'clinic' | 'patient';
+  caption?: string;
+}, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
+  const {
+    clinicId,
+    patientId,
+    patientName,
+    localUri,
+    from = 'clinic',
+    senderName = 'Clinic',
+    senderType = 'clinic',
+  } = params;
+
+  let posterUri: string | null = null;
+  try {
+    const thumb = await VideoThumbnails.getThumbnailAsync(localUri, { time: 0 });
+    posterUri = thumb.uri;
+  } catch {
+    posterUri = null;
+  }
+
+  const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.mp4`;
+  const videoBlob = await (await fetch(localUri)).blob();
+  const videoSnap = await uploadBytes(ref(storageInstance, storagePath), videoBlob, {
+    contentType: 'video/mp4',
+  });
+  const videoUrl = await getDownloadURL(videoSnap.ref);
+
+  let posterUrl: string | null = null;
+  let posterPath: string | null = null;
+  if (posterUri) {
+    try {
+      const pPath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}_poster.jpg`;
+      const posterBlob = await (await fetch(posterUri)).blob();
+      const posterSnap = await uploadBytes(ref(storageInstance, pPath), posterBlob, {
+        contentType: 'image/jpeg',
+      });
+      posterUrl = await getDownloadURL(posterSnap.ref);
+      posterPath = pPath;
+    } catch {
+      posterUrl = null;
+      posterPath = null;
+    }
+  }
+
+  await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
+    from,
+    text: params.caption ?? '',
+    type: 'video',
+    videoUrl,
+    storagePath,
+    posterUrl: posterUrl ?? null,
+    posterPath: posterPath ?? null,
+    durationMs: null,
+    videoWidth: null,
+    videoHeight: null,
+    senderName,
+    createdAt: Date.now(),
+  });
+  await updateThreadOnMessage(clinicId, patientId, patientName, '🎬 Video', senderType, dbInstance);
 }
 
 export async function sendAlbumMessage(
