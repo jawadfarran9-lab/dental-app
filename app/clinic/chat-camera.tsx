@@ -138,6 +138,10 @@ export default function ChatCameraScreen() {
   useEffect(() => {
     zoomLevelRef.current = zoomLevel;
   }, [zoomLevel]);
+  useEffect(() => {
+    setZoomLevel(ZOOM_1X);
+    setActivePreset(0);
+  }, [camMode]);
   const dialZoomAtDragStartRef = useRef(0);
 
   const zoomUiOpacity = useSharedValue(1);
@@ -678,7 +682,7 @@ export default function ChatCameraScreen() {
       >
         <View style={styles.modeToggleRow}>
           <Pressable
-            onPress={() => setCamMode('picture')}
+            onPress={() => { setCamMode('picture'); onZoomInteraction(); }}
             style={[
               styles.modeSegment,
               camMode === 'picture' && styles.modeSegmentActive,
@@ -696,7 +700,7 @@ export default function ChatCameraScreen() {
             </Text>
           </Pressable>
           <Pressable
-            onPress={() => setCamMode('video')}
+            onPress={() => { setCamMode('video'); onZoomInteraction(); }}
             style={[
               styles.modeSegment,
               camMode === 'video' && styles.modeSegmentActive,
