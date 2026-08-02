@@ -280,6 +280,10 @@ export default function ClinicConversationScreen() {
       { scale: 1 + 0.05 * actionLift.value },
     ],
   }));
+  const galQuickLift = useSharedValue(0);
+  const galQuickLiftStyle = useAnimatedStyle((): ViewStyle => ({
+    transform: [{ scale: 1 - 0.04 * galQuickLift.value }],
+  }));
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
@@ -790,6 +794,10 @@ export default function ClinicConversationScreen() {
   useEffect(() => {
     actionLift.value = withTiming(actionMenuOpen ? 1 : 0, { duration: actionMenuOpen ? 160 : 120 });
   }, [actionMenuOpen]);
+
+  useEffect(() => {
+    galQuickLift.value = withTiming(galQuickTarget ? 1 : 0, { duration: galQuickTarget ? 180 : 140 });
+  }, [galQuickTarget]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -1947,6 +1955,7 @@ export default function ClinicConversationScreen() {
           return (
             <View style={{ flex: 1 }}>
               <PremiumGradientBackground isDark={isDark} showSparkles={!isDark} />
+              <Reanimated.View style={[{ flex: 1 }, galQuickLiftStyle]}>
               <ScrollView
                 contentContainerStyle={{ paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 }}
                 showsVerticalScrollIndicator={false}
@@ -1977,6 +1986,7 @@ export default function ClinicConversationScreen() {
                   );
                 })}
               </ScrollView>
+              </Reanimated.View>
               {stickerKbOpen ? (
                 <View style={StyleSheet.absoluteFill}>
                   <Pressable style={StyleSheet.absoluteFill} onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }} />
