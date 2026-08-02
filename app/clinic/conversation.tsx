@@ -254,6 +254,8 @@ function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: 
 
 function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: number; height: number; isActive: boolean }) {
   const ref = useRef<Video>(null);
+  const [playing, setPlaying] = useState(false);
+
   useEffect(() => {
     if (isActive) {
       ref.current?.playAsync().catch(() => {});
@@ -261,21 +263,42 @@ function ViewerVideo({ uri, width, height, isActive }: { uri: string; width: num
       ref.current?.pauseAsync().catch(() => {});
     }
   }, [isActive]);
+
+  const togglePlay = () => {
+    if (playing) {
+      ref.current?.pauseAsync().catch(() => {});
+    } else {
+      ref.current?.playAsync().catch(() => {});
+    }
+  };
+
   return (
-    <Video
-      ref={ref}
-      source={{ uri }}
-      style={{ width, height }}
-      resizeMode={ResizeMode.CONTAIN}
-      isLooping={false}
-      useNativeControls
-      onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
-      onPlaybackStatusUpdate={(s) => {
-        if (s.isLoaded && s.didJustFinish) {
-          ref.current?.setPositionAsync(0).catch(() => {});
-        }
-      }}
-    />
+    <View style={{ width, height, position: 'relative' }}>
+      <Video
+        ref={ref}
+        source={{ uri }}
+        style={{ width, height }}
+        resizeMode={ResizeMode.CONTAIN}
+        isLooping={false}
+        useNativeControls={false}
+        onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
+        onPlaybackStatusUpdate={(s) => {
+          if (!s.isLoaded) return;
+          setPlaying(s.isPlaying);
+          if (s.didJustFinish) {
+            ref.current?.setPositionAsync(0).catch(() => {});
+          }
+        }}
+      />
+      <Pressable style={StyleSheet.absoluteFill} onPress={togglePlay} />
+      {!playing && (
+        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
+            <Ionicons name="play" size={40} color="rgba(255,255,255,0.95)" style={{ marginLeft: 4 }} />
+          </View>
+        </View>
+      )}
+    </View>
   );
 }
 
