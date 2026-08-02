@@ -115,6 +115,7 @@ type Message = {
 type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
 const RECENT_MAX = 6;
 const RECENTS_KEY = 'reactions:recent:v3';
 
@@ -283,6 +284,7 @@ export default function ClinicConversationScreen() {
   const [reactionTarget, setReactionTarget] = useState<Message | null>(null);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
+  const [galQuickTarget, setGalQuickTarget] = useState<{ msgId: string; mediaIndex: number } | null>(null);
   const [reactionSheetOpen, setReactionSheetOpen] = useState(false);
   const [reactionSheetTarget, setReactionSheetTarget] = useState<Message | null>(null);
   const [stickerSheetOpen, setStickerSheetOpen] = useState(false);
@@ -1957,6 +1959,8 @@ export default function ClinicConversationScreen() {
                     <Pressable
                       key={`galimg_${i}`}
                       onPress={() => { if (gm) openViewerFromGallery(gm, i); }}
+                      onLongPress={() => { if (gm) setGalQuickTarget({ msgId: gm.id, mediaIndex: i }); }}
+                      delayLongPress={350}
                       style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
                     >
                       <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
@@ -2032,6 +2036,41 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
+              {galQuickTarget ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <BlurView intensity={30} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} pointerEvents="none" />
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => setGalQuickTarget(null)} />
+                  <View
+                    style={[
+                      styles.reactionRow,
+                      {
+                        bottom: insets.bottom + 24,
+                        left: Math.max(8, (SCREEN_W - 360) / 2),
+                        backgroundColor: isDark ? '#1D2233' : '#FFFFFF',
+                        borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)',
+                      },
+                    ]}
+                  >
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reactionStripScroll} contentContainerStyle={styles.reactionRowContent}>
+                      {STICKER_QUICKS.map((e) => (
+                        <Pressable
+                          key={e}
+                          onPress={() => { if (galQuickTarget) setImageSticker(galQuickTarget, e); setGalQuickTarget(null); }}
+                          style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
+                        >
+                          <Text style={styles.reactionEmoji}>{e}</Text>
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                    <Pressable
+                      onPress={() => { const t = galQuickTarget; setGalQuickTarget(null); if (t) { setStickerTarget(t); setStickerKbOpen(true); } }}
+                      style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
+                    >
+                      <Ionicons name="add" size={22} color={isDark ? '#FFFFFF' : '#1B2542'} />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
             </View>
           );
         })() : null}
