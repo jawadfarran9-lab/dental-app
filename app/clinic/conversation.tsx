@@ -263,9 +263,14 @@ const WEDGE_POINTS = '9,6 43,6 31,144 21,144';
 function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; width: number; height: number; isActive: boolean; topInset: number }) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
-  const [volume] = useState(1);
+  const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
+  const mutedRef = useRef(false);
+  const volSV = useSharedValue(1);
+  const startVol = useSharedValue(1);
+
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
 
   useEffect(() => {
     if (isActive) {
@@ -290,6 +295,34 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
       return next;
     });
   };
+
+  const applyVol = useCallback((v: number) => {
+    setVolume(v);
+    ref.current?.setVolumeAsync(v).catch(() => {});
+    if (v > 0 && mutedRef.current) {
+      mutedRef.current = false;
+      setMuted(false);
+      ref.current?.setIsMutedAsync(false).catch(() => {});
+    }
+  }, []);
+
+  const pan = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetY([-6, 6])
+        .failOffsetX([-14, 14])
+        .onStart(() => {
+          startVol.value = volSV.value;
+        })
+        .onUpdate((e) => {
+          let v = startVol.value - e.translationY / W_RANGE;
+          if (v < 0) v = 0;
+          else if (v > 1) v = 1;
+          volSV.value = v;
+          runOnJS(applyVol)(v);
+        }),
+    [applyVol]
+  );
 
   const effVol = muted ? 0 : volume;
   const fillTop = W_BOT - W_RANGE * effVol;
@@ -329,30 +362,33 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
         </View>
       )}
 
-      {/* top-right volume button (mirrors the close button on the left) */}
       <Pressable onPress={() => setVolOpen((o) => !o)} style={[styles.viewerClose, styles.volBtnTR, { top: topInset + 8 }]} hitSlop={8}>
         <Ionicons name={(muted ? 'volume-mute' : spkName) as any} size={22} color={muted ? '#FF8A80' : '#FFFFFF'} />
       </Pressable>
 
-      {/* volume dock — only when open */}
       {volOpen && (
         <View style={[styles.volDock, { top: topInset + 56 }]}>
-          <Svg width={WEDGE_W} height={WEDGE_H}>
-            <Defs>
-              <SvgLinearGradient id="vgrad" x1="0" y1="1" x2="0" y2="0">
-                <Stop offset="0" stopColor="#1E6FD9" />
-                <Stop offset="0.55" stopColor="#4DA3FF" />
-                <Stop offset="1" stopColor="#8FD0FF" />
-              </SvgLinearGradient>
-              <ClipPath id="vclip"><Polygon points={WEDGE_POINTS} /></ClipPath>
-            </Defs>
-            <Polygon points={WEDGE_POINTS} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.28)" strokeWidth={1.4} strokeLinejoin="round" />
-            <G clipPath="url(#vclip)">
-              <Rect x={0} y={fillTop} width={WEDGE_W} height={fillH} fill="url(#vgrad)" opacity={muted ? 0.3 : 1} />
-              <Rect x={0} y={fillTop - 2} width={WEDGE_W} height={4} fill="#CDEBFF" opacity={muted || effVol <= 0 ? 0 : 0.9} />
-              {ridges}
-            </G>
-          </Svg>
+          <Text style={styles.volPct}>{Math.round(volume * 100)}%</Text>
+          <GestureDetector gesture={pan}>
+            <View style={{ marginTop: 6 }}>
+              <Svg width={WEDGE_W} height={WEDGE_H}>
+                <Defs>
+                  <SvgLinearGradient id="vgrad" x1="0" y1="1" x2="0" y2="0">
+                    <Stop offset="0" stopColor="#1E6FD9" />
+                    <Stop offset="0.55" stopColor="#4DA3FF" />
+                    <Stop offset="1" stopColor="#8FD0FF" />
+                  </SvgLinearGradient>
+                  <ClipPath id="vclip"><Polygon points={WEDGE_POINTS} /></ClipPath>
+                </Defs>
+                <Polygon points={WEDGE_POINTS} fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.28)" strokeWidth={1.4} strokeLinejoin="round" />
+                <G clipPath="url(#vclip)">
+                  <Rect x={0} y={fillTop} width={WEDGE_W} height={fillH} fill="url(#vgrad)" opacity={muted ? 0.3 : 1} />
+                  <Rect x={0} y={fillTop - 2} width={WEDGE_W} height={4} fill="#CDEBFF" opacity={muted || effVol <= 0 ? 0 : 0.9} />
+                  {ridges}
+                </G>
+              </Svg>
+            </View>
+          </GestureDetector>
           <Pressable onPress={toggleMute} style={[styles.muteBtn, muted && styles.muteBtnOn]} hitSlop={8}>
             <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={18} color={muted ? '#FF8A80' : '#FFFFFF'} />
           </Pressable>
