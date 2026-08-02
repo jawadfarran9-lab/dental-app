@@ -90,11 +90,17 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'album';
+  type?: 'image' | 'album' | 'video';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   storagePath?: string;
+  videoUrl?: string;
+  posterUrl?: string | null;
+  posterPath?: string | null;
+  durationMs?: number | null;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
   media?: {
     kind: 'image' | 'video';
     url: string;
@@ -1115,6 +1121,64 @@ export default function ClinicConversationScreen() {
                 style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
                 resizeMode="cover"
               />
+            </Pressable>
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
+          {reactionBadge}
+          {starBadge}
+        </View>
+      );
+    }
+    if (item.type === 'video' && (item.videoUrl || item.posterUrl)) {
+      const BUBBLE_MAX_W = 220;
+      const ratio =
+        item.videoWidth && item.videoHeight
+          ? item.videoHeight / item.videoWidth
+          : 1;
+      const vidH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
+      let durStr: string | null = null;
+      if (item.durationMs && item.durationMs > 0) {
+        const s = Math.round(item.durationMs / 1000);
+        durStr = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      }
+      return (
+        <View style={{ position: 'relative' }}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <Pressable onLongPress={onLongPress} delayLongPress={350}>
+              {item.posterUrl ? (
+                <Image
+                  source={{ uri: item.posterUrl }}
+                  style={{ width: BUBBLE_MAX_W, height: vidH, borderRadius: 14 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={{ width: BUBBLE_MAX_W, height: vidH, borderRadius: 14, backgroundColor: '#0B1220' }} />
+              )}
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="play" size={28} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                </View>
+              </View>
+              {durStr && (
+                <View style={{ position: 'absolute', left: 8, bottom: 8, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{durStr}</Text>
+                </View>
+              )}
             </Pressable>
             {!!time && (
               <Text
