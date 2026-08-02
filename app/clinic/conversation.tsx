@@ -1944,6 +1944,7 @@ export default function ClinicConversationScreen() {
           const SCREEN_W = Dimensions.get('window').width;
           const gm = messages.find((m) => m.id === galleryMessage.id) ?? galleryMessage;
           const gMedia = gm?.media ?? [];
+          const galQuickSticker = galQuickTarget ? gMedia[galQuickTarget.mediaIndex]?.sticker : undefined;
           const gkbMsg = stickerTarget ? (messages.find((x) => x.id === stickerTarget.msgId) ?? null) : null;
           const gkbSticker = gkbMsg
             ? (gkbMsg.type === 'album' && typeof stickerTarget?.mediaIndex === 'number'
@@ -2062,15 +2063,22 @@ export default function ClinicConversationScreen() {
                     ]}
                   >
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reactionStripScroll} contentContainerStyle={styles.reactionRowContent}>
-                      {STICKER_QUICKS.map((e) => (
-                        <Pressable
-                          key={e}
-                          onPress={() => { if (galQuickTarget) setImageSticker(galQuickTarget, e); setGalQuickTarget(null); }}
-                          style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
-                        >
-                          <Text style={styles.reactionEmoji}>{e}</Text>
-                        </Pressable>
-                      ))}
+                      {STICKER_QUICKS.map((e) => {
+                        const isSelected = galQuickSticker === e;
+                        return (
+                          <Pressable
+                            key={e}
+                            onPress={() => { if (galQuickTarget) setImageSticker(galQuickTarget, e); setGalQuickTarget(null); }}
+                            style={({ pressed }) => [
+                              styles.reactionChip,
+                              isSelected && styles.reactionChipSelected,
+                              pressed && { opacity: 0.5 },
+                            ]}
+                          >
+                            <Text style={styles.reactionEmoji}>{e}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </ScrollView>
                     <Pressable
                       onPress={() => { const t = galQuickTarget; setGalQuickTarget(null); if (t) { setStickerTarget(t); setStickerKbOpen(true); } }}
