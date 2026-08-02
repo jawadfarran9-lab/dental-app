@@ -260,21 +260,33 @@ const W_BOT = 122;
 const W_RANGE = W_BOT - W_TOP; // 116
 const WEDGE_POINTS = '8,6 36,6 27,122 17,122';
 
-function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; width: number; height: number; isActive: boolean; topInset: number }) {
+const fmtMs = (ms: number): string => {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+};
+
+function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number }) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
   const [ctrlsVisible, setCtrlsVisible] = useState(true);
+  const [positionMs, setPositionMs] = useState(0);
+  const [durationMs, setDurationMs] = useState(0);
   const mutedRef = useRef(false);
   const playingRef = useRef(false);
   const seekingRef = useRef(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durRef = useRef(0);
+  const posThrottleRef = useRef(0);
   const volSV = useSharedValue(1);
   const startVol = useSharedValue(1);
   const openSV = useSharedValue(0);
   const ctrlsSV = useSharedValue(1);
+  const curPosSV = useSharedValue(0);
+  const durSV = useSharedValue(0);
+  const trackWSV = useSharedValue(0);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { playingRef.current = playing; }, [playing]);
@@ -372,6 +384,13 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
 
   const ctrlsAnim = useAnimatedStyle((): ViewStyle => ({ opacity: ctrlsSV.value }));
 
+  const fillAnim = useAnimatedStyle((): ViewStyle => ({
+    width: durSV.value > 0 ? (curPosSV.value / durSV.value) * trackWSV.value : 0,
+  }));
+  const handleAnim = useAnimatedStyle((): ViewStyle => ({
+    transform: [{ translateX: durSV.value > 0 ? (curPosSV.value / durSV.value) * trackWSV.value : 0 }],
+  }));
+
   const effVol = muted ? 0 : volume;
   const fillTop = W_BOT - W_RANGE * effVol;
   const fillH = W_RANGE * effVol;
@@ -392,12 +411,24 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
         resizeMode={ResizeMode.CONTAIN}
         isLooping={false}
         useNativeControls={false}
+        progressUpdateIntervalMillis={300}
         onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
         onPlaybackStatusUpdate={(s) => {
           if (!s.isLoaded) return;
           setPlaying(s.isPlaying);
           if (s.didJustFinish) {
             ref.current?.setPositionAsync(0).catch(() => {});
+          }
+          curPosSV.value = withTiming(s.positionMillis, { duration: 280 });
+          const now = Date.now();
+          if (now - posThrottleRef.current > 250) {
+            posThrottleRef.current = now;
+            setPositionMs(s.positionMillis);
+          }
+          if (s.durationMillis && s.durationMillis !== durRef.current) {
+            durRef.current = s.durationMillis;
+            durSV.value = s.durationMillis;
+            setDurationMs(s.durationMillis);
           }
         }}
       />
@@ -449,6 +480,19 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
         <Pressable onPress={toggleMute} style={[styles.muteBtn, muted && styles.muteBtnOn]} hitSlop={8}>
           <Ionicons name={muted ? 'volume-mute' : 'volume-high'} size={16} color={muted ? '#FF8A80' : '#FFFFFF'} />
         </Pressable>
+      </Reanimated.View>
+
+      <Reanimated.View pointerEvents="none" style={[styles.scrubberWrap, { bottom: bottomInset + 6 }, ctrlsAnim]}>
+        <View style={styles.scrubTimes}>
+          <Text style={styles.scrubTime}>{fmtMs(positionMs)}</Text>
+          <Text style={styles.scrubTime}>{fmtMs(durationMs)}</Text>
+        </View>
+        <View style={styles.scrubTouch} onLayout={(e) => { trackWSV.value = e.nativeEvent.layout.width; }}>
+          <View style={styles.scrubTrack}>
+            <Reanimated.View style={[styles.scrubFill, fillAnim]} />
+          </View>
+          <Reanimated.View style={[styles.scrubHandle, handleAnim]} />
+        </View>
       </Reanimated.View>
     </View>
   );
@@ -2456,7 +2500,7 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} />
                     ) : (
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
                     )}
@@ -2501,7 +2545,7 @@ export default function ClinicConversationScreen() {
                 </Pressable>
               </View>
               {pages.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 192 : 132) }]}>
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 178 : 132) }]}>
                   <ScrollView
                     ref={stripRef}
                     horizontal
@@ -2523,7 +2567,7 @@ export default function ClinicConversationScreen() {
                   </ScrollView>
                 </View>
               )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 74 : 14) }]} pointerEvents="box-none">
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 60 : 14) }]} pointerEvents="box-none">
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.92)']}
                   start={{ x: 0, y: 0 }}
@@ -3225,6 +3269,13 @@ const styles = StyleSheet.create({
   skipBtn: { alignItems: 'center', justifyContent: 'center', marginHorizontal: 24 },
   skipLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: -3 },
   centerPlay: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  scrubberWrap: { position: 'absolute', left: 14, right: 14, zIndex: 9 },
+  scrubTimes: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
+  scrubTime: { color: 'rgba(255,255,255,0.85)', fontSize: 11, fontWeight: '600' },
+  scrubTouch: { height: 22, justifyContent: 'center', position: 'relative' },
+  scrubTrack: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', overflow: 'hidden' },
+  scrubFill: { position: 'absolute', left: 0, top: 0, height: 4, borderRadius: 2, backgroundColor: '#4DA3FF' },
+  scrubHandle: { position: 'absolute', width: 14, height: 14, borderRadius: 7, backgroundColor: '#FFFFFF', top: 4, marginLeft: -7 },
   stickerKbSheet: {
     position: 'absolute',
     left: 0,
