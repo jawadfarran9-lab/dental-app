@@ -1,9 +1,10 @@
-import { sendImageMessage } from '@/src/services/chatImages';
+import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { openDeviceSettings, useMicrophonePermission } from '@/src/hooks/useDevicePermissions';
 import {
     ActivityIndicator,
     Alert,
@@ -113,6 +114,9 @@ export default function ChatCameraScreen() {
   const [ready, setReady] = useState(false);
   const [taking, setTaking] = useState(false);
   const [camMode, setCamMode] = useState<'picture' | 'video'>('picture');
+  const [recording, setRecording] = useState(false);
+  const [sending, setSending] = useState(false);
+  const mic = useMicrophonePermission();
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
@@ -417,6 +421,48 @@ export default function ChatCameraScreen() {
     }
   };
 
+  const handleRecordToggle = async () => {
+    if (sending) return;
+    if (!cameraRef.current || !ready) return;
+    if (!clinicId || !patientId) {
+      Alert.alert('Missing info', 'Cannot send right now.');
+      return;
+    }
+
+    if (recording) {
+      cameraRef.current.stopRecording();
+      return;
+    }
+
+    if (mic.status !== 'granted') {
+      const res = await mic.request();
+      if (res !== 'granted') {
+        if (!mic.canAskAgain) openDeviceSettings();
+        return;
+      }
+    }
+
+    try {
+      setRecording(true);
+      const video = await cameraRef.current.recordAsync({ maxDuration: 60 });
+      setRecording(false);
+      if (video?.uri) {
+        setSending(true);
+        await sendVideoMessage({
+          clinicId: clinicId as string,
+          patientId: patientId as string,
+          patientName: (name as string) ?? '',
+          localUri: video.uri,
+        });
+        router.back();
+      }
+    } catch (err) {
+      console.error('[chat-camera] record error', err);
+      setRecording(false);
+      setSending(false);
+    }
+  };
+
   if (!permission) {
     return (
       <GestureHandlerRootView style={styles.root}>
@@ -484,6 +530,7 @@ export default function ChatCameraScreen() {
         onPress={flipCamera}
         style={[styles.flipBtn, { bottom: insets.bottom + 72 }]}
         hitSlop={10}
+        disabled={recording || sending}
       >
         <Ionicons name="camera-reverse" size={26} color="#FFFFFF" />
       </Pressable>
@@ -592,9 +639,12 @@ export default function ChatCameraScreen() {
         style={[styles.captureButtonContainer, { bottom: insets.bottom + 64 }]}
         pointerEvents="box-none"
       >
-        <Pressable onPress={handleTakePhoto} disabled={!ready || taking}>
+        <Pressable
+          onPress={camMode === 'picture' ? handleTakePhoto : handleRecordToggle}
+          disabled={(!ready || taking || sending) && !recording}
+        >
           <View style={styles.captureOuter}>
-            <View style={styles.captureInnerButton} />
+            <View style={[styles.captureInnerButton, recording && styles.captureInnerRecording]} />
           </View>
         </Pressable>
       </View>
@@ -611,6 +661,7 @@ export default function ChatCameraScreen() {
               camMode === 'picture' && styles.modeSegmentActive,
             ]}
             hitSlop={8}
+            disabled={recording || sending}
           >
             <Text
               style={[
@@ -628,6 +679,7 @@ export default function ChatCameraScreen() {
               camMode === 'video' && styles.modeSegmentActive,
             ]}
             hitSlop={8}
+            disabled={recording || sending}
           >
             <Text
               style={[
@@ -694,6 +746,7 @@ const styles = StyleSheet.create({
     borderRadius: CAPTURE_INNER / 2,
     backgroundColor: '#FFFFFF',
   },
+  captureInnerRecording: { backgroundColor: '#FF3B30', borderRadius: 10 },
 
   dialContainer: {
     position: 'absolute',
