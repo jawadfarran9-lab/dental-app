@@ -266,13 +266,29 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [volOpen, setVolOpen] = useState(false);
+  const [ctrlsVisible, setCtrlsVisible] = useState(true);
   const mutedRef = useRef(false);
+  const playingRef = useRef(false);
+  const seekingRef = useRef(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const volSV = useSharedValue(1);
   const startVol = useSharedValue(1);
   const openSV = useSharedValue(0);
+  const ctrlsSV = useSharedValue(1);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { playingRef.current = playing; }, [playing]);
   useEffect(() => { openSV.value = withTiming(volOpen ? 1 : 0, { duration: 180 }); }, [volOpen]);
+  useEffect(() => { ctrlsSV.value = withTiming(ctrlsVisible ? 1 : 0, { duration: 180 }); }, [ctrlsVisible]);
+
+  const clearHide = () => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } };
+  const scheduleHide = () => { clearHide(); if (playingRef.current) hideTimer.current = setTimeout(() => setCtrlsVisible(false), 3000); };
+
+  useEffect(() => {
+    if (ctrlsVisible && playing) scheduleHide();
+    else clearHide();
+    return clearHide;
+  }, [ctrlsVisible, playing]);
 
   useEffect(() => {
     if (isActive) {
@@ -289,6 +305,26 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
       ref.current?.playAsync().catch(() => {});
     }
   };
+
+  const handleSkip = useCallback(async (deltaMs: number) => {
+    if (!ref.current || seekingRef.current) return;
+    try {
+      seekingRef.current = true;
+      const st = await ref.current.getStatusAsync();
+      if (!st.isLoaded) return;
+      const dur = st.durationMillis ?? 0;
+      let target = st.positionMillis + deltaMs;
+      if (target < 0) target = 0;
+      else if (dur > 0 && target > dur) target = dur;
+      await ref.current.setPositionAsync(target);
+    } catch {
+      // ignore seeking-interrupted
+    } finally {
+      seekingRef.current = false;
+    }
+  }, []);
+
+  const bump = () => { setCtrlsVisible(true); scheduleHide(); };
 
   const toggleMute = () => {
     setMuted((m) => {
@@ -334,6 +370,8 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
     ],
   }));
 
+  const ctrlsAnim = useAnimatedStyle((): ViewStyle => ({ opacity: ctrlsSV.value }));
+
   const effVol = muted ? 0 : volume;
   const fillTop = W_BOT - W_RANGE * effVol;
   const fillH = W_RANGE * effVol;
@@ -363,14 +401,24 @@ function ViewerVideo({ uri, width, height, isActive, topInset }: { uri: string; 
           }
         }}
       />
-      <Pressable style={StyleSheet.absoluteFill} onPress={togglePlay} />
-      {!playing && (
-        <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
-          <View style={{ width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="play" size={40} color="rgba(255,255,255,0.95)" style={{ marginLeft: 4 }} />
-          </View>
-        </View>
-      )}
+      <Pressable style={StyleSheet.absoluteFill} onPress={() => setCtrlsVisible((v) => !v)} />
+
+      <Reanimated.View
+        pointerEvents={ctrlsVisible ? 'box-none' : 'none'}
+        style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }, ctrlsAnim]}
+      >
+        <Pressable onPress={() => { handleSkip(-10000); bump(); }} hitSlop={10} style={styles.skipBtn}>
+          <Ionicons name="play-back" size={26} color="#FFFFFF" />
+          <Text style={styles.skipLabel}>10</Text>
+        </Pressable>
+        <Pressable onPress={() => { togglePlay(); bump(); }} style={styles.centerPlay}>
+          <Ionicons name={playing ? 'pause' : 'play'} size={playing ? 34 : 40} color="rgba(255,255,255,0.95)" style={playing ? undefined : { marginLeft: 4 }} />
+        </Pressable>
+        <Pressable onPress={() => { handleSkip(10000); bump(); }} hitSlop={10} style={styles.skipBtn}>
+          <Ionicons name="play-forward" size={26} color="#FFFFFF" />
+          <Text style={styles.skipLabel}>10</Text>
+        </Pressable>
+      </Reanimated.View>
 
       <Pressable onPress={() => setVolOpen((o) => !o)} style={[styles.viewerClose, styles.volBtnTR, { top: topInset + 8 }]} hitSlop={8}>
         <Ionicons name={(muted ? 'volume-mute' : spkName) as any} size={22} color={muted ? '#FF8A80' : '#FFFFFF'} />
@@ -3174,6 +3222,9 @@ const styles = StyleSheet.create({
   muteBtn: { width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.10)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center', marginTop: 6 },
   muteBtnOn: { backgroundColor: 'rgba(239,68,68,0.22)', borderColor: 'rgba(239,68,68,0.6)' },
   volBtnTR: { position: 'absolute', right: 12, zIndex: 9 },
+  skipBtn: { alignItems: 'center', justifyContent: 'center', marginHorizontal: 24 },
+  skipLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginTop: -3 },
+  centerPlay: { width: 72, height: 72, borderRadius: 36, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
   stickerKbSheet: {
     position: 'absolute',
     left: 0,
