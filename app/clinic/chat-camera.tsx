@@ -34,6 +34,8 @@ import Svg, { G, Line, Text as SvgText } from 'react-native-svg';
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
 
+const fmtSec = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
 const MAX_ZOOM_RATIO = 5;
 const MAX_CAMERA_ZOOM = 0.5; // cap so we never hit the device's extreme hardware max
 const safeZoom = (z: number) => Math.max(0, Math.min(MAX_CAMERA_ZOOM, z));
@@ -117,6 +119,18 @@ export default function ChatCameraScreen() {
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
   const mic = useMicrophonePermission();
+  const [recordSec, setRecordSec] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (recording) {
+      setRecordSec(0);
+      timerRef.current = setInterval(() => setRecordSec((s) => s + 1), 1000);
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      setRecordSec(0);
+    }
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  }, [recording]);
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
@@ -526,6 +540,15 @@ export default function ChatCameraScreen() {
         <Ionicons name="close" size={26} color="#FFFFFF" />
       </Pressable>
 
+      {recording && (
+        <View style={[styles.recPillWrap, { top: insets.top + 8 }]} pointerEvents="none">
+          <View style={styles.recPill}>
+            <View style={styles.recDot} />
+            <Text style={styles.recTime}>{fmtSec(recordSec)}</Text>
+          </View>
+        </View>
+      )}
+
       <Pressable
         onPress={flipCamera}
         style={[styles.flipBtn, { bottom: insets.bottom + 72 }]}
@@ -882,4 +905,8 @@ const styles = StyleSheet.create({
   modeSegmentTextActive: {
     color: '#111111',
   },
+  recPillWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 11 },
+  recPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30' },
+  recTime: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });
