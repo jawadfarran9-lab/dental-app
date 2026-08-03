@@ -9,10 +9,14 @@ import {
     ActivityIndicator,
     Alert,
     Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import {
@@ -118,6 +122,8 @@ export default function ChatCameraScreen() {
   const [camMode, setCamMode] = useState<'picture' | 'video'>('picture');
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [caption, setCaption] = useState('');
   const mic = useMicrophonePermission();
   const [recordSec, setRecordSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -424,18 +430,42 @@ export default function ChatCameraScreen() {
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (!photo?.uri) return;
+      setCaption('');
+      setPreviewUri(photo.uri);
+    } catch (err) {
+      console.error('[chat-camera] capture error', err);
+      Alert.alert('Capture failed', 'Please try again.');
+    } finally {
+      setTaking(false);
+    }
+  };
+
+  const handleRetake = () => {
+    setPreviewUri(null);
+    setCaption('');
+  };
+
+  const handleSendPhoto = async () => {
+    if (!previewUri || sending) return;
+    if (!clinicId || !patientId) {
+      Alert.alert('Missing info', 'Cannot send right now.');
+      return;
+    }
+    setSending(true);
+    try {
       await sendImageMessage({
         clinicId: clinicId as string,
         patientId: patientId as string,
         patientName: (name as string) ?? '',
-        localUri: photo.uri,
+        localUri: previewUri,
+        caption: caption.trim() || undefined,
       });
       router.back();
     } catch (err) {
       console.error('[chat-camera] send error', err);
       Alert.alert('Upload failed', 'Please try again.');
     } finally {
-      setTaking(false);
+      setSending(false);
     }
   };
 
@@ -532,9 +562,11 @@ export default function ChatCameraScreen() {
         onCameraReady={() => setReady(true)}
       />
 
-      <GestureDetector gesture={pinchGesture}>
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
-      </GestureDetector>
+      {!previewUri && (
+        <GestureDetector gesture={pinchGesture}>
+          <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
+        </GestureDetector>
+      )}
 
       <Pressable
         onPress={handleClose}
@@ -719,6 +751,49 @@ export default function ChatCameraScreen() {
           </Pressable>
         </View>
       </View>
+
+      {previewUri && (
+        <View style={styles.previewOverlay}>
+          <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="contain" />
+
+          <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+            <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </Pressable>
+            <View style={styles.previewTopRight}>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></View>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>Aa</Text></View>
+              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="pencil" size={18} color="#FFFFFF" /></View>
+            </View>
+          </View>
+
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
+          >
+            <View style={styles.previewCaptionRow}>
+              <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.previewCaptionInput}
+                placeholder="Add a caption..."
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                value={caption}
+                onChangeText={setCaption}
+                multiline
+              />
+            </View>
+            <View style={styles.previewSendRow}>
+              <View style={styles.previewWhoChip}><Text style={styles.previewWhoText}>You</Text></View>
+              <Pressable onPress={handleSendPhoto} disabled={sending} style={[styles.previewSendBtn, sending && { opacity: 0.6 }]} hitSlop={8}>
+                <Ionicons name="send" size={22} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      )}
     </GestureHandlerRootView>
   );
 }
@@ -913,4 +988,18 @@ const styles = StyleSheet.create({
   recPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30' },
   recTime: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  previewOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 50 },
+  previewImage: { width: '100%', height: '100%' },
+  previewTopBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+  previewTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  previewIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  previewIconDisabled: { opacity: 0.4 },
+  previewBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
+  previewBottom: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
+  previewCaptionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 14, paddingVertical: 6, marginBottom: 12 },
+  previewCaptionInput: { flex: 1, color: '#FFFFFF', fontSize: 16, paddingVertical: 6, maxHeight: 100 },
+  previewSendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  previewWhoChip: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
+  previewWhoText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  previewSendBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center' },
 });
