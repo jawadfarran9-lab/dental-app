@@ -8,12 +8,12 @@ import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { ResizeMode, Video } from 'expo-av';
 import { BlurView } from 'expo-blur';
 import * as Clipboard from 'expo-clipboard';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { ResizeMode, Video } from 'expo-av';
 import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
 import { cloneElement, isValidElement, useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -41,8 +41,8 @@ import {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { ClipPath, Defs, G, Line, Polygon, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
-import Svg, { ClipPath, Defs, G, Line, LinearGradient as SvgLinearGradient, Polygon, Rect, Stop } from 'react-native-svg';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -265,7 +265,7 @@ const fmtMs = (ms: number): string => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onScrubbingChange }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number; onScrubbingChange?: (b: boolean) => void }) {
+function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onScrubbingChange, onZoomChange }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number; onScrubbingChange?: (b: boolean) => void; onZoomChange?: (b: boolean) => void }) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -448,6 +448,98 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
     transform: [{ translateX: durSV.value > 0 ? (curPosSV.value / durSV.value) * trackWSV.value : 0 }],
   }));
 
+  const toggleControls = useCallback(() => setCtrlsVisible((v) => !v), []);
+  const reportZoom = useCallback((z: boolean) => { onZoomChange?.(z); }, [onZoomChange]);
+  const zScale = useSharedValue(1);
+  const zSaved = useSharedValue(1);
+  const ztx = useSharedValue(0);
+  const zty = useSharedValue(0);
+  const zstx = useSharedValue(0);
+  const zsty = useSharedValue(0);
+  const zfpx = useSharedValue(0);
+  const zfpy = useSharedValue(0);
+  const zPanOffX = useSharedValue(0);
+  const zPanOffY = useSharedValue(0);
+  const pinchZoom = useMemo(
+    () =>
+      Gesture.Pinch()
+        .onStart((e) => {
+          zstx.value = ztx.value;
+          zsty.value = zty.value;
+          zSaved.value = zScale.value;
+          zfpx.value = e.focalX - width / 2;
+          zfpy.value = e.focalY - height / 2;
+        })
+        .onUpdate((e) => {
+          const raw = zSaved.value * e.scale;
+          const clamped = raw < 1 ? 1 : raw > 4 ? 4 : raw;
+          const ratio = clamped / zSaved.value;
+          zScale.value = clamped;
+          ztx.value = zfpx.value - (zfpx.value - zstx.value) * ratio;
+          zty.value = zfpy.value - (zfpy.value - zsty.value) * ratio;
+        })
+        .onEnd(() => {
+          zSaved.value = zScale.value;
+          if (zScale.value <= 1) {
+            zScale.value = withTiming(1);
+            ztx.value = withTiming(0);
+            zty.value = withTiming(0);
+            zstx.value = 0;
+            zsty.value = 0;
+            zSaved.value = 1;
+            runOnJS(reportZoom)(false);
+          } else {
+            const maxX = Math.max(0, (width * zScale.value - width) / 2);
+            const maxY = Math.max(0, (height * zScale.value - height) / 2);
+            ztx.value = ztx.value < -maxX ? -maxX : ztx.value > maxX ? maxX : ztx.value;
+            zty.value = zty.value < -maxY ? -maxY : zty.value > maxY ? maxY : zty.value;
+            zstx.value = ztx.value;
+            zsty.value = zty.value;
+            runOnJS(reportZoom)(true);
+          }
+        }),
+    [reportZoom, width, height]
+  );
+  const panZoom = useMemo(
+    () =>
+      Gesture.Pan()
+        .manualActivation(true)
+        .onTouchesMove((_e, state) => {
+          if (zScale.value > 1) state.activate();
+          else state.fail();
+        })
+        .onStart((e) => {
+          zstx.value = ztx.value;
+          zsty.value = zty.value;
+          zPanOffX.value = e.translationX;
+          zPanOffY.value = e.translationY;
+        })
+        .onUpdate((e) => {
+          const maxX = Math.max(0, (width * zScale.value - width) / 2);
+          const maxY = Math.max(0, (height * zScale.value - height) / 2);
+          const nx = zstx.value + (e.translationX - zPanOffX.value);
+          const ny = zsty.value + (e.translationY - zPanOffY.value);
+          ztx.value = nx < -maxX ? -maxX : nx > maxX ? maxX : nx;
+          zty.value = ny < -maxY ? -maxY : ny > maxY ? maxY : ny;
+        })
+        .onEnd(() => {
+          zstx.value = ztx.value;
+          zsty.value = zty.value;
+        }),
+    [width, height]
+  );
+  const tapControls = useMemo(
+    () => Gesture.Tap().onEnd(() => { runOnJS(toggleControls)(); }),
+    [toggleControls]
+  );
+  const composedZoom = useMemo(
+    () => Gesture.Race(tapControls, Gesture.Simultaneous(pinchZoom, panZoom)),
+    [tapControls, pinchZoom, panZoom]
+  );
+  const zoomStyle = useAnimatedStyle((): ViewStyle => ({
+    transform: [{ translateX: ztx.value }, { translateY: zty.value }, { scale: zScale.value }],
+  }));
+
   const effVol = muted ? 0 : volume;
   const fillTop = W_BOT - W_RANGE * effVol;
   const fillH = W_RANGE * effVol;
@@ -461,41 +553,44 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
 
   return (
     <View style={{ width, height, position: 'relative' }}>
-      <Video
-        ref={ref}
-        source={{ uri }}
-        style={{ width, height }}
-        resizeMode={ResizeMode.CONTAIN}
-        isLooping={false}
-        useNativeControls={false}
-        progressUpdateIntervalMillis={250}
-        onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
-        onPlaybackStatusUpdate={(s) => {
-          if (!s.isLoaded) return;
-          setPlaying(s.isPlaying);
-          if (s.didJustFinish) {
-            cancelAnimation(curPosSV);
-            curPosSV.value = 0;
-            setPositionMs(0);
-            ref.current?.setPositionAsync(0).catch(() => {});
-            return;
-          }
-          if (!scrubbingRef.current) {
-            curPosSV.value = withTiming(s.positionMillis, { duration: 300, easing: Easing.linear });
-            const now = Date.now();
-            if (now - posThrottleRef.current > 200) {
-              posThrottleRef.current = now;
-              setPositionMs(s.positionMillis);
-            }
-          }
-          if (s.durationMillis && durRef.current === 0) {
-            durRef.current = s.durationMillis;
-            durSV.value = s.durationMillis;
-            setDurationMs(s.durationMillis);
-          }
-        }}
-      />
-      <Pressable style={StyleSheet.absoluteFill} onPress={() => setCtrlsVisible((v) => !v)} />
+      <GestureDetector gesture={composedZoom}>
+        <Reanimated.View style={[{ width, height }, zoomStyle]}>
+          <Video
+            ref={ref}
+            source={{ uri }}
+            style={{ width, height }}
+            resizeMode={ResizeMode.CONTAIN}
+            isLooping={false}
+            useNativeControls={false}
+            progressUpdateIntervalMillis={250}
+            onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
+            onPlaybackStatusUpdate={(s) => {
+              if (!s.isLoaded) return;
+              setPlaying(s.isPlaying);
+              if (s.didJustFinish) {
+                cancelAnimation(curPosSV);
+                curPosSV.value = 0;
+                setPositionMs(0);
+                ref.current?.setPositionAsync(0).catch(() => {});
+                return;
+              }
+              if (!scrubbingRef.current) {
+                curPosSV.value = withTiming(s.positionMillis, { duration: 300, easing: Easing.linear });
+                const now = Date.now();
+                if (now - posThrottleRef.current > 200) {
+                  posThrottleRef.current = now;
+                  setPositionMs(s.positionMillis);
+                }
+              }
+              if (s.durationMillis && durRef.current === 0) {
+                durRef.current = s.durationMillis;
+                durSV.value = s.durationMillis;
+                setDurationMs(s.durationMillis);
+              }
+            }}
+          />
+        </Reanimated.View>
+      </GestureDetector>
 
       <Reanimated.View
         pointerEvents={ctrlsVisible ? 'box-none' : 'none'}
@@ -2564,7 +2659,7 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} onScrubbingChange={setScrubbing} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
                     ) : (
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
                     )}
