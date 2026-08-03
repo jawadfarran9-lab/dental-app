@@ -2680,27 +2680,22 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
-              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
-                {!isVideo && (
-                  <Pressable
-                    onPress={() => {
-                      if (!current) return;
-                      setReactionTarget(null);
-                      setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
-                      setStickerKbOpen(true);
-                    }}
-                    style={styles.viewerClose}
-                    hitSlop={8}
-                  >
-                    {curSticker ? (
-                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                    ) : (
-                      <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
-                    )}
-                  </Pressable>
-                )}
-                <Pressable style={styles.viewerClose} hitSlop={8}>
-                  <Ionicons name="arrow-undo-outline" size={22} color="#FFFFFF" />
+              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + (isVideo ? 228 : 200) }]} pointerEvents="box-none">
+                <Pressable
+                  onPress={() => {
+                    if (!current) return;
+                    setReactionTarget(null);
+                    setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
+                    setStickerKbOpen(true);
+                  }}
+                  style={styles.viewerClose}
+                  hitSlop={8}
+                >
+                  {curSticker ? (
+                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                  ) : (
+                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                  )}
                 </Pressable>
               </View>
               {pages.length > 1 && (
@@ -2726,7 +2721,7 @@ export default function ClinicConversationScreen() {
                   </ScrollView>
                 </View>
               )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 44 : 14) }]} pointerEvents="box-none">
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 72 : 14) }]} pointerEvents="box-none">
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.92)']}
                   start={{ x: 0, y: 0 }}
@@ -2771,7 +2766,7 @@ export default function ClinicConversationScreen() {
                           onPress={() => {
                             if (!stickerTarget || !curSticker) return;
                             const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                            if (tmsg && tmsg.type === 'image') {
+                            if (tmsg && (tmsg.type === 'image' || tmsg.type === 'video')) {
                               setMessageReaction(tmsg, curSticker);
                             } else {
                               setImageSticker(stickerTarget, curSticker);
@@ -2798,7 +2793,7 @@ export default function ClinicConversationScreen() {
                         const picked = e?.emoji;
                         if (picked && stickerTarget) {
                           const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                          if (tmsg && tmsg.type === 'image') {
+                          if (tmsg && (tmsg.type === 'image' || tmsg.type === 'video')) {
                             setMessageReaction(tmsg, picked);
                           } else {
                             setImageSticker(stickerTarget, picked);
