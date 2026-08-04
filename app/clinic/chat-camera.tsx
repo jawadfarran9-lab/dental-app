@@ -1,6 +1,7 @@
 import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ResizeMode, Video } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -123,6 +124,7 @@ export default function ChatCameraScreen() {
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const mic = useMicrophonePermission();
   const [recordSec, setRecordSec] = useState(0);
@@ -431,6 +433,7 @@ export default function ChatCameraScreen() {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (!photo?.uri) return;
       setCaption('');
+      setPreviewIsVideo(false);
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[chat-camera] capture error', err);
@@ -443,6 +446,7 @@ export default function ChatCameraScreen() {
   const handleRetake = () => {
     setPreviewUri(null);
     setCaption('');
+    setPreviewIsVideo(false);
   };
 
   const handleSendPhoto = async () => {
@@ -453,13 +457,23 @@ export default function ChatCameraScreen() {
     }
     setSending(true);
     try {
-      await sendImageMessage({
-        clinicId: clinicId as string,
-        patientId: patientId as string,
-        patientName: (name as string) ?? '',
-        localUri: previewUri,
-        caption: caption.trim() || undefined,
-      });
+      if (previewIsVideo) {
+        await sendVideoMessage({
+          clinicId: clinicId as string,
+          patientId: patientId as string,
+          patientName: (name as string) ?? '',
+          localUri: previewUri,
+          caption: caption.trim() || undefined,
+        });
+      } else {
+        await sendImageMessage({
+          clinicId: clinicId as string,
+          patientId: patientId as string,
+          patientName: (name as string) ?? '',
+          localUri: previewUri,
+          caption: caption.trim() || undefined,
+        });
+      }
       router.back();
     } catch (err) {
       console.error('[chat-camera] send error', err);
@@ -495,14 +509,9 @@ export default function ChatCameraScreen() {
       const video = await cameraRef.current.recordAsync({ maxDuration: 60 });
       setRecording(false);
       if (video?.uri) {
-        setSending(true);
-        await sendVideoMessage({
-          clinicId: clinicId as string,
-          patientId: patientId as string,
-          patientName: (name as string) ?? '',
-          localUri: video.uri,
-        });
-        router.back();
+        setCaption('');
+        setPreviewIsVideo(true);
+        setPreviewUri(video.uri);
       }
     } catch (err) {
       console.error('[chat-camera] record error', err);
@@ -754,7 +763,18 @@ export default function ChatCameraScreen() {
 
       {previewUri && (
         <View style={styles.previewOverlay}>
-          <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="contain" />
+          {previewIsVideo ? (
+            <Video
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode={ResizeMode.CONTAIN}
+              isLooping
+              shouldPlay
+              useNativeControls={false}
+            />
+          ) : (
+            <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="contain" />
+          )}
 
           <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
             <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
