@@ -2,6 +2,7 @@ import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
+import { Image as ExpoImage } from 'expo-image';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -34,10 +35,54 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { G, Line, Text as SvgText } from 'react-native-svg';
+import Svg, { Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import { BRAND } from '@/src/theme/brand';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
+
+const PEN_BLUE = BRAND.blue;
+const PEN_WIDTH = 6;
+const SLIDER_H = 260;
+const HUE_STOPS: { t: number; c: [number, number, number] }[] = [
+  { t: 0, c: [255, 255, 255] },
+  { t: 0.10, c: [255, 59, 48] },
+  { t: 0.22, c: [255, 149, 0] },
+  { t: 0.34, c: [255, 204, 0] },
+  { t: 0.46, c: [52, 199, 89] },
+  { t: 0.58, c: [0, 199, 190] },
+  { t: 0.70, c: [61, 158, 255] },
+  { t: 0.82, c: [175, 82, 222] },
+  { t: 0.92, c: [255, 45, 85] },
+  { t: 1, c: [0, 0, 0] },
+];
+function colorAt(t: number): string {
+  const x = Math.max(0, Math.min(1, t));
+  for (let i = 0; i < HUE_STOPS.length - 1; i++) {
+    const a = HUE_STOPS[i]; const b = HUE_STOPS[i + 1];
+    if (x >= a.t && x <= b.t) {
+      const f = b.t === a.t ? 0 : (x - a.t) / (b.t - a.t);
+      const r = Math.round(a.c[0] + (b.c[0] - a.c[0]) * f);
+      const g = Math.round(a.c[1] + (b.c[1] - a.c[1]) * f);
+      const bl = Math.round(a.c[2] + (b.c[2] - a.c[2]) * f);
+      return `rgb(${r}, ${g}, ${bl})`;
+    }
+  }
+  return '#000000';
+}
+function pointsToSmoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y} L ${pts[0].x + 0.1} ${pts[0].y + 0.1}`;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const midX = (pts[i].x + pts[i + 1].x) / 2;
+    const midY = (pts[i].y + pts[i + 1].y) / 2;
+    d += ` Q ${pts[i].x} ${pts[i].y} ${midX} ${midY}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
 
 const fmtSec = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
@@ -54,6 +99,7 @@ const ZOOM_PRESET_VALUES = [
 const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 const DIAL_WIDTH = SCREEN_WIDTH * 0.85;
 const DIAL_HEIGHT = 48;
 const DIAL_ARC_RADIUS = SCREEN_WIDTH * 1.2;
@@ -126,6 +172,13 @@ export default function ChatCameraScreen() {
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
+  const [drawMode, setDrawMode] = useState(false);
+  const [strokes, setStrokes] = useState<{ color: string; width: number; d: string }[]>([]);
+  const [currentD, setCurrentD] = useState('');
+  const currentPtsRef = useRef<{ x: number; y: number }[]>([]);
+  const [penColor, setPenColor] = useState<string>(BRAND.blue);
+  const penColorRef = useRef<string>(BRAND.blue);
+  const [thumbT, setThumbT] = useState(0.70);
   const mic = useMicrophonePermission();
   const [recordSec, setRecordSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -149,7 +202,11 @@ export default function ChatCameraScreen() {
   useEffect(() => {
     setZoomLevel(ZOOM_1X);
     setActivePreset(0);
+    setReady(false);
   }, [camMode]);
+  useEffect(() => {
+    setReady(false);
+  }, [facing]);
   const dialZoomAtDragStartRef = useRef(0);
 
   const zoomUiOpacity = useSharedValue(1);
@@ -431,9 +488,19 @@ export default function ChatCameraScreen() {
     setTaking(true);
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
-      if (!photo?.uri) return;
+      if (!photo?.uri) {
+        Alert.alert('Capture failed', 'Please try again.');
+        return;
+      }
       setCaption('');
       setPreviewIsVideo(false);
+      setStrokes([]);
+      setCurrentD('');
+      currentPtsRef.current = [];
+      setDrawMode(false);
+      setPenColor(BRAND.blue);
+      penColorRef.current = BRAND.blue;
+      setThumbT(0.70);
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[chat-camera] capture error', err);
@@ -447,7 +514,60 @@ export default function ChatCameraScreen() {
     setPreviewUri(null);
     setCaption('');
     setPreviewIsVideo(false);
+    setStrokes([]);
+    setCurrentD('');
+    currentPtsRef.current = [];
+    setDrawMode(false);
+    setPenColor(BRAND.blue);
+    penColorRef.current = BRAND.blue;
+    setThumbT(0.70);
   };
+
+  const beginStroke = (x: number, y: number) => {
+    currentPtsRef.current = [{ x, y }];
+    setCurrentD(pointsToSmoothPath(currentPtsRef.current));
+  };
+  const extendStroke = (x: number, y: number) => {
+    currentPtsRef.current.push({ x, y });
+    setCurrentD(pointsToSmoothPath(currentPtsRef.current));
+  };
+  const endStroke = () => {
+    const d = pointsToSmoothPath(currentPtsRef.current);
+    if (currentPtsRef.current.length > 0) {
+      setStrokes((prev) => [...prev, { color: penColorRef.current, width: PEN_WIDTH, d }]);
+    }
+    currentPtsRef.current = [];
+    setCurrentD('');
+  };
+  const handleUndo = () => setStrokes((prev) => prev.slice(0, -1));
+  const resetDrawing = () => { setStrokes([]); setCurrentD(''); currentPtsRef.current = []; setDrawMode(false); };
+
+  const drawPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .maxPointers(1)
+        .onBegin((e) => { runOnJS(beginStroke)(e.x, e.y); })
+        .onUpdate((e) => { runOnJS(extendStroke)(e.x, e.y); })
+        .onEnd(() => { runOnJS(endStroke)(); }),
+    []
+  );
+
+  const pickColorAtY = (y: number) => {
+    const t = Math.max(0, Math.min(1, y / SLIDER_H));
+    const c = colorAt(t);
+    penColorRef.current = c;
+    setThumbT(t);
+    setPenColor(c);
+  };
+  const colorPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .onBegin((e) => { runOnJS(pickColorAtY)(e.y); })
+        .onUpdate((e) => { runOnJS(pickColorAtY)(e.y); }),
+    []
+  );
 
   const handleSendPhoto = async () => {
     if (!previewUri || sending) return;
@@ -511,6 +631,13 @@ export default function ChatCameraScreen() {
       if (video?.uri) {
         setCaption('');
         setPreviewIsVideo(true);
+        setStrokes([]);
+        setCurrentD('');
+        currentPtsRef.current = [];
+        setDrawMode(false);
+        setPenColor(BRAND.blue);
+        penColorRef.current = BRAND.blue;
+        setThumbT(0.70);
         setPreviewUri(video.uri);
       }
     } catch (err) {
@@ -765,6 +892,7 @@ export default function ChatCameraScreen() {
         <View style={styles.previewOverlay}>
           {previewIsVideo ? (
             <Video
+              key="prev-video"
               source={{ uri: previewUri }}
               style={styles.previewImage}
               resizeMode={ResizeMode.CONTAIN}
@@ -773,45 +901,114 @@ export default function ChatCameraScreen() {
               useNativeControls={false}
             />
           ) : (
-            <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="contain" />
+            <ExpoImage
+              key="prev-image"
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              contentFit="contain"
+            />
           )}
 
-          <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
-            <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
-              <Ionicons name="close" size={24} color="#FFFFFF" />
-            </Pressable>
-            <View style={styles.previewTopRight}>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></View>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>Aa</Text></View>
-              <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="pencil" size={18} color="#FFFFFF" /></View>
-            </View>
-          </View>
+          {(strokes.length > 0 || currentD) ? (
+            <Svg width={SCREEN_WIDTH} height={SCREEN_H} style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]} pointerEvents="none">
+              {strokes.map((s, i) => (
+                <Path key={`st_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              ))}
+              {currentD ? (
+                <Path d={currentD} stroke={penColor} strokeWidth={PEN_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              ) : null}
+            </Svg>
+          ) : null}
 
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
-          >
-            <View style={styles.previewCaptionRow}>
-              <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
-              <TextInput
-                style={styles.previewCaptionInput}
-                placeholder="Add a caption..."
-                placeholderTextColor="rgba(255,255,255,0.6)"
-                value={caption}
-                onChangeText={setCaption}
-                multiline
-              />
-            </View>
-            <View style={styles.previewSendRow}>
-              <View style={styles.previewWhoChip}><Text style={styles.previewWhoText}>You</Text></View>
-              <Pressable onPress={handleSendPhoto} disabled={sending} style={[styles.previewSendBtn, sending && { opacity: 0.6 }]} hitSlop={8}>
-                <Ionicons name="send" size={22} color="#FFFFFF" />
+          {drawMode && (
+            <GestureDetector gesture={drawPan}>
+              <View style={StyleSheet.absoluteFill} />
+            </GestureDetector>
+          )}
+
+          {!drawMode && (
+            <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+              <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
+                <Ionicons name="close" size={24} color="#FFFFFF" />
               </Pressable>
+              <View style={styles.previewTopRight}>
+                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
+                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
+                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
+                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></View>
+                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>Aa</Text></View>
+                <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="pencil" size={18} color="#FFFFFF" /></Pressable>
+              </View>
             </View>
-          </KeyboardAvoidingView>
+          )}
+
+          {!drawMode && (
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
+            >
+              <View style={styles.previewCaptionRow}>
+                <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
+                <TextInput
+                  style={styles.previewCaptionInput}
+                  placeholder="Add a caption..."
+                  placeholderTextColor="rgba(255,255,255,0.6)"
+                  value={caption}
+                  onChangeText={setCaption}
+                  multiline
+                />
+              </View>
+              <View style={styles.previewSendRow}>
+                <View style={styles.previewWhoChip}><Text style={styles.previewWhoText}>You</Text></View>
+                <Pressable onPress={handleSendPhoto} disabled={sending} style={[styles.previewSendBtn, sending && { opacity: 0.6 }]} hitSlop={8}>
+                  <Ionicons name="send" size={22} color="#FFFFFF" />
+                </Pressable>
+              </View>
+            </KeyboardAvoidingView>
+          )}
+
+          {drawMode && (
+            <View style={[styles.colorSliderWrap, { top: insets.top + 90 }]}>
+              <GestureDetector gesture={colorPan}>
+                <View style={styles.colorSliderTouch}>
+                  <Svg width={14} height={SLIDER_H}>
+                    <Defs>
+                      <LinearGradient id="hueGrad" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor="#FFFFFF" />
+                        <Stop offset="0.10" stopColor="#FF3B30" />
+                        <Stop offset="0.22" stopColor="#FF9500" />
+                        <Stop offset="0.34" stopColor="#FFCC00" />
+                        <Stop offset="0.46" stopColor="#34C759" />
+                        <Stop offset="0.58" stopColor="#00C7BE" />
+                        <Stop offset="0.70" stopColor="#3D9EFF" />
+                        <Stop offset="0.82" stopColor="#AF52DE" />
+                        <Stop offset="0.92" stopColor="#FF2D55" />
+                        <Stop offset="1" stopColor="#000000" />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="14" height={SLIDER_H} rx="7" ry="7" fill="url(#hueGrad)" />
+                  </Svg>
+                  <View style={[styles.colorThumb, { top: Math.max(0, Math.min(SLIDER_H - 22, thumbT * SLIDER_H - 11)), backgroundColor: penColor }]} />
+                </View>
+              </GestureDetector>
+            </View>
+          )}
+
+          {drawMode && (
+            <View style={[styles.drawBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+              <Pressable onPress={() => setDrawMode(false)} style={styles.drawDoneBtn} hitSlop={8}>
+                <Ionicons name="checkmark" size={26} color="#FFFFFF" />
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Pressable onPress={handleUndo} style={styles.drawIconBtn} hitSlop={8}>
+                  <Ionicons name="arrow-undo" size={22} color="#FFFFFF" />
+                </Pressable>
+                <View style={styles.drawPenActive}>
+                  <Ionicons name="pencil" size={20} color="#FFFFFF" />
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       )}
     </GestureHandlerRootView>
@@ -1009,7 +1206,7 @@ const styles = StyleSheet.create({
   recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30' },
   recTime: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
   previewOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 50 },
-  previewImage: { width: '100%', height: '100%' },
+  previewImage: { width: SCREEN_WIDTH, height: SCREEN_H },
   previewTopBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
   previewTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   previewIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
@@ -1022,4 +1219,11 @@ const styles = StyleSheet.create({
   previewWhoChip: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
   previewWhoText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   previewSendBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center' },
+  drawBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+  drawDoneBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: BRAND.blue, alignItems: 'center', justifyContent: 'center' },
+  drawIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  drawPenActive: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.blue, alignItems: 'center', justifyContent: 'center' },
+  colorSliderWrap: { position: 'absolute', right: 14 },
+  colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
+  colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
 });
