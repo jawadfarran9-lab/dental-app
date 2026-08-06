@@ -41,7 +41,7 @@ import {
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Reanimated, { cancelAnimation, Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { ClipPath, Defs, G, Line, Polygon, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
+import Svg, { ClipPath, Defs, G, Line, Path, Polygon, Rect, Stop, LinearGradient as SvgLinearGradient } from 'react-native-svg';
 import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -118,9 +118,10 @@ type Message = {
   stickerClinic?: string;
   seenAt?: number;
   starredClinic?: boolean;
+  drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video' };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
@@ -152,7 +153,11 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   );
 };
 
-function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: string; width: number; height: number; imgW?: number; imgH?: number; onZoomChange: (zoomed: boolean) => void }) {
+function ZoomableImage({ uri, width, height, imgW, imgH, drawing, onZoomChange }: {
+  uri: string; width: number; height: number; imgW?: number; imgH?: number;
+  drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  onZoomChange: (zoomed: boolean) => void
+}) {
   const scale = useSharedValue(1);
   const savedScale = useSharedValue(1);
   const tx = useSharedValue(0);
@@ -248,6 +253,18 @@ function ZoomableImage({ uri, width, height, imgW, imgH, onZoomChange }: { uri: 
     <GestureDetector gesture={composed}>
       <Reanimated.View style={[{ width, flex: 1, justifyContent: 'center', alignItems: 'center' }, aStyle]}>
         <Image source={{ uri }} resizeMode="contain" style={{ width, height: '100%' }} />
+        {drawing && drawing.strokes.length > 0 ? (
+          <Svg
+            pointerEvents="none"
+            viewBox={`0 0 ${drawing.vb[0]} ${drawing.vb[1]}`}
+            preserveAspectRatio="xMidYMid meet"
+            style={{ position: 'absolute', width: baseW, height: baseH, left: (width - baseW) / 2, top: (height - baseH) / 2 }}
+          >
+            {drawing.strokes.map((s, i) => (
+              <Path key={`d_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+            ))}
+          </Svg>
+        ) : null}
       </Reanimated.View>
     </GestureDetector>
   );
@@ -924,7 +941,7 @@ export default function ClinicConversationScreen() {
     const out: ViewerPage[] = [];
     for (const m of messages) {
       if (m.type === 'image' && m.imageUrl) {
-        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
+        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id, drawing: m.drawing ?? null });
       } else if (m.type === 'album' && Array.isArray(m.media)) {
         m.media.forEach((it, idx) => {
           out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
@@ -937,6 +954,7 @@ export default function ClinicConversationScreen() {
           height: m.videoHeight ?? undefined,
           msgId: m.id,
           kind: 'video',
+          drawing: m.drawing ?? null,
         });
       }
     }
@@ -1536,6 +1554,18 @@ export default function ClinicConversationScreen() {
                 style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
                 resizeMode="cover"
               />
+              {item.drawing && item.drawing.strokes.length > 0 ? (
+                <Svg
+                  pointerEvents="none"
+                  viewBox={`0 0 ${item.drawing.vb[0]} ${item.drawing.vb[1]}`}
+                  preserveAspectRatio="xMidYMid slice"
+                  style={{ position: 'absolute', left: 0, top: 0, width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+                >
+                  {item.drawing.strokes.map((s, i) => (
+                    <Path key={`bd_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
+                </Svg>
+              ) : null}
             </Pressable>
             {!!time && (
               <Text
@@ -1584,6 +1614,18 @@ export default function ClinicConversationScreen() {
               ) : (
                 <View style={{ width: BUBBLE_MAX_W, height: vidH, borderRadius: 14, backgroundColor: '#0B1220' }} />
               )}
+              {item.drawing && item.drawing.strokes.length > 0 ? (
+                <Svg
+                  pointerEvents="none"
+                  viewBox={`0 0 ${item.drawing.vb[0]} ${item.drawing.vb[1]}`}
+                  preserveAspectRatio="xMidYMid slice"
+                  style={{ position: 'absolute', left: 0, top: 0, width: BUBBLE_MAX_W, height: vidH, borderRadius: 14 }}
+                >
+                  {item.drawing.strokes.map((s, i) => (
+                    <Path key={`bd_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
+                </Svg>
+              ) : null}
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="play" size={28} color="#FFFFFF" style={{ marginLeft: 3 }} />
@@ -2661,7 +2703,7 @@ export default function ClinicConversationScreen() {
                     {page.kind === 'video' && page.videoUrl ? (
                       <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
                     ) : (
-                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} onZoomChange={setViewerZoomed} />
                     )}
                   </View>
                 )}
