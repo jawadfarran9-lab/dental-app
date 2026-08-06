@@ -7,6 +7,11 @@ import { addDoc, collection } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
 
+export type DrawingDoc = {
+  vb: [number, number];
+  strokes: Array<{ color: string; width: number; d: string }>;
+};
+
 export async function sendImageMessage(params: {
   clinicId: string;
   patientId: string;
@@ -16,6 +21,7 @@ export async function sendImageMessage(params: {
   senderName?: string;
   senderType?: 'clinic' | 'patient';
   caption?: string;
+  drawing?: DrawingDoc | null;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -37,6 +43,7 @@ export async function sendImageMessage(params: {
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
     text: params.caption ?? '',
+    drawing: params.drawing ?? null,
     type: 'image',
     imageUrl,
     imageWidth: compressed.width,
@@ -57,6 +64,7 @@ export async function sendVideoMessage(params: {
   senderName?: string;
   senderType?: 'clinic' | 'patient';
   caption?: string;
+  drawing?: DrawingDoc | null;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -69,9 +77,13 @@ export async function sendVideoMessage(params: {
   } = params;
 
   let posterUri: string | null = null;
+  let posterW: number | null = null;
+  let posterH: number | null = null;
   try {
     const thumb = await VideoThumbnails.getThumbnailAsync(localUri, { time: 0 });
     posterUri = thumb.uri;
+    posterW = thumb.width;
+    posterH = thumb.height;
   } catch {
     posterUri = null;
   }
@@ -104,14 +116,15 @@ export async function sendVideoMessage(params: {
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
     text: params.caption ?? '',
+    drawing: params.drawing ?? null,
     type: 'video',
     videoUrl,
     storagePath,
     posterUrl: posterUrl ?? null,
     posterPath: posterPath ?? null,
     durationMs: null,
-    videoWidth: null,
-    videoHeight: null,
+    videoWidth: posterW,
+    videoHeight: posterH,
     senderName,
     createdAt: Date.now(),
   });
