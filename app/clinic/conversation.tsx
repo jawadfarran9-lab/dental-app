@@ -282,7 +282,19 @@ const fmtMs = (ms: number): string => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onScrubbingChange, onZoomChange }: { uri: string; width: number; height: number; isActive: boolean; topInset: number; bottomInset: number; onScrubbingChange?: (b: boolean) => void; onZoomChange?: (b: boolean) => void }) {
+function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, videoW, videoH, drawing, onScrubbingChange, onZoomChange }: {
+  uri: string;
+  width: number;
+  height: number;
+  isActive: boolean;
+  topInset: number;
+  bottomInset: number;
+  videoW?: number;
+  videoH?: number;
+  drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  onScrubbingChange?: (b: boolean) => void;
+  onZoomChange?: (b: boolean) => void
+}) {
   const ref = useRef<Video>(null);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -291,6 +303,8 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
   const [ctrlsVisible, setCtrlsVisible] = useState(true);
   const [positionMs, setPositionMs] = useState(0);
   const [durationMs, setDurationMs] = useState(0);
+  const [natW, setNatW] = useState<number>(videoW ?? 0);
+  const [natH, setNatH] = useState<number>(videoH ?? 0);
   const mutedRef = useRef(false);
   const playingRef = useRef(false);
   const seekingRef = useRef(false);
@@ -568,6 +582,15 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
     ridges.push(<Line key={`r${i}`} x1={6} x2={38} y1={y} y2={y} stroke="rgba(255,255,255,0.5)" strokeWidth={1.2} />);
   }
 
+  const vw = natW > 0 ? natW : (videoW ?? 0);
+  const vh = natH > 0 ? natH : (videoH ?? 0);
+  const dAspect = vw && vh ? vw / vh : width / height;
+  const dContainerAspect = width / height;
+  let baseW = width;
+  let baseH = height;
+  if (dAspect >= dContainerAspect) { baseW = width; baseH = width / dAspect; }
+  else { baseH = height; baseW = height * dAspect; }
+
   return (
     <View style={{ width, height, position: 'relative' }}>
       <GestureDetector gesture={composedZoom}>
@@ -581,6 +604,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
             useNativeControls={false}
             progressUpdateIntervalMillis={250}
             onLoad={() => { if (isActive) ref.current?.playAsync().catch(() => {}); }}
+            onReadyForDisplay={(e) => { setNatW(e.naturalSize.width); setNatH(e.naturalSize.height); }}
             onPlaybackStatusUpdate={(s) => {
               if (!s.isLoaded) return;
               setPlaying(s.isPlaying);
@@ -606,6 +630,18 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, onSc
               }
             }}
           />
+          {drawing && drawing.strokes.length > 0 ? (
+            <Svg
+              pointerEvents="none"
+              viewBox={`0 0 ${drawing.vb[0]} ${drawing.vb[1]}`}
+              preserveAspectRatio="xMidYMid meet"
+              style={{ position: 'absolute', width: baseW, height: baseH, left: (width - baseW) / 2, top: (height - baseH) / 2 }}
+            >
+              {drawing.strokes.map((s, i) => (
+                <Path key={`vd_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              ))}
+            </Svg>
+          ) : null}
         </Reanimated.View>
       </GestureDetector>
 
@@ -2701,7 +2737,7 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
                     ) : (
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} onZoomChange={setViewerZoomed} />
                     )}
