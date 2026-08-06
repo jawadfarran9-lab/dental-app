@@ -1,4 +1,4 @@
-import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
+import { DrawingDoc, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
@@ -173,12 +173,14 @@ export default function ChatCameraScreen() {
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const [drawMode, setDrawMode] = useState(false);
-  const [strokes, setStrokes] = useState<{ color: string; width: number; d: string }[]>([]);
+  const [strokes, setStrokes] = useState<{ color: string; width: number; points: { x: number; y: number }[] }[]>([]);
   const [currentD, setCurrentD] = useState('');
   const currentPtsRef = useRef<{ x: number; y: number }[]>([]);
   const [penColor, setPenColor] = useState<string>(BRAND.blue);
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
+  const [prevMediaW, setPrevMediaW] = useState(0);
+  const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
   const [recordSec, setRecordSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -501,6 +503,8 @@ export default function ChatCameraScreen() {
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
+      setPrevMediaW(photo.width ?? 0);
+      setPrevMediaH(photo.height ?? 0);
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[chat-camera] capture error', err);
@@ -521,6 +525,8 @@ export default function ChatCameraScreen() {
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
+    setPrevMediaW(0);
+    setPrevMediaH(0);
   };
 
   const beginStroke = (x: number, y: number) => {
@@ -532,9 +538,9 @@ export default function ChatCameraScreen() {
     setCurrentD(pointsToSmoothPath(currentPtsRef.current));
   };
   const endStroke = () => {
-    const d = pointsToSmoothPath(currentPtsRef.current);
     if (currentPtsRef.current.length > 0) {
-      setStrokes((prev) => [...prev, { color: penColorRef.current, width: PEN_WIDTH, d }]);
+      const pts = currentPtsRef.current.slice();
+      setStrokes((prev) => [...prev, { color: penColorRef.current, width: PEN_WIDTH, points: pts }]);
     }
     currentPtsRef.current = [];
     setCurrentD('');
@@ -569,6 +575,30 @@ export default function ChatCameraScreen() {
     []
   );
 
+  const buildDrawing = (): DrawingDoc | undefined => {
+    if (strokes.length === 0) return undefined;
+    const mediaW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
+    const mediaH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
+    const aspect = mediaW / mediaH;
+    const containerAspect = SCREEN_WIDTH / SCREEN_H;
+    let baseW = SCREEN_WIDTH;
+    let baseH = SCREEN_H;
+    if (aspect >= containerAspect) { baseW = SCREEN_WIDTH; baseH = SCREEN_WIDTH / aspect; }
+    else { baseH = SCREEN_H; baseW = SCREEN_H * aspect; }
+    const offX = (SCREEN_WIDTH - baseW) / 2;
+    const offY = (SCREEN_H - baseH) / 2;
+    const VB_W = 1000;
+    const VB_H = Math.round(1000 / aspect);
+    const outStrokes = strokes.map((s) => {
+      const npts = s.points.map((p) => ({
+        x: ((p.x - offX) / baseW) * VB_W,
+        y: ((p.y - offY) / baseH) * VB_H,
+      }));
+      return { color: s.color, width: (s.width / baseW) * VB_W, d: pointsToSmoothPath(npts) };
+    });
+    return { vb: [VB_W, VB_H], strokes: outStrokes };
+  };
+
   const handleSendPhoto = async () => {
     if (!previewUri || sending) return;
     if (!clinicId || !patientId) {
@@ -577,6 +607,7 @@ export default function ChatCameraScreen() {
     }
     setSending(true);
     try {
+      const drawing = buildDrawing();
       if (previewIsVideo) {
         await sendVideoMessage({
           clinicId: clinicId as string,
@@ -584,6 +615,7 @@ export default function ChatCameraScreen() {
           patientName: (name as string) ?? '',
           localUri: previewUri,
           caption: caption.trim() || undefined,
+          drawing,
         });
       } else {
         await sendImageMessage({
@@ -592,6 +624,7 @@ export default function ChatCameraScreen() {
           patientName: (name as string) ?? '',
           localUri: previewUri,
           caption: caption.trim() || undefined,
+          drawing,
         });
       }
       router.back();
@@ -638,6 +671,8 @@ export default function ChatCameraScreen() {
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
+        setPrevMediaW(0);
+        setPrevMediaH(0);
         setPreviewUri(video.uri);
       }
     } catch (err) {
@@ -899,6 +934,7 @@ export default function ChatCameraScreen() {
               isLooping
               shouldPlay
               useNativeControls={false}
+              onReadyForDisplay={(e) => { setPrevMediaW(e.naturalSize.width); setPrevMediaH(e.naturalSize.height); }}
             />
           ) : (
             <ExpoImage
@@ -912,7 +948,7 @@ export default function ChatCameraScreen() {
           {(strokes.length > 0 || currentD) ? (
             <Svg width={SCREEN_WIDTH} height={SCREEN_H} style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]} pointerEvents="none">
               {strokes.map((s, i) => (
-                <Path key={`st_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                <Path key={`st_${i}`} d={pointsToSmoothPath(s.points)} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
               ))}
               {currentD ? (
                 <Path d={currentD} stroke={penColor} strokeWidth={PEN_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />
