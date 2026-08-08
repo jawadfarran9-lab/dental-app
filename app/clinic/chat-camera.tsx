@@ -1366,7 +1366,9 @@ export default function ChatCameraScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Pressable onPress={resetTextStyle} disabled={textIsDefault} style={[styles.drawIconBtn, { opacity: textIsDefault ? 0.35 : 1 }]} hitSlop={8}><MaterialIcons name="format-color-reset" size={22} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={cycleTextBg} style={styles.drawIconBtn} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></Pressable>
-                <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={[styles.textColorSwatch, { backgroundColor: textColor }]} hitSlop={8} />
+                <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={styles.drawIconBtn} hitSlop={8}>
+                  <MaterialIcons name="brush" size={22} color={textColor} />
+                </Pressable>
               </View>
             </View>
           )}
