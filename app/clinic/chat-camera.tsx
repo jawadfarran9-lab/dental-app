@@ -246,53 +246,33 @@ function lightenColor(c: string, f: number): string {
   return `rgb(${l(r)}, ${l(g)}, ${l(b)})`;
 }
 
-function DraggableText({ item, index, onChange, onEdit }: {
+function DraggableText({ item, index, active, liveTx, liveTy, liveRot, liveScale, onMeasure }: {
   item: { text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string; dx: number; dy: number; rot: number; scale: number };
   index: number;
-  onChange: (i: number, dx: number, dy: number, rot: number, scale: number) => void;
-  onEdit: (i: number) => void;
+  active: boolean;
+  liveTx: any; liveTy: any; liveRot: any; liveScale: any;
+  onMeasure: (i: number, layout: { x: number; y: number; width: number; height: number }) => void;
 }) {
-  const tx = useSharedValue(item.dx);
-  const ty = useSharedValue(item.dy);
-  const sx = useSharedValue(0);
-  const sy = useSharedValue(0);
-  const rot = useSharedValue(item.rot);
-  const sRot = useSharedValue(0);
-  const scale = useSharedValue(item.scale);
-  const sScale = useSharedValue(1);
-  const pan = useMemo(() => Gesture.Pan()
-    .onStart(() => { sx.value = tx.value; sy.value = ty.value; })
-    .onUpdate((e) => { tx.value = sx.value + e.translationX; ty.value = sy.value + e.translationY; })
-    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
-  const rotation = useMemo(() => Gesture.Rotation()
-    .onStart(() => { sRot.value = rot.value; })
-    .onUpdate((e) => { rot.value = sRot.value + e.rotation; })
-    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
-  const pinch = useMemo(() => Gesture.Pinch()
-    .onStart(() => { sScale.value = scale.value; })
-    .onUpdate((e) => { scale.value = Math.max(0.4, Math.min(4, sScale.value * e.scale)); })
-    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
-  const tap = useMemo(() => Gesture.Tap().maxDuration(250).onEnd(() => { runOnJS(onEdit)(index); }), [index]);
-  const composed = useMemo(() => Gesture.Exclusive(tap, Gesture.Simultaneous(pan, rotation, pinch)), [tap, pan, rotation, pinch]);
-  const aStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotateZ: `${rot.value}rad` }, { scale: scale.value }] as any,
-  }));
+  const aStyle = useAnimatedStyle(() => {
+    if (active) {
+      return { transform: [{ translateX: liveTx.value }, { translateY: liveTy.value }, { rotateZ: `${liveRot.value}rad` }, { scale: liveScale.value }] as any };
+    }
+    return { transform: [{ translateX: item.dx }, { translateY: item.dy }, { rotateZ: `${item.rot}rad` }, { scale: item.scale }] as any };
+  }, [active, item.dx, item.dy, item.rot, item.scale]);
   const isWhiteColor = isWhitish(item.color);
   const eff = item.bg === 'none' ? item.color : (item.bg === 'dim' || item.bg === 'white') ? (isWhiteColor ? '#000000' : item.color) : (item.bg === 'black' ? (isWhiteColor ? '#FFFFFF' : item.color) : '#000000');
   const bg = item.bg === 'white' ? '#FFFFFF' : item.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : item.bg === 'black' ? (isWhiteColor ? '#000000' : lightenColor(item.color, 0.6)) : 'transparent';
   return (
-    <GestureDetector gesture={composed}>
-      <Animated.View style={[{
-        maxWidth: '100%',
-        marginVertical: 4,
-        borderRadius: 12,
-        paddingHorizontal: item.bg === 'none' ? 0 : 14,
-        paddingVertical: item.bg === 'none' ? 0 : 6,
-        backgroundColor: bg,
-      }, aStyle]}>
-        <Text style={[styles.textOverlayItem, { color: eff, textAlign: item.align, textShadowColor: item.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: item.font }]}>{item.text}</Text>
-      </Animated.View>
-    </GestureDetector>
+    <Animated.View onLayout={(e) => onMeasure(index, e.nativeEvent.layout)} style={[{
+      maxWidth: '100%',
+      marginVertical: 4,
+      borderRadius: 12,
+      paddingHorizontal: item.bg === 'none' ? 0 : 14,
+      paddingVertical: item.bg === 'none' ? 0 : 6,
+      backgroundColor: bg,
+    }, aStyle]}>
+      <Text style={[styles.textOverlayItem, { color: eff, textAlign: item.align, textShadowColor: item.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: item.font }]}>{item.text}</Text>
+    </Animated.View>
   );
 }
 
@@ -336,6 +316,16 @@ export default function ChatCameraScreen() {
   const [textFont, setTextFont] = useState<string | undefined>(undefined);
   const [kbHeight, setKbHeight] = useState(0);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const liveTx = useSharedValue(0);
+  const liveTy = useSharedValue(0);
+  const liveRot = useSharedValue(0);
+  const liveScale = useSharedValue(1);
+  const baseTx = useSharedValue(0);
+  const baseTy = useSharedValue(0);
+  const activeSV = useSharedValue(-1);
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
+  const pillLayouts = useRef<Record<number, { x: number; y: number; w: number; h: number }>>({});
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -802,6 +792,60 @@ export default function ChatCameraScreen() {
   };
   const changeText = (i: number, dx: number, dy: number, rot: number, scale: number) =>
     setTexts((prev) => prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t)));
+
+  const rebuildHitBoxes = () => {
+    const boxes: { index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[] = [];
+    texts.forEach((t, i) => {
+      const L = pillLayouts.current[i];
+      if (!L) return;
+      boxes.push({ index: i, cx: L.x + L.w / 2 + t.dx, cy: L.y + L.h / 2 + t.dy, hw: (L.w / 2) * t.scale + 22, hh: (L.h / 2) * t.scale + 22, dx: t.dx, dy: t.dy, rot: t.rot, scale: t.scale });
+    });
+    hitBoxesSV.value = boxes;
+  };
+  const onPillMeasure = (i: number, L: { x: number; y: number; width: number; height: number }) => {
+    pillLayouts.current[i] = { x: L.x, y: L.y, w: L.width, h: L.height };
+    rebuildHitBoxes();
+  };
+  useEffect(() => { rebuildHitBoxes(); }, [texts]);
+
+  const manipGesture = useMemo(() => Gesture.Pan()
+    .manualActivation(true)
+    .onTouchesDown((e, sm) => {
+      if (activeSV.value >= 0) return;
+      const boxes = hitBoxesSV.value;
+      const tch = e.changedTouches[0];
+      if (!tch) { sm.fail(); return; }
+      let found = -1; let fdx = 0, fdy = 0, frot = 0, fscale = 1;
+      for (let k = 0; k < boxes.length; k++) {
+        const b = boxes[k];
+        if (Math.abs(tch.x - b.cx) <= b.hw && Math.abs(tch.y - b.cy) <= b.hh) { found = b.index; fdx = b.dx; fdy = b.dy; frot = b.rot; fscale = b.scale; break; }
+      }
+      if (found >= 0) {
+        activeSV.value = found;
+        baseTx.value = fdx; baseTy.value = fdy;
+        liveTx.value = fdx; liveTy.value = fdy; liveRot.value = frot; liveScale.value = fscale;
+        runOnJS(setActiveIndex)(found);
+        sm.activate();
+      } else {
+        sm.fail();
+      }
+    })
+    .onUpdate((e) => {
+      liveTx.value = baseTx.value + e.translationX;
+      liveTy.value = baseTy.value + e.translationY;
+    })
+    .onEnd((e) => {
+      const idx = activeSV.value;
+      const moved = Math.abs(e.translationX) + Math.abs(e.translationY);
+      if (idx >= 0) {
+        if (moved < 6) { runOnJS(enterEditText)(idx); }
+        else { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
+      }
+      activeSV.value = -1;
+      runOnJS(setActiveIndex)(null);
+    }),
+    [texts]
+  );
   const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
   const cycleTextBg = () => setTextBg((m) => (m === 'none' ? 'white' : m === 'white' ? 'dim' : m === 'dim' ? 'black' : 'none'));
 
@@ -1233,10 +1277,15 @@ export default function ChatCameraScreen() {
           {texts.length > 0 && !textMode ? (
             <View style={styles.textOverlayWrap} pointerEvents="box-none">
               {texts.map((t, i) => (
-                <DraggableText key={`txt_${i}`} item={t} index={i} onChange={changeText} onEdit={enterEditText} />
+                <DraggableText key={`txt_${i}`} item={t} index={i} active={activeIndex === i} liveTx={liveTx} liveTy={liveTy} liveRot={liveRot} liveScale={liveScale} onMeasure={onPillMeasure} />
               ))}
             </View>
           ) : null}
+          {texts.length > 0 && !textMode && !drawMode && (
+            <GestureDetector gesture={manipGesture}>
+              <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
+            </GestureDetector>
+          )}
 
           {drawMode && (
             <GestureDetector gesture={drawPan}>
