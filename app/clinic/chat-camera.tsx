@@ -731,6 +731,16 @@ export default function ChatCameraScreen() {
   const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
   const cycleTextBg = () => setTextBg((m) => (m === 'none' ? 'white' : m === 'white' ? 'dim' : m === 'dim' ? 'black' : 'none'));
 
+  const resetTextStyle = () => {
+    setTextColor('#FFFFFF');
+    textColorRef.current = '#FFFFFF';
+    setTextThumbT(0);
+    setTextBg('none');
+    setTextAlignMode('center');
+    setTextFont(undefined);
+  };
+  const textIsDefault = textBg === 'none' && textAlignMode === 'center' && textFont === undefined && textColor === '#FFFFFF';
+
   const buildDrawing = (): DrawingDoc | undefined => {
     if (strokes.length === 0) return undefined;
     const mediaW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
@@ -1278,7 +1288,10 @@ export default function ChatCameraScreen() {
               </Pressable>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Pressable onPress={cycleTextAlign} style={styles.drawIconBtn} hitSlop={8}><MaterialIcons name={textAlignMode === 'left' ? 'format-align-left' : textAlignMode === 'right' ? 'format-align-right' : 'format-align-center'} size={22} color="#FFFFFF" /></Pressable>
-                <Pressable onPress={cycleTextBg} style={styles.drawIconBtn} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></Pressable>
+                <View style={{ alignItems: 'center', gap: 8 }}>
+                  <Pressable onPress={cycleTextBg} style={styles.drawIconBtn} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></Pressable>
+                  <Pressable onPress={resetTextStyle} disabled={textIsDefault} style={[styles.drawIconBtn, { opacity: textIsDefault ? 0.35 : 1 }]} hitSlop={8}><MaterialIcons name="format-color-reset" size={22} color="#FFFFFF" /></Pressable>
+                </View>
                 <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={[styles.textColorSwatch, { backgroundColor: textColor }]} hitSlop={8} />
               </View>
             </View>
