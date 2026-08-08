@@ -12,9 +12,11 @@ import {
     Alert,
     Dimensions,
     Image,
+    Keyboard,
     KeyboardAvoidingView,
     Platform,
     Pressable,
+    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
@@ -70,6 +72,18 @@ function colorAt(t: number): string {
   }
   return '#000000';
 }
+
+const FONT_OPTIONS: { key: string; family?: string }[] = [
+  { key: 'system' },
+  { key: 'poppins', family: 'Poppins_600SemiBold' },
+  { key: 'montserrat', family: 'Montserrat_700Bold' },
+  { key: 'playfair', family: 'PlayfairDisplay_700Bold' },
+  { key: 'pacifico', family: 'Pacifico_400Regular' },
+  { key: 'bebas', family: 'BebasNeue_400Regular' },
+  { key: 'caveat', family: 'Caveat_700Bold' },
+  { key: 'lobster', family: 'Lobster_400Regular' },
+  { key: 'oswald', family: 'Oswald_600SemiBold' },
+];
 function pointsToSmoothPath(pts: { x: number; y: number }[]): string {
   if (pts.length === 0) return '';
   if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y} L ${pts[0].x + 0.1} ${pts[0].y + 0.1}`;
@@ -180,7 +194,7 @@ export default function ChatCameraScreen() {
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
   const [textMode, setTextMode] = useState(false);
-  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black' }[]>([]);
+  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string }[]>([]);
   const [textValue, setTextValue] = useState('');
   const [textColor, setTextColor] = useState<string>('#FFFFFF');
   const textColorRef = useRef<string>('#FFFFFF');
@@ -188,6 +202,8 @@ export default function ChatCameraScreen() {
   const [showTextColorSlider, setShowTextColorSlider] = useState(false);
   const [textAlignMode, setTextAlignMode] = useState<'left' | 'center' | 'right'>('center');
   const [textBg, setTextBg] = useState<'none' | 'white' | 'dim' | 'black'>('none');
+  const [textFont, setTextFont] = useState<string | undefined>(undefined);
+  const [kbHeight, setKbHeight] = useState(0);
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -203,6 +219,13 @@ export default function ChatCameraScreen() {
     }
     return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
   }, [recording]);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s = Keyboard.addListener(showEvt, (e) => setKbHeight(e.endCoordinates?.height ?? 0));
+    const h = Keyboard.addListener(hideEvt, () => setKbHeight(0));
+    return () => { s.remove(); h.remove(); };
+  }, []);
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
@@ -514,6 +537,7 @@ export default function ChatCameraScreen() {
       setTextValue('');
       setTextAlignMode('center');
       setTextBg('none');
+      setTextFont(undefined);
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
@@ -541,6 +565,7 @@ export default function ChatCameraScreen() {
     setTextValue('');
     setTextAlignMode('center');
     setTextBg('none');
+    setTextFont(undefined);
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
@@ -607,10 +632,10 @@ export default function ChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
     []
   );
-  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextMode(true); };
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setTextMode(true); };
   const commitText = () => {
     const t = textValue.trim();
-    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg }]);
+    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont }]);
     setTextValue('');
     setShowTextColorSlider(false);
     setTextMode(false);
@@ -716,6 +741,7 @@ export default function ChatCameraScreen() {
         setTextValue('');
         setTextAlignMode('center');
         setTextBg('none');
+        setTextFont(undefined);
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
@@ -1019,7 +1045,7 @@ export default function ChatCameraScreen() {
                     backgroundColor: t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? 'rgba(255,255,255,0.5)' : t.bg === 'black' ? '#000000' : 'transparent',
                   }}
                 >
-                  <Text style={[styles.textOverlayItem, { color: t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000'), textAlign: t.align, textShadowColor: t.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent' }]}>{t.text}</Text>
+                  <Text style={[styles.textOverlayItem, { color: t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000'), textAlign: t.align, textShadowColor: t.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: t.font }]}>{t.text}</Text>
                 </View>
               ))}
             </View>
@@ -1129,6 +1155,7 @@ export default function ChatCameraScreen() {
                   paddingHorizontal: textBg === 'none' ? 0 : 14,
                   paddingVertical: textBg === 'none' ? 0 : 6,
                   textShadowColor: textBg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent',
+                  fontFamily: textFont,
                 }]}
                 value={textValue}
                 onChangeText={setTextValue}
@@ -1178,6 +1205,26 @@ export default function ChatCameraScreen() {
                   <View style={[styles.colorThumb, { top: Math.max(0, Math.min(SLIDER_H - 22, textThumbT * SLIDER_H - 11)), backgroundColor: textColor }]} />
                 </View>
               </GestureDetector>
+            </View>
+          )}
+
+          {textMode && (
+            <View style={[styles.fontRowWrap, { bottom: kbHeight + 10 }]} pointerEvents="box-none">
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="always"
+                contentContainerStyle={styles.fontRowContent}
+              >
+                {FONT_OPTIONS.map((f) => {
+                  const active = textFont === f.family;
+                  return (
+                    <Pressable key={f.key} onPress={() => setTextFont(f.family)} style={[styles.fontChip, active && styles.fontChipActive]}>
+                      <Text style={{ fontFamily: f.family, color: active ? '#111111' : '#FFFFFF', fontSize: 18, fontWeight: '600' }}>Aa</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
             </View>
           )}
         </View>
@@ -1402,4 +1449,8 @@ const styles = StyleSheet.create({
   textColorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: '#FFFFFF' },
   textOverlayWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   textOverlayItem: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginVertical: 4, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  fontRowWrap: { position: 'absolute', left: 0, right: 0 },
+  fontRowContent: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
+  fontChip: { minWidth: 44, height: 44, borderRadius: 22, paddingHorizontal: 14, marginRight: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.45)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
+  fontChipActive: { backgroundColor: '#FFFFFF', borderColor: '#FFFFFF' },
 });
