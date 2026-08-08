@@ -184,6 +184,24 @@ function TextsOverlay({ items, bW, bH, offX, offY }: {
   );
 }
 
+function BubbleTextsOverlay({ items, mediaW, mediaH, boxW, boxH, radius }: {
+  items?: TextsDoc['items'];
+  mediaW?: number | null; mediaH?: number | null; boxW: number; boxH: number; radius: number;
+}) {
+  if (!items || items.length === 0) return null;
+  const a = mediaW && mediaH ? mediaW / mediaH : boxW / boxH;
+  const boxA = boxW / boxH;
+  let cw = boxW, ch = boxH;
+  if (a >= boxA) { ch = boxH; cw = boxH * a; } else { cw = boxW; ch = boxW / a; }
+  const ox = (boxW - cw) / 2;
+  const oy = (boxH - ch) / 2;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: boxW, height: boxH, borderRadius: radius, overflow: 'hidden' }}>
+      <TextsOverlay items={items} bW={cw} bH={ch} offX={ox} offY={oy} />
+    </View>
+  );
+}
+
 function ZoomableImage({ uri, width, height, imgW, imgH, drawing, texts, onZoomChange }: {
   uri: string; width: number; height: number; imgW?: number; imgH?: number;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
@@ -1638,6 +1656,7 @@ export default function ClinicConversationScreen() {
                   ))}
                 </Svg>
               ) : null}
+              <BubbleTextsOverlay items={item.texts?.items} mediaW={item.imageWidth} mediaH={item.imageHeight} boxW={BUBBLE_MAX_W} boxH={imgH} radius={14} />
             </Pressable>
             {!!time && (
               <Text
@@ -1698,6 +1717,7 @@ export default function ClinicConversationScreen() {
                   ))}
                 </Svg>
               ) : null}
+              <BubbleTextsOverlay items={item.texts?.items} mediaW={item.videoWidth} mediaH={item.videoHeight} boxW={BUBBLE_MAX_W} boxH={vidH} radius={14} />
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                 <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
                   <Ionicons name="play" size={28} color="#FFFFFF" style={{ marginLeft: 3 }} />
@@ -2842,6 +2862,7 @@ export default function ClinicConversationScreen() {
                             ))}
                           </Svg>
                         ) : null}
+                        <BubbleTextsOverlay items={thumb.texts?.items} mediaW={thumb.width} mediaH={thumb.height} boxW={40} boxH={54} radius={6} />
                       </Pressable>
                     ))}
                   </ScrollView>
