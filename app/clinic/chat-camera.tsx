@@ -180,13 +180,14 @@ export default function ChatCameraScreen() {
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
   const [textMode, setTextMode] = useState(false);
-  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right' }[]>([]);
+  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black' }[]>([]);
   const [textValue, setTextValue] = useState('');
   const [textColor, setTextColor] = useState<string>('#FFFFFF');
   const textColorRef = useRef<string>('#FFFFFF');
   const [textThumbT, setTextThumbT] = useState(0);
   const [showTextColorSlider, setShowTextColorSlider] = useState(false);
   const [textAlignMode, setTextAlignMode] = useState<'left' | 'center' | 'right'>('center');
+  const [textBg, setTextBg] = useState<'none' | 'white' | 'dim' | 'black'>('none');
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -512,6 +513,7 @@ export default function ChatCameraScreen() {
       setTexts([]);
       setTextValue('');
       setTextAlignMode('center');
+      setTextBg('none');
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
@@ -538,6 +540,7 @@ export default function ChatCameraScreen() {
     setTexts([]);
     setTextValue('');
     setTextAlignMode('center');
+    setTextBg('none');
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
@@ -604,15 +607,16 @@ export default function ChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
     []
   );
-  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextMode(true); };
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextMode(true); };
   const commitText = () => {
     const t = textValue.trim();
-    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode }]);
+    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg }]);
     setTextValue('');
     setShowTextColorSlider(false);
     setTextMode(false);
   };
   const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
+  const cycleTextBg = () => setTextBg((m) => (m === 'none' ? 'white' : m === 'white' ? 'dim' : m === 'dim' ? 'black' : 'none'));
 
   const buildDrawing = (): DrawingDoc | undefined => {
     if (strokes.length === 0) return undefined;
@@ -711,6 +715,7 @@ export default function ChatCameraScreen() {
         setTexts([]);
         setTextValue('');
         setTextAlignMode('center');
+        setTextBg('none');
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
@@ -1002,7 +1007,20 @@ export default function ChatCameraScreen() {
           {texts.length > 0 && !textMode ? (
             <View style={styles.textOverlayWrap} pointerEvents="none">
               {texts.map((t, i) => (
-                <Text key={`txt_${i}`} style={[styles.textOverlayItem, { color: t.color, textAlign: t.align, width: '100%' }]}>{t.text}</Text>
+                <View
+                  key={`txt_${i}`}
+                  style={{
+                    alignSelf: t.align === 'left' ? 'flex-start' : t.align === 'right' ? 'flex-end' : 'center',
+                    maxWidth: '100%',
+                    marginVertical: 4,
+                    borderRadius: 12,
+                    paddingHorizontal: t.bg === 'none' ? 0 : 14,
+                    paddingVertical: t.bg === 'none' ? 0 : 6,
+                    backgroundColor: t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? 'rgba(255,255,255,0.5)' : t.bg === 'black' ? '#000000' : 'transparent',
+                  }}
+                >
+                  <Text style={[styles.textOverlayItem, { color: t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000'), textAlign: t.align, textShadowColor: t.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent' }]}>{t.text}</Text>
+                </View>
               ))}
             </View>
           ) : null}
@@ -1100,11 +1118,18 @@ export default function ChatCameraScreen() {
           {textMode && (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-              style={styles.textInputWrap}
+              style={[styles.textInputWrap, { alignItems: textAlignMode === 'left' ? 'flex-start' : textAlignMode === 'right' ? 'flex-end' : 'center' }]}
               pointerEvents="box-none"
             >
               <TextInput
-                style={[styles.textInputField, { color: textColor }]}
+                style={[styles.textInputField, {
+                  color: textBg === 'none' ? textColor : (textBg === 'black' ? '#FFFFFF' : '#000000'),
+                  backgroundColor: textBg === 'white' ? '#FFFFFF' : textBg === 'dim' ? 'rgba(255,255,255,0.5)' : textBg === 'black' ? '#000000' : 'transparent',
+                  borderRadius: 12,
+                  paddingHorizontal: textBg === 'none' ? 0 : 14,
+                  paddingVertical: textBg === 'none' ? 0 : 6,
+                  textShadowColor: textBg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent',
+                }]}
                 value={textValue}
                 onChangeText={setTextValue}
                 placeholder="Add text"
@@ -1123,7 +1148,7 @@ export default function ChatCameraScreen() {
               </Pressable>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                 <Pressable onPress={cycleTextAlign} style={styles.drawIconBtn} hitSlop={8}><MaterialIcons name={textAlignMode === 'left' ? 'format-align-left' : textAlignMode === 'right' ? 'format-align-right' : 'format-align-center'} size={22} color="#FFFFFF" /></Pressable>
-                <View style={[styles.drawIconBtn, { opacity: 0.4 }]}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></View>
+                <Pressable onPress={cycleTextBg} style={styles.drawIconBtn} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></Pressable>
                 <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={[styles.textColorSwatch, { backgroundColor: textColor }]} hitSlop={8} />
               </View>
             </View>
@@ -1373,7 +1398,7 @@ const styles = StyleSheet.create({
   colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
   colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
   textInputWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, width: '100%', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   textColorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: '#FFFFFF' },
   textOverlayWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   textOverlayItem: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginVertical: 4, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
