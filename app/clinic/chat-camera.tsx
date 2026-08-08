@@ -179,6 +179,13 @@ export default function ChatCameraScreen() {
   const [penColor, setPenColor] = useState<string>(BRAND.blue);
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
+  const [textMode, setTextMode] = useState(false);
+  const [texts, setTexts] = useState<{ text: string; color: string }[]>([]);
+  const [textValue, setTextValue] = useState('');
+  const [textColor, setTextColor] = useState<string>('#FFFFFF');
+  const textColorRef = useRef<string>('#FFFFFF');
+  const [textThumbT, setTextThumbT] = useState(0);
+  const [showTextColorSlider, setShowTextColorSlider] = useState(false);
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -500,6 +507,9 @@ export default function ChatCameraScreen() {
       setCurrentD('');
       currentPtsRef.current = [];
       setDrawMode(false);
+      setTextMode(false);
+      setTexts([]);
+      setTextValue('');
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
@@ -522,6 +532,9 @@ export default function ChatCameraScreen() {
     setCurrentD('');
     currentPtsRef.current = [];
     setDrawMode(false);
+    setTextMode(false);
+    setTexts([]);
+    setTextValue('');
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
@@ -574,6 +587,28 @@ export default function ChatCameraScreen() {
         .onUpdate((e) => { runOnJS(pickColorAtY)(e.y); }),
     []
   );
+
+  const pickTextColorAtY = (y: number) => {
+    const t = Math.max(0, Math.min(1, y / SLIDER_H));
+    const c = colorAt(t);
+    textColorRef.current = c;
+    setTextThumbT(t);
+    setTextColor(c);
+  };
+  const textColorPan = useMemo(
+    () => Gesture.Pan().minDistance(0)
+      .onBegin((e) => { runOnJS(pickTextColorAtY)(e.y); })
+      .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
+    []
+  );
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextMode(true); };
+  const commitText = () => {
+    const t = textValue.trim();
+    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current }]);
+    setTextValue('');
+    setShowTextColorSlider(false);
+    setTextMode(false);
+  };
 
   const buildDrawing = (): DrawingDoc | undefined => {
     if (strokes.length === 0) return undefined;
@@ -668,6 +703,9 @@ export default function ChatCameraScreen() {
         setCurrentD('');
         currentPtsRef.current = [];
         setDrawMode(false);
+        setTextMode(false);
+        setTexts([]);
+        setTextValue('');
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
@@ -956,13 +994,21 @@ export default function ChatCameraScreen() {
             </Svg>
           ) : null}
 
+          {texts.length > 0 && !textMode ? (
+            <View style={styles.textOverlayWrap} pointerEvents="none">
+              {texts.map((t, i) => (
+                <Text key={`txt_${i}`} style={[styles.textOverlayItem, { color: t.color }]}>{t.text}</Text>
+              ))}
+            </View>
+          ) : null}
+
           {drawMode && (
             <GestureDetector gesture={drawPan}>
               <View style={StyleSheet.absoluteFill} />
             </GestureDetector>
           )}
 
-          {!drawMode && (
+          {!drawMode && !textMode && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -972,13 +1018,13 @@ export default function ChatCameraScreen() {
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></View>
-                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>Aa</Text></View>
+                <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
                 <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="pencil" size={18} color="#FFFFFF" /></Pressable>
               </View>
             </View>
           )}
 
-          {!drawMode && (
+          {!drawMode && !textMode && (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
@@ -1043,6 +1089,65 @@ export default function ChatCameraScreen() {
                   <Ionicons name="pencil" size={20} color="#FFFFFF" />
                 </View>
               </View>
+            </View>
+          )}
+
+          {textMode && (
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              style={styles.textInputWrap}
+              pointerEvents="box-none"
+            >
+              <TextInput
+                style={[styles.textInputField, { color: textColor }]}
+                value={textValue}
+                onChangeText={setTextValue}
+                placeholder="Add text"
+                placeholderTextColor="rgba(255,255,255,0.7)"
+                autoFocus
+                multiline
+                textAlign="center"
+              />
+            </KeyboardAvoidingView>
+          )}
+
+          {textMode && (
+            <View style={[styles.drawBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+              <Pressable onPress={commitText} style={styles.drawDoneBtn} hitSlop={8}>
+                <Ionicons name="checkmark" size={26} color="#FFFFFF" />
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <View style={[styles.drawIconBtn, { opacity: 0.4 }]}><Ionicons name="reorder-three-outline" size={22} color="#FFFFFF" /></View>
+                <View style={[styles.drawIconBtn, { opacity: 0.4 }]}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></View>
+                <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={[styles.textColorSwatch, { backgroundColor: textColor }]} hitSlop={8} />
+              </View>
+            </View>
+          )}
+
+          {textMode && showTextColorSlider && (
+            <View style={[styles.colorSliderWrap, { top: insets.top + 90 }]}>
+              <GestureDetector gesture={textColorPan}>
+                <View style={styles.colorSliderTouch}>
+                  <Svg width={14} height={SLIDER_H}>
+                    <Defs>
+                      <LinearGradient id="hueGradText" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor="#FFFFFF" />
+                        <Stop offset="0.10" stopColor="#FF3B30" />
+                        <Stop offset="0.22" stopColor="#FF9500" />
+                        <Stop offset="0.34" stopColor="#FFCC00" />
+                        <Stop offset="0.46" stopColor="#34C759" />
+                        <Stop offset="0.58" stopColor="#00C7BE" />
+                        <Stop offset="0.70" stopColor="#3D9EFF" />
+                        <Stop offset="0.82" stopColor="#AF52DE" />
+                        <Stop offset="0.92" stopColor="#FF2D55" />
+                        <Stop offset="1" stopColor="#000000" />
+                      </LinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="14" height={SLIDER_H} rx="7" ry="7" fill="url(#hueGradText)" />
+                  </Svg>
+                  <View style={[styles.colorThumb, { top: Math.max(0, Math.min(SLIDER_H - 22, textThumbT * SLIDER_H - 11)), backgroundColor: textColor }]} />
+                </View>
+              </GestureDetector>
             </View>
           )}
         </View>
@@ -1262,4 +1367,9 @@ const styles = StyleSheet.create({
   colorSliderWrap: { position: 'absolute', right: 14 },
   colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
   colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
+  textInputWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  textColorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: '#FFFFFF' },
+  textOverlayWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  textOverlayItem: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginVertical: 4, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
 });
