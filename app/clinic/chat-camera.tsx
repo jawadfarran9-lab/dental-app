@@ -166,6 +166,54 @@ const zoomToDisplayLabel = (z: number): string => {
   return multiplier.toFixed(1);
 };
 
+function DraggableText({ item, index, onChange }: {
+  item: { text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string; dx: number; dy: number; rot: number; scale: number };
+  index: number;
+  onChange: (i: number, dx: number, dy: number, rot: number, scale: number) => void;
+}) {
+  const tx = useSharedValue(item.dx);
+  const ty = useSharedValue(item.dy);
+  const sx = useSharedValue(0);
+  const sy = useSharedValue(0);
+  const rot = useSharedValue(item.rot);
+  const sRot = useSharedValue(0);
+  const scale = useSharedValue(item.scale);
+  const sScale = useSharedValue(1);
+  const pan = useMemo(() => Gesture.Pan()
+    .onStart(() => { sx.value = tx.value; sy.value = ty.value; })
+    .onUpdate((e) => { tx.value = sx.value + e.translationX; ty.value = sy.value + e.translationY; })
+    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
+  const rotation = useMemo(() => Gesture.Rotation()
+    .onStart(() => { sRot.value = rot.value; })
+    .onUpdate((e) => { rot.value = sRot.value + e.rotation; })
+    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
+  const pinch = useMemo(() => Gesture.Pinch()
+    .onStart(() => { sScale.value = scale.value; })
+    .onUpdate((e) => { scale.value = Math.max(0.4, Math.min(4, sScale.value * e.scale)); })
+    .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
+  const composed = useMemo(() => Gesture.Simultaneous(pan, rotation, pinch), [pan, rotation, pinch]);
+  const aStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotateZ: `${rot.value}rad` }, { scale: scale.value }] as any,
+  }));
+  const eff = item.bg === 'none' ? item.color : (item.bg === 'black' ? '#FFFFFF' : '#000000');
+  const bg = item.bg === 'white' ? '#FFFFFF' : item.bg === 'dim' ? 'rgba(255,255,255,0.5)' : item.bg === 'black' ? '#000000' : 'transparent';
+  return (
+    <GestureDetector gesture={composed}>
+      <Animated.View style={[{
+        alignSelf: item.align === 'left' ? 'flex-start' : item.align === 'right' ? 'flex-end' : 'center',
+        maxWidth: '100%',
+        marginVertical: 4,
+        borderRadius: 12,
+        paddingHorizontal: item.bg === 'none' ? 0 : 14,
+        paddingVertical: item.bg === 'none' ? 0 : 6,
+        backgroundColor: bg,
+      }, aStyle]}>
+        <Text style={[styles.textOverlayItem, { color: eff, textAlign: item.align, textShadowColor: item.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: item.font }]}>{item.text}</Text>
+      </Animated.View>
+    </GestureDetector>
+  );
+}
+
 export default function ChatCameraScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -194,7 +242,7 @@ export default function ChatCameraScreen() {
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
   const [textMode, setTextMode] = useState(false);
-  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string }[]>([]);
+  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string; dx: number; dy: number; rot: number; scale: number }[]>([]);
   const [textValue, setTextValue] = useState('');
   const [textColor, setTextColor] = useState<string>('#FFFFFF');
   const textColorRef = useRef<string>('#FFFFFF');
@@ -635,11 +683,13 @@ export default function ChatCameraScreen() {
   const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setTextMode(true); };
   const commitText = () => {
     const t = textValue.trim();
-    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont }]);
+    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont, dx: 0, dy: 0, rot: 0, scale: 1 }]);
     setTextValue('');
     setShowTextColorSlider(false);
     setTextMode(false);
   };
+  const changeText = (i: number, dx: number, dy: number, rot: number, scale: number) =>
+    setTexts((prev) => prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t)));
   const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
   const cycleTextBg = () => setTextBg((m) => (m === 'none' ? 'white' : m === 'white' ? 'dim' : m === 'dim' ? 'black' : 'none'));
 
@@ -1031,22 +1081,9 @@ export default function ChatCameraScreen() {
           ) : null}
 
           {texts.length > 0 && !textMode ? (
-            <View style={styles.textOverlayWrap} pointerEvents="none">
+            <View style={styles.textOverlayWrap} pointerEvents="box-none">
               {texts.map((t, i) => (
-                <View
-                  key={`txt_${i}`}
-                  style={{
-                    alignSelf: t.align === 'left' ? 'flex-start' : t.align === 'right' ? 'flex-end' : 'center',
-                    maxWidth: '100%',
-                    marginVertical: 4,
-                    borderRadius: 12,
-                    paddingHorizontal: t.bg === 'none' ? 0 : 14,
-                    paddingVertical: t.bg === 'none' ? 0 : 6,
-                    backgroundColor: t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? 'rgba(255,255,255,0.5)' : t.bg === 'black' ? '#000000' : 'transparent',
-                  }}
-                >
-                  <Text style={[styles.textOverlayItem, { color: t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000'), textAlign: t.align, textShadowColor: t.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: t.font }]}>{t.text}</Text>
-                </View>
+                <DraggableText key={`txt_${i}`} item={t} index={i} onChange={changeText} />
               ))}
             </View>
           ) : null}
