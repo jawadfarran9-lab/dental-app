@@ -328,6 +328,7 @@ export default function ChatCameraScreen() {
   const [textValue, setTextValue] = useState('');
   const [textColor, setTextColor] = useState<string>('#FFFFFF');
   const textColorRef = useRef<string>('#FFFFFF');
+  const lastHapticT = useRef(-1);
   const [textThumbT, setTextThumbT] = useState(0);
   const [showTextColorSlider, setShowTextColorSlider] = useState(false);
   const [textAlignMode, setTextAlignMode] = useState<'left' | 'center' | 'right'>('center');
@@ -758,6 +759,7 @@ export default function ChatCameraScreen() {
     let ang = Math.atan2(dy, dx) + Math.PI / 2;
     ang = ((ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
     const t = ang / (2 * Math.PI);
+    if (Math.abs(t - lastHapticT.current) > 0.045) { lastHapticT.current = t; Haptics.selectionAsync(); }
     const c = colorAt(t);
     textColorRef.current = c;
     setTextThumbT(t);
@@ -1372,7 +1374,7 @@ export default function ChatCameraScreen() {
           {textMode && showTextColorSlider && (
             <View style={[styles.colorWheelWrap, { top: insets.top + 74 }]}>
               <GestureDetector gesture={textColorPan}>
-                <View style={{ width: WHEEL_D, height: WHEEL_D }}>
+                <View style={{ width: WHEEL_D, height: WHEEL_D, shadowColor: textColor, shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } }}>
                   <ColorWheel color={textColor} t={textThumbT} />
                 </View>
               </GestureDetector>
