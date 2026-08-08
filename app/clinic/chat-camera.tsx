@@ -270,7 +270,7 @@ function DraggableText({ item, index, active, liveTx, liveTy, liveRot, liveScale
       paddingHorizontal: item.bg === 'none' ? 0 : 14,
       paddingVertical: item.bg === 'none' ? 0 : 6,
       backgroundColor: bg,
-    }, aStyle]}>
+    }, active ? { shadowColor: '#FFFFFF', shadowOpacity: 0.6, shadowRadius: 12, shadowOffset: { width: 0, height: 0 } } : null, aStyle]}>
       <Text style={[styles.textOverlayItem, { color: eff, textAlign: item.align, textShadowColor: item.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', fontFamily: item.font }]}>{item.text}</Text>
     </Animated.View>
   );
@@ -812,6 +812,8 @@ export default function ChatCameraScreen() {
   };
   useEffect(() => { rebuildHitBoxes(); }, [texts]);
 
+  const grabHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
+
   const manipGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .manualActivation(true)
@@ -830,6 +832,7 @@ export default function ChatCameraScreen() {
           baseTx.value = fdx; baseTy.value = fdy; ptrs.value = 1; didManip.value = false;
           liveTx.value = fdx; liveTy.value = fdy; liveRot.value = frot; liveScale.value = fscale;
           runOnJS(setActiveIndex)(found);
+          runOnJS(grabHaptic)();
           sm.activate();
         } else {
           sm.fail();
