@@ -18,7 +18,7 @@ export type TextsDoc = {
     color: string;
     align: 'left' | 'center' | 'right';
     bg: 'none' | 'white' | 'dim' | 'black';
-    font?: string;
+    font?: string | null;
     nx: number;
     ny: number;
     size: number;

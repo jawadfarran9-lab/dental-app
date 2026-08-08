@@ -731,7 +731,7 @@ export default function ChatCameraScreen() {
       color: t.color,
       align: t.align,
       bg: t.bg,
-      font: t.font,
+      font: t.font ?? null,
       nx: 0.5 + t.dx / baseW,
       ny: 0.5 + t.dy / baseH,
       size: (32 * t.scale) / baseW,

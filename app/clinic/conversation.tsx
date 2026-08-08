@@ -5,6 +5,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
+import { TextsDoc } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -119,9 +120,10 @@ type Message = {
   seenAt?: number;
   starredClinic?: boolean;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  texts?: TextsDoc | null;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null; texts?: TextsDoc | null };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
@@ -153,9 +155,39 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   );
 };
 
-function ZoomableImage({ uri, width, height, imgW, imgH, drawing, onZoomChange }: {
+function TextsOverlay({ items, bW, bH, offX, offY }: {
+  items?: TextsDoc['items'];
+  bW: number; bH: number; offX: number; offY: number;
+}) {
+  if (!items || items.length === 0) return null;
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: offX, top: offY, width: bW, height: bH, justifyContent: 'center', alignItems: 'center' }}>
+      {items.map((t, i) => {
+        const fs = bW * t.size;
+        const eff = t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000');
+        const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? 'rgba(255,255,255,0.5)' : t.bg === 'black' ? '#000000' : 'transparent';
+        return (
+          <View key={`t_${i}`} style={{
+            position: 'absolute',
+            maxWidth: bW,
+            transform: [{ translateX: (t.nx - 0.5) * bW }, { translateY: (t.ny - 0.5) * bH }, { rotate: `${t.rot}rad` }] as any,
+            borderRadius: 12,
+            paddingHorizontal: t.bg === 'none' ? 0 : fs * 0.44,
+            paddingVertical: t.bg === 'none' ? 0 : fs * 0.19,
+            backgroundColor: bg,
+          }}>
+            <Text style={{ fontSize: fs, fontWeight: '700', textAlign: t.align, fontFamily: t.font, color: eff, textShadowColor: t.bg === 'none' ? 'rgba(0,0,0,0.35)' : 'transparent', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 }}>{t.text}</Text>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+function ZoomableImage({ uri, width, height, imgW, imgH, drawing, texts, onZoomChange }: {
   uri: string; width: number; height: number; imgW?: number; imgH?: number;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  texts?: TextsDoc | null;
   onZoomChange: (zoomed: boolean) => void
 }) {
   const scale = useSharedValue(1);
@@ -265,6 +297,7 @@ function ZoomableImage({ uri, width, height, imgW, imgH, drawing, onZoomChange }
             ))}
           </Svg>
         ) : null}
+        <TextsOverlay items={texts?.items} bW={baseW} bH={baseH} offX={(width - baseW) / 2} offY={(height - baseH) / 2} />
       </Reanimated.View>
     </GestureDetector>
   );
@@ -282,7 +315,7 @@ const fmtMs = (ms: number): string => {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 };
 
-function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, videoW, videoH, drawing, onScrubbingChange, onZoomChange }: {
+function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, videoW, videoH, drawing, texts, onScrubbingChange, onZoomChange }: {
   uri: string;
   width: number;
   height: number;
@@ -292,6 +325,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, vide
   videoW?: number;
   videoH?: number;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  texts?: TextsDoc | null;
   onScrubbingChange?: (b: boolean) => void;
   onZoomChange?: (b: boolean) => void
 }) {
@@ -642,6 +676,7 @@ function ViewerVideo({ uri, width, height, isActive, topInset, bottomInset, vide
               ))}
             </Svg>
           ) : null}
+          <TextsOverlay items={texts?.items} bW={baseW} bH={baseH} offX={(width - baseW) / 2} offY={(height - baseH) / 2} />
         </Reanimated.View>
       </GestureDetector>
 
@@ -977,7 +1012,7 @@ export default function ClinicConversationScreen() {
     const out: ViewerPage[] = [];
     for (const m of messages) {
       if (m.type === 'image' && m.imageUrl) {
-        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id, drawing: m.drawing ?? null });
+        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id, drawing: m.drawing ?? null, texts: m.texts ?? null });
       } else if (m.type === 'album' && Array.isArray(m.media)) {
         m.media.forEach((it, idx) => {
           out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
@@ -991,6 +1026,7 @@ export default function ClinicConversationScreen() {
           msgId: m.id,
           kind: 'video',
           drawing: m.drawing ?? null,
+          texts: m.texts ?? null,
         });
       }
     }
@@ -2737,9 +2773,9 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page, index: i }) => (
                   <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                     {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
+                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
                     ) : (
-                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} onZoomChange={setViewerZoomed} />
+                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
                     )}
                   </View>
                 )}
