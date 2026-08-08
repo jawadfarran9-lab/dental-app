@@ -155,6 +155,18 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   );
 };
 
+function isWhitish(c?: string): boolean {
+  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || '');
+  if (!m) return false;
+  let h = m[1];
+  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  const min = Math.min(r, g, b), max = Math.max(r, g, b);
+  return min >= 220 && (max - min) <= 18;
+}
+
 function TextsOverlay({ items, bW, bH, offX, offY }: {
   items?: TextsDoc['items'];
   bW: number; bH: number; offX: number; offY: number;
@@ -164,8 +176,9 @@ function TextsOverlay({ items, bW, bH, offX, offY }: {
     <View pointerEvents="none" style={{ position: 'absolute', left: offX, top: offY, width: bW, height: bH, justifyContent: 'center', alignItems: 'center' }}>
       {items.map((t, i) => {
         const fs = bW * t.size;
-        const eff = t.bg === 'none' ? t.color : (t.bg === 'black' ? '#FFFFFF' : '#000000');
-        const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? 'rgba(255,255,255,0.5)' : t.bg === 'black' ? '#000000' : 'transparent';
+        const isWhiteColor = isWhitish(t.color);
+        const eff = t.bg === 'none' ? t.color : t.bg === 'dim' ? (isWhiteColor ? '#000000' : t.color) : (t.bg === 'black' ? '#FFFFFF' : '#000000');
+        const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : t.bg === 'black' ? '#000000' : 'transparent';
         return (
           <View key={`t_${i}`} style={{
             position: 'absolute',
