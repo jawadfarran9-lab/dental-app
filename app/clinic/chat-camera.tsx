@@ -1,4 +1,4 @@
-import { DrawingDoc, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
+import { DrawingDoc, TextsDoc, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
@@ -200,7 +200,6 @@ function DraggableText({ item, index, onChange }: {
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[{
-        alignSelf: item.align === 'left' ? 'flex-start' : item.align === 'right' ? 'flex-end' : 'center',
         maxWidth: '100%',
         marginVertical: 4,
         borderRadius: 12,
@@ -717,6 +716,30 @@ export default function ChatCameraScreen() {
     return { vb: [VB_W, VB_H], strokes: outStrokes };
   };
 
+  const buildTexts = (): TextsDoc | undefined => {
+    if (texts.length === 0) return undefined;
+    const mediaW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
+    const mediaH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
+    const aspect = mediaW / mediaH;
+    const containerAspect = SCREEN_WIDTH / SCREEN_H;
+    let baseW = SCREEN_WIDTH;
+    let baseH = SCREEN_H;
+    if (aspect >= containerAspect) { baseW = SCREEN_WIDTH; baseH = SCREEN_WIDTH / aspect; }
+    else { baseH = SCREEN_H; baseW = SCREEN_H * aspect; }
+    const items = texts.map((t) => ({
+      text: t.text,
+      color: t.color,
+      align: t.align,
+      bg: t.bg,
+      font: t.font,
+      nx: 0.5 + t.dx / baseW,
+      ny: 0.5 + t.dy / baseH,
+      size: (32 * t.scale) / baseW,
+      rot: t.rot,
+    }));
+    return { items };
+  };
+
   const handleSendPhoto = async () => {
     if (!previewUri || sending) return;
     if (!clinicId || !patientId) {
@@ -726,6 +749,7 @@ export default function ChatCameraScreen() {
     setSending(true);
     try {
       const drawing = buildDrawing();
+      const builtTexts = buildTexts();
       if (previewIsVideo) {
         await sendVideoMessage({
           clinicId: clinicId as string,
@@ -734,6 +758,7 @@ export default function ChatCameraScreen() {
           localUri: previewUri,
           caption: caption.trim() || undefined,
           drawing,
+          texts: builtTexts,
         });
       } else {
         await sendImageMessage({
@@ -743,6 +768,7 @@ export default function ChatCameraScreen() {
           localUri: previewUri,
           caption: caption.trim() || undefined,
           drawing,
+          texts: builtTexts,
         });
       }
       router.back();
