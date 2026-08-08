@@ -1,5 +1,5 @@
 import { DrawingDoc, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
@@ -180,12 +180,13 @@ export default function ChatCameraScreen() {
   const penColorRef = useRef<string>(BRAND.blue);
   const [thumbT, setThumbT] = useState(0.70);
   const [textMode, setTextMode] = useState(false);
-  const [texts, setTexts] = useState<{ text: string; color: string }[]>([]);
+  const [texts, setTexts] = useState<{ text: string; color: string; align: 'left' | 'center' | 'right' }[]>([]);
   const [textValue, setTextValue] = useState('');
   const [textColor, setTextColor] = useState<string>('#FFFFFF');
   const textColorRef = useRef<string>('#FFFFFF');
   const [textThumbT, setTextThumbT] = useState(0);
   const [showTextColorSlider, setShowTextColorSlider] = useState(false);
+  const [textAlignMode, setTextAlignMode] = useState<'left' | 'center' | 'right'>('center');
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -510,6 +511,7 @@ export default function ChatCameraScreen() {
       setTextMode(false);
       setTexts([]);
       setTextValue('');
+      setTextAlignMode('center');
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
@@ -535,6 +537,7 @@ export default function ChatCameraScreen() {
     setTextMode(false);
     setTexts([]);
     setTextValue('');
+    setTextAlignMode('center');
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
@@ -601,14 +604,15 @@ export default function ChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
     []
   );
-  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextMode(true); };
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextMode(true); };
   const commitText = () => {
     const t = textValue.trim();
-    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current }]);
+    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode }]);
     setTextValue('');
     setShowTextColorSlider(false);
     setTextMode(false);
   };
+  const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
 
   const buildDrawing = (): DrawingDoc | undefined => {
     if (strokes.length === 0) return undefined;
@@ -706,6 +710,7 @@ export default function ChatCameraScreen() {
         setTextMode(false);
         setTexts([]);
         setTextValue('');
+        setTextAlignMode('center');
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
@@ -997,7 +1002,7 @@ export default function ChatCameraScreen() {
           {texts.length > 0 && !textMode ? (
             <View style={styles.textOverlayWrap} pointerEvents="none">
               {texts.map((t, i) => (
-                <Text key={`txt_${i}`} style={[styles.textOverlayItem, { color: t.color }]}>{t.text}</Text>
+                <Text key={`txt_${i}`} style={[styles.textOverlayItem, { color: t.color, textAlign: t.align, width: '100%' }]}>{t.text}</Text>
               ))}
             </View>
           ) : null}
@@ -1106,7 +1111,7 @@ export default function ChatCameraScreen() {
                 placeholderTextColor="rgba(255,255,255,0.7)"
                 autoFocus
                 multiline
-                textAlign="center"
+                textAlign={textAlignMode}
               />
             </KeyboardAvoidingView>
           )}
@@ -1117,7 +1122,7 @@ export default function ChatCameraScreen() {
                 <Ionicons name="checkmark" size={26} color="#FFFFFF" />
               </Pressable>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <View style={[styles.drawIconBtn, { opacity: 0.4 }]}><Ionicons name="reorder-three-outline" size={22} color="#FFFFFF" /></View>
+                <Pressable onPress={cycleTextAlign} style={styles.drawIconBtn} hitSlop={8}><MaterialIcons name={textAlignMode === 'left' ? 'format-align-left' : textAlignMode === 'right' ? 'format-align-right' : 'format-align-center'} size={22} color="#FFFFFF" /></Pressable>
                 <View style={[styles.drawIconBtn, { opacity: 0.4 }]}><Text style={{ color: '#FFFFFF', fontWeight: '800' }}>A+</Text></View>
                 <Pressable onPress={() => setShowTextColorSlider((v) => !v)} style={[styles.textColorSwatch, { backgroundColor: textColor }]} hitSlop={8} />
               </View>
@@ -1368,7 +1373,7 @@ const styles = StyleSheet.create({
   colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
   colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
   textInputWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
-  textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
+  textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, width: '100%', textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
   textColorSwatch: { width: 36, height: 36, borderRadius: 18, borderWidth: 3, borderColor: '#FFFFFF' },
   textOverlayWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   textOverlayItem: { fontSize: 32, fontWeight: '700', textAlign: 'center', marginVertical: 4, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
