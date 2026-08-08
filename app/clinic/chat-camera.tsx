@@ -37,7 +37,7 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 import { BRAND } from '@/src/theme/brand';
 
 const CAPTURE_OUTER = 80;
@@ -71,6 +71,44 @@ function colorAt(t: number): string {
     }
   }
   return '#000000';
+}
+
+const WHEEL_D = 110;
+const WHEEL_R = WHEEL_D / 2;
+const WHEEL_RING = 17;
+const WHEEL_INNER = WHEEL_R - WHEEL_RING;
+const WHEEL_MID = (WHEEL_R + WHEEL_INNER) / 2;
+const WHEEL_SEGMENTS = 90;
+const WHEEL_CENTER_R = 31;
+const WHEEL_THUMB_R = 9;
+
+function wheelSegmentPath(i: number): string {
+  const cx = WHEEL_R, cy = WHEEL_R;
+  const a0 = (i / WHEEL_SEGMENTS) * 2 * Math.PI - Math.PI / 2;
+  const a1 = ((i + 1) / WHEEL_SEGMENTS) * 2 * Math.PI - Math.PI / 2 + 0.02;
+  const ox0 = cx + WHEEL_R * Math.cos(a0), oy0 = cy + WHEEL_R * Math.sin(a0);
+  const ox1 = cx + WHEEL_R * Math.cos(a1), oy1 = cy + WHEEL_R * Math.sin(a1);
+  const ix1 = cx + WHEEL_INNER * Math.cos(a1), iy1 = cy + WHEEL_INNER * Math.sin(a1);
+  const ix0 = cx + WHEEL_INNER * Math.cos(a0), iy0 = cy + WHEEL_INNER * Math.sin(a0);
+  return `M ${ox0} ${oy0} A ${WHEEL_R} ${WHEEL_R} 0 0 1 ${ox1} ${oy1} L ${ix1} ${iy1} A ${WHEEL_INNER} ${WHEEL_INNER} 0 0 0 ${ix0} ${iy0} Z`;
+}
+
+const WHEEL_SEG_DATA = Array.from({ length: WHEEL_SEGMENTS }, (_, i) => ({ d: wheelSegmentPath(i), c: colorAt((i + 0.5) / WHEEL_SEGMENTS) }));
+
+function ColorWheel({ color, t }: { color: string; t: number }) {
+  const cx = WHEEL_R, cy = WHEEL_R;
+  const ta = t * 2 * Math.PI - Math.PI / 2;
+  const thumbX = cx + WHEEL_MID * Math.cos(ta);
+  const thumbY = cy + WHEEL_MID * Math.sin(ta);
+  return (
+    <Svg width={WHEEL_D} height={WHEEL_D}>
+      {WHEEL_SEG_DATA.map((s, i) => (
+        <Path key={i} d={s.d} fill={s.c} />
+      ))}
+      <Circle cx={cx} cy={cy} r={WHEEL_CENTER_R} fill={color} stroke="rgba(255,255,255,0.9)" strokeWidth={3} />
+      <Circle cx={thumbX} cy={thumbY} r={WHEEL_THUMB_R} fill={color} stroke="#FFFFFF" strokeWidth={3} />
+    </Svg>
+  );
 }
 
 const FONT_OPTIONS: { key: string; family?: string }[] = [
@@ -714,8 +752,12 @@ export default function ChatCameraScreen() {
     []
   );
 
-  const pickTextColorAtY = (y: number) => {
-    const t = Math.max(0, Math.min(1, y / SLIDER_H));
+  const pickTextColorAtAngle = (x: number, y: number) => {
+    const dx = x - WHEEL_R;
+    const dy = y - WHEEL_R;
+    let ang = Math.atan2(dy, dx) + Math.PI / 2;
+    ang = ((ang % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
+    const t = ang / (2 * Math.PI);
     const c = colorAt(t);
     textColorRef.current = c;
     setTextThumbT(t);
@@ -723,8 +765,8 @@ export default function ChatCameraScreen() {
   };
   const textColorPan = useMemo(
     () => Gesture.Pan().minDistance(0)
-      .onBegin((e) => { runOnJS(pickTextColorAtY)(e.y); })
-      .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
+      .onBegin((e) => { runOnJS(pickTextColorAtAngle)(e.x, e.y); })
+      .onUpdate((e) => { runOnJS(pickTextColorAtAngle)(e.x, e.y); }),
     []
   );
   const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setEditingIndex(null); setTextMode(true); };
@@ -1328,27 +1370,10 @@ export default function ChatCameraScreen() {
           )}
 
           {textMode && showTextColorSlider && (
-            <View style={[styles.colorSliderWrap, { top: insets.top + 90 }]}>
+            <View style={[styles.colorWheelWrap, { top: insets.top + 74 }]}>
               <GestureDetector gesture={textColorPan}>
-                <View style={styles.colorSliderTouch}>
-                  <Svg width={14} height={SLIDER_H}>
-                    <Defs>
-                      <LinearGradient id="hueGradText" x1="0" y1="0" x2="0" y2="1">
-                        <Stop offset="0" stopColor="#FFFFFF" />
-                        <Stop offset="0.10" stopColor="#FF3B30" />
-                        <Stop offset="0.22" stopColor="#FF9500" />
-                        <Stop offset="0.34" stopColor="#FFCC00" />
-                        <Stop offset="0.46" stopColor="#34C759" />
-                        <Stop offset="0.58" stopColor="#00C7BE" />
-                        <Stop offset="0.70" stopColor="#3D9EFF" />
-                        <Stop offset="0.82" stopColor="#AF52DE" />
-                        <Stop offset="0.92" stopColor="#FF2D55" />
-                        <Stop offset="1" stopColor="#000000" />
-                      </LinearGradient>
-                    </Defs>
-                    <Rect x="0" y="0" width="14" height={SLIDER_H} rx="7" ry="7" fill="url(#hueGradText)" />
-                  </Svg>
-                  <View style={[styles.colorThumb, { top: Math.max(0, Math.min(SLIDER_H - 22, textThumbT * SLIDER_H - 11)), backgroundColor: textColor }]} />
+                <View style={{ width: WHEEL_D, height: WHEEL_D }}>
+                  <ColorWheel color={textColor} t={textThumbT} />
                 </View>
               </GestureDetector>
             </View>
@@ -1588,6 +1613,7 @@ const styles = StyleSheet.create({
   drawIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
   drawPenActive: { width: 40, height: 40, borderRadius: 20, backgroundColor: BRAND.blue, alignItems: 'center', justifyContent: 'center' },
   colorSliderWrap: { position: 'absolute', right: 14 },
+  colorWheelWrap: { position: 'absolute', right: 12 },
   colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
   colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
   textInputWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
