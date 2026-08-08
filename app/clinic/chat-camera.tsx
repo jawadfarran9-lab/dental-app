@@ -771,7 +771,7 @@ export default function ChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtAngle)(e.x, e.y); }),
     []
   );
-  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setEditingIndex(null); setTextMode(true); };
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setTextColor('#FFFFFF'); textColorRef.current = '#FFFFFF'; setTextThumbT(0); lastHapticT.current = -1; setEditingIndex(null); setTextMode(true); };
   const enterEditText = (i: number) => {
     const t = texts[i];
     if (!t) return;
