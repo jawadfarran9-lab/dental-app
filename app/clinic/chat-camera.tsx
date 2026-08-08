@@ -166,10 +166,11 @@ const zoomToDisplayLabel = (z: number): string => {
   return multiplier.toFixed(1);
 };
 
-function DraggableText({ item, index, onChange }: {
+function DraggableText({ item, index, onChange, onEdit }: {
   item: { text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string; dx: number; dy: number; rot: number; scale: number };
   index: number;
   onChange: (i: number, dx: number, dy: number, rot: number, scale: number) => void;
+  onEdit: (i: number) => void;
 }) {
   const tx = useSharedValue(item.dx);
   const ty = useSharedValue(item.dy);
@@ -191,7 +192,8 @@ function DraggableText({ item, index, onChange }: {
     .onStart(() => { sScale.value = scale.value; })
     .onUpdate((e) => { scale.value = Math.max(0.4, Math.min(4, sScale.value * e.scale)); })
     .onEnd(() => { runOnJS(onChange)(index, tx.value, ty.value, rot.value, scale.value); }), [index]);
-  const composed = useMemo(() => Gesture.Simultaneous(pan, rotation, pinch), [pan, rotation, pinch]);
+  const tap = useMemo(() => Gesture.Tap().maxDuration(250).onEnd(() => { runOnJS(onEdit)(index); }), [index]);
+  const composed = useMemo(() => Gesture.Exclusive(tap, Gesture.Simultaneous(pan, rotation, pinch)), [tap, pan, rotation, pinch]);
   const aStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotateZ: `${rot.value}rad` }, { scale: scale.value }] as any,
   }));
@@ -251,6 +253,7 @@ export default function ChatCameraScreen() {
   const [textBg, setTextBg] = useState<'none' | 'white' | 'dim' | 'black'>('none');
   const [textFont, setTextFont] = useState<string | undefined>(undefined);
   const [kbHeight, setKbHeight] = useState(0);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const mic = useMicrophonePermission();
@@ -585,6 +588,7 @@ export default function ChatCameraScreen() {
       setTextAlignMode('center');
       setTextBg('none');
       setTextFont(undefined);
+      setEditingIndex(null);
       setPenColor(BRAND.blue);
       penColorRef.current = BRAND.blue;
       setThumbT(0.70);
@@ -613,6 +617,7 @@ export default function ChatCameraScreen() {
     setTextAlignMode('center');
     setTextBg('none');
     setTextFont(undefined);
+    setEditingIndex(null);
     setPenColor(BRAND.blue);
     penColorRef.current = BRAND.blue;
     setThumbT(0.70);
@@ -679,10 +684,31 @@ export default function ChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtY)(e.y); }),
     []
   );
-  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setTextMode(true); };
+  const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setEditingIndex(null); setTextMode(true); };
+  const enterEditText = (i: number) => {
+    const t = texts[i];
+    if (!t) return;
+    setEditingIndex(i);
+    setTextValue(t.text);
+    setTextColor(t.color);
+    textColorRef.current = t.color;
+    setTextAlignMode(t.align);
+    setTextBg(t.bg);
+    setTextFont(t.font);
+    setShowTextColorSlider(false);
+    setTextMode(true);
+  };
   const commitText = () => {
     const t = textValue.trim();
-    if (t) setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont, dx: 0, dy: 0, rot: 0, scale: 1 }]);
+    if (editingIndex !== null) {
+      setTexts((prev) => {
+        if (!t) return prev.filter((_, idx) => idx !== editingIndex);
+        return prev.map((item, idx) => idx === editingIndex ? { ...item, text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont } : item);
+      });
+      setEditingIndex(null);
+    } else if (t) {
+      setTexts((prev) => [...prev, { text: t, color: textColorRef.current, align: textAlignMode, bg: textBg, font: textFont, dx: 0, dy: 0, rot: 0, scale: 1 }]);
+    }
     setTextValue('');
     setShowTextColorSlider(false);
     setTextMode(false);
@@ -818,6 +844,7 @@ export default function ChatCameraScreen() {
         setTextAlignMode('center');
         setTextBg('none');
         setTextFont(undefined);
+        setEditingIndex(null);
         setPenColor(BRAND.blue);
         penColorRef.current = BRAND.blue;
         setThumbT(0.70);
@@ -1109,7 +1136,7 @@ export default function ChatCameraScreen() {
           {texts.length > 0 && !textMode ? (
             <View style={styles.textOverlayWrap} pointerEvents="box-none">
               {texts.map((t, i) => (
-                <DraggableText key={`txt_${i}`} item={t} index={i} onChange={changeText} />
+                <DraggableText key={`txt_${i}`} item={t} index={i} onChange={changeText} onEdit={enterEditText} />
               ))}
             </View>
           ) : null}
