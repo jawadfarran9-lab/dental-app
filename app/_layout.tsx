@@ -4,6 +4,15 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import { I18nextProvider } from 'react-i18next';
 import { I18nManager, Platform } from 'react-native';
+import { useFonts } from 'expo-font';
+import { Poppins_600SemiBold } from '@expo-google-fonts/poppins';
+import { Montserrat_700Bold } from '@expo-google-fonts/montserrat';
+import { PlayfairDisplay_700Bold } from '@expo-google-fonts/playfair-display';
+import { Pacifico_400Regular } from '@expo-google-fonts/pacifico';
+import { BebasNeue_400Regular } from '@expo-google-fonts/bebas-neue';
+import { Caveat_700Bold } from '@expo-google-fonts/caveat';
+import { Lobster_400Regular } from '@expo-google-fonts/lobster';
+import { Oswald_600SemiBold } from '@expo-google-fonts/oswald';
 
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import i18n from '@/i18n';
@@ -123,12 +132,23 @@ export default function RootLayout() {
     // Force layout direction based on current language
     const currentLang = i18n.language;
     const shouldBeRTL = ['ar', 'he', 'fa', 'ur'].includes(currentLang);
-    
+
     if (Platform.OS !== 'web' && I18nManager.isRTL !== shouldBeRTL) {
       I18nManager.allowRTL(shouldBeRTL);
       I18nManager.forceRTL(shouldBeRTL);
     }
   }, []);
+
+  useFonts({
+    Poppins_600SemiBold,
+    Montserrat_700Bold,
+    PlayfairDisplay_700Bold,
+    Pacifico_400Regular,
+    BebasNeue_400Regular,
+    Caveat_700Bold,
+    Lobster_400Regular,
+    Oswald_600SemiBold,
+  });
 
   return (
     <I18nextProvider i18n={i18n}>
