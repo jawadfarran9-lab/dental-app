@@ -156,13 +156,23 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
 };
 
 function isWhitish(c?: string): boolean {
-  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || '');
-  if (!m) return false;
-  let h = m[1];
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
+  if (!c) return false;
+  let r: number, g: number, b: number;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(c);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    r = parseInt(h.slice(0, 2), 16);
+    g = parseInt(h.slice(2, 4), 16);
+    b = parseInt(h.slice(4, 6), 16);
+  } else if (rgb) {
+    r = parseInt(rgb[1], 10);
+    g = parseInt(rgb[2], 10);
+    b = parseInt(rgb[3], 10);
+  } else {
+    return false;
+  }
   const min = Math.min(r, g, b), max = Math.max(r, g, b);
   return min >= 220 && (max - min) <= 18;
 }
@@ -177,7 +187,7 @@ function TextsOverlay({ items, bW, bH, offX, offY }: {
       {items.map((t, i) => {
         const fs = bW * t.size;
         const isWhiteColor = isWhitish(t.color);
-        const eff = t.bg === 'none' ? t.color : t.bg === 'dim' ? (isWhiteColor ? '#000000' : t.color) : (t.bg === 'black' ? '#FFFFFF' : '#000000');
+        const eff = t.bg === 'none' ? t.color : (t.bg === 'dim' || t.bg === 'white') ? (isWhiteColor ? '#000000' : t.color) : (t.bg === 'black' ? '#FFFFFF' : '#000000');
         const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : t.bg === 'black' ? '#000000' : 'transparent';
         return (
           <View key={`t_${i}`} style={{

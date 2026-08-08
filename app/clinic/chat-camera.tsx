@@ -167,13 +167,23 @@ const zoomToDisplayLabel = (z: number): string => {
 };
 
 function isWhitish(c?: string): boolean {
-  const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c || '');
-  if (!m) return false;
-  let h = m[1];
-  if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
-  const r = parseInt(h.slice(0, 2), 16);
-  const g = parseInt(h.slice(2, 4), 16);
-  const b = parseInt(h.slice(4, 6), 16);
+  if (!c) return false;
+  let r: number, g: number, b: number;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(c);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    r = parseInt(h.slice(0, 2), 16);
+    g = parseInt(h.slice(2, 4), 16);
+    b = parseInt(h.slice(4, 6), 16);
+  } else if (rgb) {
+    r = parseInt(rgb[1], 10);
+    g = parseInt(rgb[2], 10);
+    b = parseInt(rgb[3], 10);
+  } else {
+    return false;
+  }
   const min = Math.min(r, g, b), max = Math.max(r, g, b);
   return min >= 220 && (max - min) <= 18;
 }
@@ -210,7 +220,7 @@ function DraggableText({ item, index, onChange, onEdit }: {
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotateZ: `${rot.value}rad` }, { scale: scale.value }] as any,
   }));
   const isWhiteColor = isWhitish(item.color);
-  const eff = item.bg === 'none' ? item.color : item.bg === 'dim' ? (isWhiteColor ? '#000000' : item.color) : (item.bg === 'black' ? '#FFFFFF' : '#000000');
+  const eff = item.bg === 'none' ? item.color : (item.bg === 'dim' || item.bg === 'white') ? (isWhiteColor ? '#000000' : item.color) : (item.bg === 'black' ? '#FFFFFF' : '#000000');
   const bg = item.bg === 'white' ? '#FFFFFF' : item.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : item.bg === 'black' ? '#000000' : 'transparent';
   return (
     <GestureDetector gesture={composed}>
@@ -1262,7 +1272,7 @@ export default function ChatCameraScreen() {
             >
               <TextInput
                 style={[styles.textInputField, {
-                  color: textBg === 'none' ? textColor : textBg === 'dim' ? (isWhitish(textColor) ? '#000000' : textColor) : (textBg === 'black' ? '#FFFFFF' : '#000000'),
+                  color: textBg === 'none' ? textColor : (textBg === 'dim' || textBg === 'white') ? (isWhitish(textColor) ? '#000000' : textColor) : (textBg === 'black' ? '#FFFFFF' : '#000000'),
                   backgroundColor: textBg === 'white' ? '#FFFFFF' : textBg === 'dim' ? (isWhitish(textColor) ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : textBg === 'black' ? '#000000' : 'transparent',
                   borderRadius: 12,
                   paddingHorizontal: textBg === 'none' ? 0 : 14,
