@@ -322,6 +322,10 @@ export default function ChatCameraScreen() {
   const liveScale = useSharedValue(1);
   const baseTx = useSharedValue(0);
   const baseTy = useSharedValue(0);
+  const baseRot = useSharedValue(0);
+  const baseScale = useSharedValue(1);
+  const ptrs = useSharedValue(0);
+  const didManip = useSharedValue(false);
   const activeSV = useSharedValue(-1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
@@ -808,44 +812,67 @@ export default function ChatCameraScreen() {
   };
   useEffect(() => { rebuildHitBoxes(); }, [texts]);
 
-  const manipGesture = useMemo(() => Gesture.Pan()
-    .manualActivation(true)
-    .onTouchesDown((e, sm) => {
-      if (activeSV.value >= 0) return;
-      const boxes = hitBoxesSV.value;
-      const tch = e.changedTouches[0];
-      if (!tch) { sm.fail(); return; }
-      let found = -1; let fdx = 0, fdy = 0, frot = 0, fscale = 1;
-      for (let k = 0; k < boxes.length; k++) {
-        const b = boxes[k];
-        if (Math.abs(tch.x - b.cx) <= b.hw && Math.abs(tch.y - b.cy) <= b.hh) { found = b.index; fdx = b.dx; fdy = b.dy; frot = b.rot; fscale = b.scale; break; }
-      }
-      if (found >= 0) {
-        activeSV.value = found;
-        baseTx.value = fdx; baseTy.value = fdy;
-        liveTx.value = fdx; liveTy.value = fdy; liveRot.value = frot; liveScale.value = fscale;
-        runOnJS(setActiveIndex)(found);
-        sm.activate();
-      } else {
-        sm.fail();
-      }
-    })
-    .onUpdate((e) => {
-      liveTx.value = baseTx.value + e.translationX;
-      liveTy.value = baseTy.value + e.translationY;
-    })
-    .onEnd((e) => {
-      const idx = activeSV.value;
-      const moved = Math.abs(e.translationX) + Math.abs(e.translationY);
-      if (idx >= 0) {
-        if (moved < 6) { runOnJS(enterEditText)(idx); }
-        else { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
-      }
-      activeSV.value = -1;
-      runOnJS(setActiveIndex)(null);
-    }),
-    [texts]
-  );
+  const manipGesture = useMemo(() => {
+    const pan = Gesture.Pan()
+      .manualActivation(true)
+      .onTouchesDown((e, sm) => {
+        if (activeSV.value >= 0) return;
+        const boxes = hitBoxesSV.value;
+        const tch = e.changedTouches[0];
+        if (!tch) { sm.fail(); return; }
+        let found = -1; let fdx = 0, fdy = 0, frot = 0, fscale = 1;
+        for (let k = 0; k < boxes.length; k++) {
+          const b = boxes[k];
+          if (Math.abs(tch.x - b.cx) <= b.hw && Math.abs(tch.y - b.cy) <= b.hh) { found = b.index; fdx = b.dx; fdy = b.dy; frot = b.rot; fscale = b.scale; break; }
+        }
+        if (found >= 0) {
+          activeSV.value = found;
+          baseTx.value = fdx; baseTy.value = fdy; ptrs.value = 1; didManip.value = false;
+          liveTx.value = fdx; liveTy.value = fdy; liveRot.value = frot; liveScale.value = fscale;
+          runOnJS(setActiveIndex)(found);
+          sm.activate();
+        } else {
+          sm.fail();
+        }
+      })
+      .onUpdate((e) => {
+        if (activeSV.value < 0) return;
+        if (e.numberOfPointers !== ptrs.value) {
+          ptrs.value = e.numberOfPointers;
+          baseTx.value = liveTx.value - e.translationX;
+          baseTy.value = liveTy.value - e.translationY;
+        }
+        liveTx.value = baseTx.value + e.translationX;
+        liveTy.value = baseTy.value + e.translationY;
+        if (Math.abs(e.translationX) + Math.abs(e.translationY) > 6) didManip.value = true;
+      })
+      .onFinalize(() => {
+        const idx = activeSV.value;
+        if (idx >= 0) {
+          if (didManip.value) { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
+          else { runOnJS(enterEditText)(idx); }
+        }
+        activeSV.value = -1;
+        didManip.value = false;
+        ptrs.value = 0;
+        runOnJS(setActiveIndex)(null);
+      });
+    const rotation = Gesture.Rotation()
+      .onStart(() => { baseRot.value = liveRot.value; })
+      .onUpdate((e) => {
+        if (activeSV.value < 0) return;
+        liveRot.value = baseRot.value + e.rotation;
+        didManip.value = true;
+      });
+    const pinch = Gesture.Pinch()
+      .onStart(() => { baseScale.value = liveScale.value; })
+      .onUpdate((e) => {
+        if (activeSV.value < 0) return;
+        liveScale.value = Math.max(0.4, Math.min(4, baseScale.value * e.scale));
+        didManip.value = true;
+      });
+    return Gesture.Simultaneous(pan, rotation, pinch);
+  }, [texts]);
   const cycleTextAlign = () => setTextAlignMode((m) => (m === 'center' ? 'left' : m === 'left' ? 'right' : 'center'));
   const cycleTextBg = () => setTextBg((m) => (m === 'none' ? 'white' : m === 'white' ? 'dim' : m === 'dim' ? 'black' : 'none'));
 
