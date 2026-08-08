@@ -12,6 +12,20 @@ export type DrawingDoc = {
   strokes: Array<{ color: string; width: number; d: string }>;
 };
 
+export type TextsDoc = {
+  items: Array<{
+    text: string;
+    color: string;
+    align: 'left' | 'center' | 'right';
+    bg: 'none' | 'white' | 'dim' | 'black';
+    font?: string;
+    nx: number;
+    ny: number;
+    size: number;
+    rot: number;
+  }>;
+};
+
 export async function sendImageMessage(params: {
   clinicId: string;
   patientId: string;
@@ -22,6 +36,7 @@ export async function sendImageMessage(params: {
   senderType?: 'clinic' | 'patient';
   caption?: string;
   drawing?: DrawingDoc | null;
+  texts?: TextsDoc | null;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -44,6 +59,7 @@ export async function sendImageMessage(params: {
     from,
     text: params.caption ?? '',
     drawing: params.drawing ?? null,
+    texts: params.texts ?? null,
     type: 'image',
     imageUrl,
     imageWidth: compressed.width,
@@ -65,6 +81,7 @@ export async function sendVideoMessage(params: {
   senderType?: 'clinic' | 'patient';
   caption?: string;
   drawing?: DrawingDoc | null;
+  texts?: TextsDoc | null;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -117,6 +134,7 @@ export async function sendVideoMessage(params: {
     from,
     text: params.caption ?? '',
     drawing: params.drawing ?? null,
+    texts: params.texts ?? null,
     type: 'video',
     videoUrl,
     storagePath,
