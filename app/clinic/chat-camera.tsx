@@ -188,6 +188,26 @@ function isWhitish(c?: string): boolean {
   return min >= 220 && (max - min) <= 18;
 }
 
+function parseRGB(c?: string): [number, number, number] | null {
+  if (!c) return null;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(c);
+  if (rgb) return [parseInt(rgb[1], 10), parseInt(rgb[2], 10), parseInt(rgb[3], 10)];
+  return null;
+}
+function lightenColor(c: string, f: number): string {
+  const p = parseRGB(c);
+  if (!p) return c;
+  const [r, g, b] = p;
+  const l = (v: number) => Math.round(v + (255 - v) * f);
+  return `rgb(${l(r)}, ${l(g)}, ${l(b)})`;
+}
+
 function DraggableText({ item, index, onChange, onEdit }: {
   item: { text: string; color: string; align: 'left' | 'center' | 'right'; bg: 'none' | 'white' | 'dim' | 'black'; font?: string; dx: number; dy: number; rot: number; scale: number };
   index: number;
@@ -220,8 +240,8 @@ function DraggableText({ item, index, onChange, onEdit }: {
     transform: [{ translateX: tx.value }, { translateY: ty.value }, { rotateZ: `${rot.value}rad` }, { scale: scale.value }] as any,
   }));
   const isWhiteColor = isWhitish(item.color);
-  const eff = item.bg === 'none' ? item.color : (item.bg === 'dim' || item.bg === 'white') ? (isWhiteColor ? '#000000' : item.color) : (item.bg === 'black' ? '#FFFFFF' : '#000000');
-  const bg = item.bg === 'white' ? '#FFFFFF' : item.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : item.bg === 'black' ? '#000000' : 'transparent';
+  const eff = item.bg === 'none' ? item.color : (item.bg === 'dim' || item.bg === 'white') ? (isWhiteColor ? '#000000' : item.color) : (item.bg === 'black' ? (isWhiteColor ? '#FFFFFF' : item.color) : '#000000');
+  const bg = item.bg === 'white' ? '#FFFFFF' : item.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : item.bg === 'black' ? (isWhiteColor ? '#000000' : lightenColor(item.color, 0.6)) : 'transparent';
   return (
     <GestureDetector gesture={composed}>
       <Animated.View style={[{
@@ -1272,8 +1292,8 @@ export default function ChatCameraScreen() {
             >
               <TextInput
                 style={[styles.textInputField, {
-                  color: textBg === 'none' ? textColor : (textBg === 'dim' || textBg === 'white') ? (isWhitish(textColor) ? '#000000' : textColor) : (textBg === 'black' ? '#FFFFFF' : '#000000'),
-                  backgroundColor: textBg === 'white' ? '#FFFFFF' : textBg === 'dim' ? (isWhitish(textColor) ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : textBg === 'black' ? '#000000' : 'transparent',
+                  color: textBg === 'none' ? textColor : (textBg === 'dim' || textBg === 'white') ? (isWhitish(textColor) ? '#000000' : textColor) : (textBg === 'black' ? (isWhitish(textColor) ? '#FFFFFF' : textColor) : '#000000'),
+                  backgroundColor: textBg === 'white' ? '#FFFFFF' : textBg === 'dim' ? (isWhitish(textColor) ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : textBg === 'black' ? (isWhitish(textColor) ? '#000000' : lightenColor(textColor, 0.6)) : 'transparent',
                   borderRadius: 12,
                   paddingHorizontal: textBg === 'none' ? 0 : 14,
                   paddingVertical: textBg === 'none' ? 0 : 6,

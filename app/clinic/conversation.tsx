@@ -177,6 +177,26 @@ function isWhitish(c?: string): boolean {
   return min >= 220 && (max - min) <= 18;
 }
 
+function parseRGB(c?: string): [number, number, number] | null {
+  if (!c) return null;
+  const hex = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(c);
+  if (hex) {
+    let h = hex[1];
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  }
+  const rgb = /^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i.exec(c);
+  if (rgb) return [parseInt(rgb[1], 10), parseInt(rgb[2], 10), parseInt(rgb[3], 10)];
+  return null;
+}
+function lightenColor(c: string, f: number): string {
+  const p = parseRGB(c);
+  if (!p) return c;
+  const [r, g, b] = p;
+  const l = (v: number) => Math.round(v + (255 - v) * f);
+  return `rgb(${l(r)}, ${l(g)}, ${l(b)})`;
+}
+
 function TextsOverlay({ items, bW, bH, offX, offY }: {
   items?: TextsDoc['items'];
   bW: number; bH: number; offX: number; offY: number;
@@ -187,8 +207,8 @@ function TextsOverlay({ items, bW, bH, offX, offY }: {
       {items.map((t, i) => {
         const fs = bW * t.size;
         const isWhiteColor = isWhitish(t.color);
-        const eff = t.bg === 'none' ? t.color : (t.bg === 'dim' || t.bg === 'white') ? (isWhiteColor ? '#000000' : t.color) : (t.bg === 'black' ? '#FFFFFF' : '#000000');
-        const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : t.bg === 'black' ? '#000000' : 'transparent';
+        const eff = t.bg === 'none' ? t.color : (t.bg === 'dim' || t.bg === 'white') ? (isWhiteColor ? '#000000' : t.color) : (t.bg === 'black' ? (isWhiteColor ? '#FFFFFF' : t.color) : '#000000');
+        const bg = t.bg === 'white' ? '#FFFFFF' : t.bg === 'dim' ? (isWhiteColor ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.4)') : t.bg === 'black' ? (isWhiteColor ? '#000000' : lightenColor(t.color, 0.6)) : 'transparent';
         return (
           <View key={`t_${i}`} style={{
             position: 'absolute',
