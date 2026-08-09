@@ -312,6 +312,7 @@ export default function ChatCameraScreen() {
   const [cropMode, setCropMode] = useState(false);
   const [cropActive, setCropActive] = useState(false);
   const [cropBusy, setCropBusy] = useState(false);
+  const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '9:16'>('free');
   const cScale = useSharedValue(1);
   const cTx = useSharedValue(0);
   const cTy = useSharedValue(0);
@@ -1101,9 +1102,16 @@ export default function ChatCameraScreen() {
   };
 
   const _cropAspect = (originalW > 0 ? originalW : SCREEN_WIDTH) / (originalH > 0 ? originalH : SCREEN_H);
-  const _contAspect = SCREEN_WIDTH / SCREEN_H;
   let cropBaseW = SCREEN_WIDTH, cropBaseH = SCREEN_H;
-  if (_cropAspect >= _contAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _cropAspect; } else { cropBaseH = SCREEN_H; cropBaseW = SCREEN_H * _cropAspect; }
+  if (cropRatio === 'free') {
+    const _contAspect = SCREEN_WIDTH / SCREEN_H;
+    if (_cropAspect >= _contAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _cropAspect; } else { cropBaseH = SCREEN_H; cropBaseW = SCREEN_H * _cropAspect; }
+  } else {
+    const _ratioAspect = cropRatio === '1:1' ? 1 : cropRatio === '4:5' ? (4 / 5) : (9 / 16);
+    const _availH = SCREEN_H - insets.top - insets.bottom - 200;
+    const _fitAspect = SCREEN_WIDTH / _availH;
+    if (_ratioAspect >= _fitAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _ratioAspect; } else { cropBaseH = _availH; cropBaseW = _availH * _ratioAspect; }
+  }
 
   const cropImgStyle = useAnimatedStyle(() => {
     const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
@@ -1575,6 +1583,21 @@ export default function ChatCameraScreen() {
                 <GestureDetector gesture={cropDial}>
                   <View style={StyleSheet.absoluteFill} />
                 </GestureDetector>
+              </View>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
+                {(['free', '1:1', '4:5', '9:16'] as const).map((r) => {
+                  const on = cropRatio === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      onPress={() => { if (cropRatio !== r) { setCropRatio(r); resetCrop(); } }}
+                      hitSlop={6}
+                      style={{ paddingHorizontal: 14, paddingVertical: 7, marginHorizontal: 5, borderRadius: 16, backgroundColor: on ? BRAND.blue : 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: on ? BRAND.blue : 'rgba(255,255,255,0.25)' }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: on ? '800' : '600', fontSize: 13 }}>{r === 'free' ? 'Free' : r}</Text>
+                    </Pressable>
+                  );
+                })}
               </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
                 <Pressable onPress={() => setCropMode(false)} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
