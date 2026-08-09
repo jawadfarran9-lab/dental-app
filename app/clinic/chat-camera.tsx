@@ -38,6 +38,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Circle, Defs, G, Line, LinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
+import EmojiPicker from 'rn-emoji-keyboard';
 import { BRAND } from '@/src/theme/brand';
 
 const CAPTURE_OUTER = 80;
@@ -337,6 +338,7 @@ export default function ChatCameraScreen() {
   const rotSnappedSV = useSharedValue(false);
   const [guideX, setGuideX] = useState(false);
   const [guideY, setGuideY] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const activeSV = useSharedValue(-1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
@@ -826,6 +828,7 @@ export default function ChatCameraScreen() {
   const grabHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
 
   const deleteText = (i: number) => setTexts((prev) => prev.filter((_, idx) => idx !== i));
+  const addSticker = (emoji: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTexts((prev) => [...prev, { text: emoji, color: '#FFFFFF', align: 'center' as const, bg: 'none' as const, font: undefined, dx: 0, dy: 0, rot: 0, scale: 2 }]); };
   const trashHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
   const snapHaptic = () => { Haptics.selectionAsync(); };
 
@@ -833,7 +836,20 @@ export default function ChatCameraScreen() {
     const pan = Gesture.Pan()
       .manualActivation(true)
       .onTouchesDown((e, sm) => {
-        if (activeSV.value >= 0) return;
+        if (activeSV.value >= 0) {
+          if (e.allTouches.length > 1) return;
+          activeSV.value = -1;
+          didManip.value = false;
+          ptrs.value = 0;
+          overTrashSV.value = false;
+          guideXSV.value = false;
+          guideYSV.value = false;
+          rotSnappedSV.value = false;
+          runOnJS(setActiveIndex)(null);
+          runOnJS(setOverTrash)(false);
+          runOnJS(setGuideX)(false);
+          runOnJS(setGuideY)(false);
+        }
         const boxes = hitBoxesSV.value;
         const tch = e.changedTouches[0];
         if (!tch) { sm.fail(); return; }
@@ -1385,12 +1401,22 @@ export default function ChatCameraScreen() {
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
-                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></View>
+                <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
                 <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="pencil" size={18} color="#FFFFFF" /></Pressable>
               </View>
             </View>
           )}
+          <EmojiPicker
+            open={emojiOpen}
+            onClose={() => setEmojiOpen(false)}
+            onEmojiSelected={(e) => { setEmojiOpen(false); addSticker(e.emoji); }}
+            expandable
+            enableSearchBar
+            enableRecentlyUsed
+            categoryPosition="top"
+            theme={{ knob: '#FFFFFF', container: '#1c1c1e', header: '#FFFFFF', category: { icon: '#9aa0a6', iconActive: '#FFFFFF', container: '#2c2c2e', containerActive: '#3a3a3c' } }}
+          />
 
           {!drawMode && !textMode && (
             <KeyboardAvoidingView
