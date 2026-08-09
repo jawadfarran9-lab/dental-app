@@ -339,6 +339,42 @@ export default function ChatCameraScreen() {
   const [guideX, setGuideX] = useState(false);
   const [guideY, setGuideY] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const textsRef = useRef(texts); textsRef.current = texts;
+  const strokesRef = useRef(strokes); strokesRef.current = strokes;
+  const pastRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
+  const futureRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const takeSnapshot = () => ({
+    texts: textsRef.current.map((t) => ({ ...t })),
+    strokes: strokesRef.current.map((s) => ({ color: s.color, width: s.width, points: s.points.map((p) => ({ x: p.x, y: p.y })) })),
+  });
+  const pushHistory = () => {
+    pastRef.current.push(takeSnapshot());
+    if (pastRef.current.length > 40) pastRef.current.shift();
+    futureRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  };
+  const clearHistory = () => { pastRef.current = []; futureRef.current = []; setCanUndo(false); setCanRedo(false); };
+  const undo = () => {
+    if (pastRef.current.length === 0) return;
+    futureRef.current.push(takeSnapshot());
+    const prev = pastRef.current.pop()!;
+    setTexts(prev.texts);
+    setStrokes(prev.strokes);
+    setCanUndo(pastRef.current.length > 0);
+    setCanRedo(true);
+  };
+  const redo = () => {
+    if (futureRef.current.length === 0) return;
+    pastRef.current.push(takeSnapshot());
+    const next = futureRef.current.pop()!;
+    setTexts(next.texts);
+    setStrokes(next.strokes);
+    setCanRedo(futureRef.current.length > 0);
+    setCanUndo(true);
+  };
   const activeSV = useSharedValue(-1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
@@ -673,6 +709,7 @@ export default function ChatCameraScreen() {
       setDrawMode(false);
       setTextMode(false);
       setTexts([]);
+      clearHistory();
       setTextValue('');
       setTextAlignMode('center');
       setTextBg('none');
@@ -702,6 +739,7 @@ export default function ChatCameraScreen() {
     setDrawMode(false);
     setTextMode(false);
     setTexts([]);
+    clearHistory();
     setTextValue('');
     setTextAlignMode('center');
     setTextBg('none');
@@ -724,6 +762,7 @@ export default function ChatCameraScreen() {
   };
   const endStroke = () => {
     if (currentPtsRef.current.length > 0) {
+      pushHistory();
       const pts = currentPtsRef.current.slice();
       setStrokes((prev) => [...prev, { color: penColorRef.current, width: PEN_WIDTH, points: pts }]);
     }
@@ -794,6 +833,7 @@ export default function ChatCameraScreen() {
   };
   const commitText = () => {
     const t = textValue.trim();
+    if (editingIndex !== null || t) pushHistory();
     if (editingIndex !== null) {
       setTexts((prev) => {
         if (!t) return prev.filter((_, idx) => idx !== editingIndex);
@@ -807,8 +847,10 @@ export default function ChatCameraScreen() {
     setShowTextColorSlider(false);
     setTextMode(false);
   };
-  const changeText = (i: number, dx: number, dy: number, rot: number, scale: number) =>
+  const changeText = (i: number, dx: number, dy: number, rot: number, scale: number) => {
+    pushHistory();
     setTexts((prev) => prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t)));
+  };
 
   const rebuildHitBoxes = () => {
     const boxes: { index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[] = [];
@@ -827,8 +869,8 @@ export default function ChatCameraScreen() {
 
   const grabHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
 
-  const deleteText = (i: number) => setTexts((prev) => prev.filter((_, idx) => idx !== i));
-  const addSticker = (emoji: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setTexts((prev) => [...prev, { text: emoji, color: '#FFFFFF', align: 'center' as const, bg: 'none' as const, font: undefined, dx: 0, dy: 0, rot: 0, scale: 2 }]); };
+  const deleteText = (i: number) => { pushHistory(); setTexts((prev) => prev.filter((_, idx) => idx !== i)); };
+  const addSticker = (emoji: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); pushHistory(); setTexts((prev) => [...prev, { text: emoji, color: '#FFFFFF', align: 'center' as const, bg: 'none' as const, font: undefined, dx: 0, dy: 0, rot: 0, scale: 2 }]); };
   const trashHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
   const snapHaptic = () => { Haptics.selectionAsync(); };
 
@@ -1069,6 +1111,7 @@ export default function ChatCameraScreen() {
         setDrawMode(false);
         setTextMode(false);
         setTexts([]);
+        clearHistory();
         setTextValue('');
         setTextAlignMode('center');
         setTextBg('none');
@@ -1407,6 +1450,12 @@ export default function ChatCameraScreen() {
               </View>
             </View>
           )}
+          {!drawMode && !textMode && (canUndo || canRedo) && (
+            <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 54, left: 12, flexDirection: 'row', gap: 8 }}>
+              <Pressable onPress={undo} disabled={!canUndo} style={[styles.previewIconBtn, { opacity: canUndo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-undo" size={20} color="#FFFFFF" /></Pressable>
+              <Pressable onPress={redo} disabled={!canRedo} style={[styles.previewIconBtn, { opacity: canRedo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-redo" size={20} color="#FFFFFF" /></Pressable>
+            </View>
+          )}
           <EmojiPicker
             open={emojiOpen}
             onClose={() => setEmojiOpen(false)}
@@ -1476,8 +1525,11 @@ export default function ChatCameraScreen() {
                 <Ionicons name="checkmark" size={26} color="#FFFFFF" />
               </Pressable>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                <Pressable onPress={handleUndo} style={styles.drawIconBtn} hitSlop={8}>
+                <Pressable onPress={undo} disabled={!canUndo} style={[styles.drawIconBtn, { opacity: canUndo ? 1 : 0.4 }]} hitSlop={8}>
                   <Ionicons name="arrow-undo" size={22} color="#FFFFFF" />
+                </Pressable>
+                <Pressable onPress={redo} disabled={!canRedo} style={[styles.drawIconBtn, { opacity: canRedo ? 1 : 0.4 }]} hitSlop={8}>
+                  <Ionicons name="arrow-redo" size={22} color="#FFFFFF" />
                 </Pressable>
                 <View style={styles.drawPenActive}>
                   <Ionicons name="pencil" size={20} color="#FFFFFF" />
