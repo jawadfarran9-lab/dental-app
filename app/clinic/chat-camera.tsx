@@ -313,6 +313,10 @@ export default function ChatCameraScreen() {
   const [cropActive, setCropActive] = useState(false);
   const [cropBusy, setCropBusy] = useState(false);
   const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '9:16'>('free');
+  const [basePhotoUri, setBasePhotoUri] = useState<string | null>(null);
+  const [basePhotoW, setBasePhotoW] = useState(0);
+  const [basePhotoH, setBasePhotoH] = useState(0);
+  const [cQuarter, setCQuarter] = useState(0);
   const cScale = useSharedValue(1);
   const cTx = useSharedValue(0);
   const cTy = useSharedValue(0);
@@ -750,6 +754,10 @@ export default function ChatCameraScreen() {
       setOriginalUri(photo.uri);
       setOriginalW(photo.width ?? 0);
       setOriginalH(photo.height ?? 0);
+      setBasePhotoUri(photo.uri);
+      setBasePhotoW(photo.width ?? 0);
+      setBasePhotoH(photo.height ?? 0);
+      setCQuarter(0);
       cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
       setPreviewUri(photo.uri);
     } catch (err) {
@@ -1164,6 +1172,41 @@ export default function ChatCameraScreen() {
     .onEnd(() => { runOnJS(setCropActive)(false); cGrid.value = withTiming(0, { duration: 260 }); }), []);
   const enterCrop = () => { setCropActive(false); setCropMode(true); };
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
+  const handleRotate90 = async () => {
+    if (cropBusy) return;
+    const src = basePhotoUri ?? originalUri ?? previewUri;
+    if (!src) return;
+    const q = (cQuarter + 1) % 4;
+    setCropBusy(true);
+    try {
+      if (q === 0) {
+        setOriginalUri(basePhotoUri ?? src);
+        setOriginalW(basePhotoW);
+        setOriginalH(basePhotoH);
+      } else {
+        const res = await manipulateAsync(basePhotoUri ?? src, [{ rotate: q * 90 }], { compress: 1, format: SaveFormat.JPEG });
+        setOriginalUri(res.uri);
+        setOriginalW(res.width);
+        setOriginalH(res.height);
+      }
+      setCQuarter(q);
+      resetCrop();
+    } catch (err) {
+      console.error('[chat-camera] rotate90 error', err);
+      Alert.alert('Rotate failed', 'Please try again.');
+    } finally {
+      setCropBusy(false);
+    }
+  };
+  const resetCropAll = () => {
+    if (basePhotoUri) {
+      setOriginalUri(basePhotoUri);
+      setOriginalW(basePhotoW);
+      setOriginalH(basePhotoH);
+    }
+    setCQuarter(0);
+    resetCrop();
+  };
   const commitCrop = async () => {
     if (!previewUri || cropBusy) return;
     setCropBusy(true);
@@ -1587,6 +1630,11 @@ export default function ChatCameraScreen() {
                   <View style={StyleSheet.absoluteFill} />
                 </GestureDetector>
               </View>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 12, height: 34, justifyContent: 'center' }} pointerEvents="box-none">
+                <Pressable onPress={handleRotate90} disabled={cropBusy} hitSlop={6} style={[styles.drawIconBtn, { width: 34, height: 34, borderRadius: 17, opacity: cropBusy ? 0.4 : 1 }]}>
+                  <MaterialIcons name="crop-rotate" size={18} color="#FFFFFF" />
+                </Pressable>
+              </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
                 {(['free', '1:1', '4:5', '9:16'] as const).map((r) => {
                   const on = cropRatio === r;
@@ -1604,7 +1652,7 @@ export default function ChatCameraScreen() {
               </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
                 <Pressable onPress={() => setCropMode(false)} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
-                <Pressable onPress={resetCrop} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
+                <Pressable onPress={resetCropAll} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
                 <Pressable onPress={commitCrop} disabled={cropBusy} style={[styles.drawDoneBtn, { opacity: cropBusy ? 0.5 : 1 }]} hitSlop={8}><Ionicons name="checkmark" size={26} color="#FFFFFF" /></Pressable>
               </View>
             </View>
