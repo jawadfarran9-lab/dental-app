@@ -332,6 +332,11 @@ export default function ChatCameraScreen() {
   const didManip = useSharedValue(false);
   const overTrashSV = useSharedValue(false);
   const [overTrash, setOverTrash] = useState(false);
+  const guideXSV = useSharedValue(false);
+  const guideYSV = useSharedValue(false);
+  const rotSnappedSV = useSharedValue(false);
+  const [guideX, setGuideX] = useState(false);
+  const [guideY, setGuideY] = useState(false);
   const activeSV = useSharedValue(-1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
@@ -822,6 +827,7 @@ export default function ChatCameraScreen() {
 
   const deleteText = (i: number) => setTexts((prev) => prev.filter((_, idx) => idx !== i));
   const trashHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
+  const snapHaptic = () => { Haptics.selectionAsync(); };
 
   const manipGesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -854,9 +860,17 @@ export default function ChatCameraScreen() {
           baseTx.value = liveTx.value - e.translationX;
           baseTy.value = liveTy.value - e.translationY;
         }
-        liveTx.value = baseTx.value + e.translationX;
-        liveTy.value = baseTy.value + e.translationY;
+        let vx = baseTx.value + e.translationX;
+        let vy = baseTy.value + e.translationY;
+        const snapX = Math.abs(vx) < 12;
+        const snapY = Math.abs(vy) < 12;
+        if (snapX) vx = 0;
+        if (snapY) vy = 0;
+        liveTx.value = vx;
+        liveTy.value = vy;
         if (Math.abs(e.translationX) + Math.abs(e.translationY) > 6) didManip.value = true;
+        if (snapX !== guideXSV.value) { guideXSV.value = snapX; runOnJS(setGuideX)(snapX); if (snapX) { runOnJS(snapHaptic)(); } }
+        if (snapY !== guideYSV.value) { guideYSV.value = snapY; runOnJS(setGuideY)(snapY); if (snapY) { runOnJS(snapHaptic)(); } }
         const dxT = e.absoluteX - TRASH_CX, dyT = e.absoluteY - TRASH_CY;
         const overNow = (dxT * dxT + dyT * dyT) < (TRASH_R * TRASH_R);
         if (overNow !== overTrashSV.value) {
@@ -876,15 +890,24 @@ export default function ChatCameraScreen() {
         didManip.value = false;
         ptrs.value = 0;
         overTrashSV.value = false;
+        guideXSV.value = false;
+        guideYSV.value = false;
+        rotSnappedSV.value = false;
         runOnJS(setOverTrash)(false);
+        runOnJS(setGuideX)(false);
+        runOnJS(setGuideY)(false);
         runOnJS(setActiveIndex)(null);
       });
     const rotation = Gesture.Rotation()
       .onStart(() => { baseRot.value = liveRot.value; })
       .onUpdate((e) => {
         if (activeSV.value < 0) return;
-        liveRot.value = baseRot.value + e.rotation;
+        const raw = baseRot.value + e.rotation;
+        const nearest = Math.round(raw / (Math.PI / 2)) * (Math.PI / 2);
+        const snapped = Math.abs(raw - nearest) < 0.12;
+        liveRot.value = snapped ? nearest : raw;
         didManip.value = true;
+        if (snapped !== rotSnappedSV.value) { rotSnappedSV.value = snapped; if (snapped) { runOnJS(snapHaptic)(); } }
       });
     const pinch = Gesture.Pinch()
       .onStart(() => { baseScale.value = liveScale.value; })
@@ -1339,6 +1362,12 @@ export default function ChatCameraScreen() {
             <View pointerEvents="none" style={{ position: 'absolute', left: TRASH_CX - 32, top: TRASH_CY - 32, width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: overTrash ? 'rgba(255,59,48,0.92)' : 'rgba(0,0,0,0.45)', transform: [{ scale: overTrash ? 1.18 : 1 }] }}>
               <Ionicons name="trash" size={28} color="#FFFFFF" />
             </View>
+          )}
+          {guideX && activeIndex !== null && !textMode && (
+            <View pointerEvents="none" style={{ position: 'absolute', left: SCREEN_WIDTH / 2 - 0.75, top: 0, bottom: 0, width: 1.5, backgroundColor: 'rgba(80,200,255,0.95)' }} />
+          )}
+          {guideY && activeIndex !== null && !textMode && (
+            <View pointerEvents="none" style={{ position: 'absolute', top: SCREEN_H / 2 - 0.75, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(80,200,255,0.95)' }} />
           )}
 
           {drawMode && (
