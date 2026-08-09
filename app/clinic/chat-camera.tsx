@@ -1183,6 +1183,47 @@ export default function ChatCameraScreen() {
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
   const handleRotate90 = async () => {
     if (cropBusy) return;
+    if (cropFromPreview) {
+      if (!previewUri) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCropBusy(true);
+      try {
+        const oldW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
+        const oldH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
+        const res = await manipulateAsync(previewUri, [{ rotate: 90 }], { compress: 1, format: SaveFormat.JPEG });
+        if (texts.length > 0 || strokes.length > 0) {
+          const ob = boxFor(oldW, oldH);
+          const nb = boxFor(res.width, res.height);
+          const M = (nb.baseW * oldW) / (ob.baseW * (res.width || 1));
+          const mapPt = (sx: number, sy: number) => {
+            const nx = (sx - ob.offX) / ob.baseW;
+            const ny = (sy - ob.offY) / ob.baseH;
+            const px = nx * oldW, py = ny * oldH;
+            const rpx = oldH - py, rpy = px;
+            const nnx = rpx / (res.width || 1), nny = rpy / (res.height || 1);
+            return { x: nb.offX + nnx * nb.baseW, y: nb.offY + nny * nb.baseH };
+          };
+          const rt = texts.map((t) => {
+            const p = mapPt(SCREEN_WIDTH / 2 + t.dx, SCREEN_H / 2 + t.dy);
+            return { ...t, dx: p.x - SCREEN_WIDTH / 2, dy: p.y - SCREEN_H / 2, scale: t.scale * M, rot: t.rot + Math.PI / 2 };
+          });
+          const rs = strokes.map((s) => ({ ...s, width: s.width * M, points: s.points.map((pt) => mapPt(pt.x, pt.y)) }));
+          setTexts(rt);
+          setStrokes(rs);
+          clearHistory();
+        }
+        setPreviewUri(res.uri);
+        setPrevMediaW(res.width);
+        setPrevMediaH(res.height);
+        resetCrop();
+      } catch (err) {
+        console.error('[chat-camera] rotate90 (preview) error', err);
+        Alert.alert('Rotate failed', 'Please try again.');
+      } finally {
+        setCropBusy(false);
+      }
+      return;
+    }
     const src = basePhotoUri ?? originalUri ?? previewUri;
     if (!src) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
