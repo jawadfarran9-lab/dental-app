@@ -372,6 +372,7 @@ export default function ChatCameraScreen() {
   const strokesRef = useRef(strokes); strokesRef.current = strokes;
   const pastRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
   const futureRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
+  const preCropSnapRef = useRef<{ uri: string | null; w: number; h: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const takeSnapshot = () => ({
@@ -759,6 +760,7 @@ export default function ChatCameraScreen() {
       setBasePhotoW(photo.width ?? 0);
       setBasePhotoH(photo.height ?? 0);
       setCQuarter(0);
+      preCropSnapRef.current = null;
       cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
       setPreviewUri(photo.uri);
     } catch (err) {
@@ -1176,7 +1178,18 @@ export default function ChatCameraScreen() {
   const enterCrop = () => {
     const fromPrev = texts.length > 0 || strokes.length > 0;
     setCropFromPreview(fromPrev);
-    if (fromPrev) { cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0); }
+    if (fromPrev) {
+      if (!preCropSnapRef.current) {
+        preCropSnapRef.current = {
+          uri: previewUri,
+          w: prevMediaW,
+          h: prevMediaH,
+          texts: texts.slice(),
+          strokes: strokes.map((s) => ({ ...s, points: s.points.slice() })),
+        };
+      }
+      cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
+    }
     setCropActive(false);
     setCropMode(true);
   };
@@ -1250,7 +1263,27 @@ export default function ChatCameraScreen() {
     }
   };
   const resetCropAll = () => {
-    if (!cropFromPreview && basePhotoUri) {
+    if (cropFromPreview) {
+      const snap = preCropSnapRef.current;
+      if (snap) {
+        setPreviewUri(snap.uri);
+        setPrevMediaW(snap.w);
+        setPrevMediaH(snap.h);
+        setTexts(snap.texts);
+        setStrokes(snap.strokes);
+      }
+      if (basePhotoUri) {
+        setOriginalUri(basePhotoUri);
+        setOriginalW(basePhotoW);
+        setOriginalH(basePhotoH);
+        setCQuarter(0);
+      }
+      clearHistory();
+      resetCrop();
+      setCropMode(false);
+      return;
+    }
+    if (basePhotoUri) {
       setOriginalUri(basePhotoUri);
       setOriginalW(basePhotoW);
       setOriginalH(basePhotoH);
