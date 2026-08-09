@@ -207,6 +207,9 @@ const generateDialTicks = (): TickMark[] => {
 };
 const DIAL_TICKS = generateDialTicks();
 
+const CROP_DIAL_TICKS = Array.from({ length: 19 }, (_, i) => -45 + i * 5);
+const CROP_DIAL_PX_PER_DEG = 6;
+
 const zoomToDisplayLabel = (z: number): string => {
   const multiplier = Math.max(z, 0) * (MAX_ZOOM_RATIO - 1) + 1;
   if (multiplier >= 10) return Math.round(multiplier).toString();
@@ -315,6 +318,10 @@ export default function ChatCameraScreen() {
   const cBaseScale = useSharedValue(1);
   const cBaseTx = useSharedValue(0);
   const cBaseTy = useSharedValue(0);
+  const cAngle = useSharedValue(0);
+  const cBaseAngle = useSharedValue(0);
+  const cWasZero = useSharedValue(true);
+  const [cAngleDeg, setCAngleDeg] = useState(0);
   const [strokes, setStrokes] = useState<{ color: string; width: number; points: { x: number; y: number }[] }[]>([]);
   const [currentD, setCurrentD] = useState('');
   const currentPtsRef = useRef<{ x: number; y: number }[]>([]);
@@ -741,7 +748,7 @@ export default function ChatCameraScreen() {
       setOriginalUri(photo.uri);
       setOriginalW(photo.width ?? 0);
       setOriginalH(photo.height ?? 0);
-      cScale.value = 1; cTx.value = 0; cTy.value = 0;
+      cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[chat-camera] capture error', err);
@@ -1097,12 +1104,21 @@ export default function ChatCameraScreen() {
   let cropBaseW = SCREEN_WIDTH, cropBaseH = SCREEN_H;
   if (_cropAspect >= _contAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _cropAspect; } else { cropBaseH = SCREEN_H; cropBaseW = SCREEN_H * _cropAspect; }
 
-  const cropImgStyle = useAnimatedStyle(() => ({ transform: [{ translateX: cTx.value }, { translateY: cTy.value }, { scale: cScale.value }] as any }));
+  const cropImgStyle = useAnimatedStyle(() => {
+    const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+    const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+    const sEff = cScale.value * cover;
+    return { transform: [{ translateX: cTx.value }, { translateY: cTy.value }, { rotateZ: `${cAngle.value}rad` }, { scale: sEff }] as any };
+  }, [cropBaseW, cropBaseH]);
+  const dialTicksStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -(cAngle.value * 180 / Math.PI) * CROP_DIAL_PX_PER_DEG }] as any }));
   const cropPan = useMemo(() => Gesture.Pan()
     .onStart(() => { cBaseTx.value = cTx.value; cBaseTy.value = cTy.value; runOnJS(setCropActive)(true); })
     .onUpdate((e) => {
-      const maxX = (cropBaseW * (cScale.value - 1)) / 2;
-      const maxY = (cropBaseH * (cScale.value - 1)) / 2;
+      const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = cScale.value * cover;
+      const maxX = (cropBaseW * (sEff - 1)) / 2;
+      const maxY = (cropBaseH * (sEff - 1)) / 2;
       cTx.value = Math.max(-maxX, Math.min(maxX, cBaseTx.value + e.translationX));
       cTy.value = Math.max(-maxY, Math.min(maxY, cBaseTy.value + e.translationY));
     })
@@ -1111,31 +1127,54 @@ export default function ChatCameraScreen() {
     .onStart(() => { cBaseScale.value = cScale.value; runOnJS(setCropActive)(true); })
     .onUpdate((e) => { cScale.value = Math.max(1, Math.min(6, cBaseScale.value * e.scale)); })
     .onEnd(() => {
-      const maxX = (cropBaseW * (cScale.value - 1)) / 2;
-      const maxY = (cropBaseH * (cScale.value - 1)) / 2;
+      const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = cScale.value * cover;
+      const maxX = (cropBaseW * (sEff - 1)) / 2;
+      const maxY = (cropBaseH * (sEff - 1)) / 2;
       cTx.value = Math.max(-maxX, Math.min(maxX, cTx.value));
       cTy.value = Math.max(-maxY, Math.min(maxY, cTy.value));
       runOnJS(setCropActive)(false);
     }), [cropBaseW, cropBaseH]);
   const cropGesture = useMemo(() => Gesture.Simultaneous(cropPan, cropPinch), [cropPan, cropPinch]);
+  const cropDial = useMemo(() => Gesture.Pan()
+    .onStart(() => { cBaseAngle.value = cAngle.value; runOnJS(setCropActive)(true); })
+    .onUpdate((e) => {
+      const degPerPx = 90 / SCREEN_WIDTH;
+      let deg = (cBaseAngle.value * 180 / Math.PI) + e.translationX * degPerPx;
+      deg = Math.max(-45, Math.min(45, deg));
+      const isZero = Math.abs(deg) < 1.2;
+      if (isZero) deg = 0;
+      if (isZero && !cWasZero.value) { runOnJS(snapHaptic)(); }
+      cWasZero.value = isZero;
+      cAngle.value = (deg * Math.PI) / 180;
+      runOnJS(setCAngleDeg)(Math.round(deg));
+    })
+    .onEnd(() => { runOnJS(setCropActive)(false); }), []);
   const enterCrop = () => { setCropActive(false); setCropMode(true); };
-  const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); };
+  const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
   const commitCrop = async () => {
     if (!previewUri || cropBusy) return;
     setCropBusy(true);
     try {
-      const s = cScale.value, tx = cTx.value, ty = cTy.value;
+      const scaleU = cScale.value, tx = cTx.value, ty = cTy.value, ang = cAngle.value;
       const mediaW = originalW > 0 ? originalW : SCREEN_WIDTH;
       const mediaH = originalH > 0 ? originalH : SCREEN_H;
-      let nx = ((s - 1) / 2 - tx / cropBaseW) / s;
-      let ny = ((s - 1) / 2 - ty / cropBaseH) / s;
-      nx = Math.max(0, Math.min(1 - 1 / s, nx));
-      ny = Math.max(0, Math.min(1 - 1 / s, ny));
-      const originX = Math.round(nx * mediaW);
-      const originY = Math.round(ny * mediaH);
-      const cw = Math.max(1, Math.round(mediaW / s));
-      const ch = Math.max(1, Math.round(mediaH / s));
-      const res = await manipulateAsync(originalUri ?? previewUri, [{ crop: { originX, originY, width: cw, height: ch } }], { compress: 1, format: SaveFormat.JPEG });
+      const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = scaleU * cover;
+      const RW = mediaW * c + mediaH * sn;
+      const RH = mediaW * sn + mediaH * c;
+      const dInv = mediaW / (cropBaseW * sEff);
+      const cw = mediaW / sEff;
+      const ch = mediaH / sEff;
+      let originX = RW / 2 - tx * dInv - cw / 2;
+      let originY = RH / 2 - ty * dInv - ch / 2;
+      originX = Math.max(0, Math.min(RW - cw, originX));
+      originY = Math.max(0, Math.min(RH - ch, originY));
+      const cropAction = { crop: { originX: Math.round(originX), originY: Math.round(originY), width: Math.max(1, Math.round(cw)), height: Math.max(1, Math.round(ch)) } };
+      const actions: any[] = ang !== 0 ? [{ rotate: (ang * 180) / Math.PI }, cropAction] : [cropAction];
+      const res = await manipulateAsync(originalUri ?? previewUri, actions, { compress: 1, format: SaveFormat.JPEG });
       setPreviewUri(res.uri);
       setPrevMediaW(res.width);
       setPrevMediaH(res.height);
@@ -1522,6 +1561,20 @@ export default function ChatCameraScreen() {
                   )}
                 </View>
               </GestureDetector>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 74, left: 0, right: 0, height: 54 }} pointerEvents="box-none">
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 12, left: 0, width: SCREEN_WIDTH, height: 34 }, dialTicksStyle]}>
+                  {CROP_DIAL_TICKS.map((deg) => (
+                    <View key={deg} style={{ position: 'absolute', left: SCREEN_WIDTH / 2 + deg * CROP_DIAL_PX_PER_DEG - 6, top: 0, width: 12, alignItems: 'center' }}>
+                      <View style={{ width: 1, height: deg % 10 === 0 ? 16 : 9, backgroundColor: '#FFFFFF' }} />
+                      {deg % 10 === 0 ? <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>{deg}</Text> : null}
+                    </View>
+                  ))}
+                </Animated.View>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 4, left: SCREEN_WIDTH / 2 - 5, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: BRAND.blue }} />
+                <GestureDetector gesture={cropDial}>
+                  <View style={StyleSheet.absoluteFill} />
+                </GestureDetector>
+              </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
                 <Pressable onPress={() => setCropMode(false)} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={resetCrop} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
