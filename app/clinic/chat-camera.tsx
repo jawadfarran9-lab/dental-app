@@ -157,6 +157,9 @@ const SCREEN_H = Dimensions.get('window').height;
 const TRASH_CX = SCREEN_WIDTH / 2;
 const TRASH_CY = SCREEN_H - 130;
 const TRASH_R = 56;
+const BACK_CX = SCREEN_WIDTH / 2;
+const BACK_CY = 150;
+const BACK_R = 56;
 const DIAL_WIDTH = SCREEN_WIDTH * 0.85;
 const DIAL_HEIGHT = 48;
 const DIAL_ARC_RADIUS = SCREEN_WIDTH * 1.2;
@@ -333,6 +336,8 @@ export default function ChatCameraScreen() {
   const didManip = useSharedValue(false);
   const overTrashSV = useSharedValue(false);
   const [overTrash, setOverTrash] = useState(false);
+  const overBackSV = useSharedValue(false);
+  const [overBack, setOverBack] = useState(false);
   const guideXSV = useSharedValue(false);
   const guideYSV = useSharedValue(false);
   const rotSnappedSV = useSharedValue(false);
@@ -851,6 +856,24 @@ export default function ChatCameraScreen() {
     pushHistory();
     setTexts((prev) => prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t)));
   };
+  const bringToFront = (i: number, dx: number, dy: number, rot: number, scale: number) => {
+    pushHistory();
+    setTexts((prev) => {
+      const upd = prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t));
+      if (i >= upd.length - 1) return upd;
+      const item = upd[i];
+      return [...upd.slice(0, i), ...upd.slice(i + 1), item];
+    });
+  };
+  const sendToBack = (i: number, dx: number, dy: number, rot: number, scale: number) => {
+    pushHistory();
+    setTexts((prev) => {
+      const upd = prev.map((t, idx) => (idx === i ? { ...t, dx, dy, rot, scale } : t));
+      if (i === 0) return upd;
+      const item = upd[i];
+      return [item, ...upd.slice(0, i), ...upd.slice(i + 1)];
+    });
+  };
 
   const rebuildHitBoxes = () => {
     const boxes: { index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[] = [];
@@ -884,11 +907,13 @@ export default function ChatCameraScreen() {
           didManip.value = false;
           ptrs.value = 0;
           overTrashSV.value = false;
+          overBackSV.value = false;
           guideXSV.value = false;
           guideYSV.value = false;
           rotSnappedSV.value = false;
           runOnJS(setActiveIndex)(null);
           runOnJS(setOverTrash)(false);
+          runOnJS(setOverBack)(false);
           runOnJS(setGuideX)(false);
           runOnJS(setGuideY)(false);
         }
@@ -936,22 +961,35 @@ export default function ChatCameraScreen() {
           runOnJS(setOverTrash)(overNow);
           if (overNow) { runOnJS(trashHaptic)(); }
         }
+        const dxB = e.absoluteX - BACK_CX, dyB = e.absoluteY - BACK_CY;
+        const overBackNow = (dxB * dxB + dyB * dyB) < (BACK_R * BACK_R);
+        if (overBackNow !== overBackSV.value) {
+          overBackSV.value = overBackNow;
+          runOnJS(setOverBack)(overBackNow);
+          if (overBackNow) { runOnJS(trashHaptic)(); }
+        }
       })
       .onFinalize(() => {
         const idx = activeSV.value;
         if (idx >= 0) {
-          if (overTrashSV.value) { runOnJS(deleteText)(idx); }
-          else if (didManip.value) { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
-          else { runOnJS(enterEditText)(idx); }
+          if (didManip.value) {
+            if (overTrashSV.value) { runOnJS(deleteText)(idx); }
+            else if (overBackSV.value) { runOnJS(sendToBack)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
+            else { runOnJS(bringToFront)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
+          } else {
+            runOnJS(enterEditText)(idx);
+          }
         }
         activeSV.value = -1;
         didManip.value = false;
         ptrs.value = 0;
         overTrashSV.value = false;
+        overBackSV.value = false;
         guideXSV.value = false;
         guideYSV.value = false;
         rotSnappedSV.value = false;
         runOnJS(setOverTrash)(false);
+        runOnJS(setOverBack)(false);
         runOnJS(setGuideX)(false);
         runOnJS(setGuideY)(false);
         runOnJS(setActiveIndex)(null);
@@ -1420,6 +1458,11 @@ export default function ChatCameraScreen() {
           {activeIndex !== null && !textMode && (
             <View pointerEvents="none" style={{ position: 'absolute', left: TRASH_CX - 32, top: TRASH_CY - 32, width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: overTrash ? 'rgba(255,59,48,0.92)' : 'rgba(0,0,0,0.45)', transform: [{ scale: overTrash ? 1.18 : 1 }] }}>
               <Ionicons name="trash" size={28} color="#FFFFFF" />
+            </View>
+          )}
+          {activeIndex !== null && !textMode && (
+            <View pointerEvents="none" style={{ position: 'absolute', left: BACK_CX - 32, top: BACK_CY - 32, width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: overBack ? 'rgba(61,158,255,0.92)' : 'rgba(0,0,0,0.45)', transform: [{ scale: overBack ? 1.18 : 1 }] }}>
+              <Ionicons name="layers-outline" size={26} color="#FFFFFF" />
             </View>
           )}
           {guideX && activeIndex !== null && !textMode && (
