@@ -1176,9 +1176,12 @@ export default function ChatCameraScreen() {
       const sEff = scaleU * cover;
       const RW = mediaW * c + mediaH * sn;
       const RH = mediaW * sn + mediaH * c;
-      const dInv = mediaW / (cropBaseW * sEff);
-      const cw = mediaW / sEff;
-      const ch = mediaH / sEff;
+      const frameAsp = cropBaseW / cropBaseH;
+      const coverW = Math.min(mediaW, mediaH * frameAsp);
+      const coverH = Math.min(mediaH, mediaW / frameAsp);
+      const dInv = coverW / (cropBaseW * sEff);
+      const cw = coverW / sEff;
+      const ch = coverH / sEff;
       let originX = RW / 2 - tx * dInv - cw / 2;
       let originY = RH / 2 - ty * dInv - ch / 2;
       originX = Math.max(0, Math.min(RW - cw, originX));
