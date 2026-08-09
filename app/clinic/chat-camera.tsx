@@ -373,6 +373,7 @@ export default function ChatCameraScreen() {
   const pastRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
   const futureRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
   const preCropSnapRef = useRef<{ uri: string | null; w: number; h: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
+  const cancelSnapRef = useRef<{ previewUri: string | null; prevMediaW: number; prevMediaH: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const takeSnapshot = () => ({
@@ -1188,6 +1189,13 @@ export default function ChatCameraScreen() {
           strokes: strokes.map((s) => ({ ...s, points: s.points.slice() })),
         };
       }
+      cancelSnapRef.current = {
+        previewUri,
+        prevMediaW,
+        prevMediaH,
+        texts: texts.slice(),
+        strokes: strokes.map((s) => ({ ...s, points: s.points.slice() })),
+      };
       cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
     }
     setCropActive(false);
@@ -1290,6 +1298,23 @@ export default function ChatCameraScreen() {
       setCQuarter(0);
     }
     resetCrop();
+  };
+  const cancelCrop = () => {
+    if (cropFromPreview) {
+      const s = cancelSnapRef.current;
+      if (s) {
+        setPreviewUri(s.previewUri);
+        setPrevMediaW(s.prevMediaW);
+        setPrevMediaH(s.prevMediaH);
+        setTexts(s.texts);
+        setStrokes(s.strokes);
+        clearHistory();
+      }
+      resetCrop();
+      setCropMode(false);
+      return;
+    }
+    setCropMode(false);
   };
   const boxFor = (mw: number, mh: number) => {
     const a = (mw > 0 ? mw : SCREEN_WIDTH) / (mh > 0 ? mh : SCREEN_H);
@@ -1768,7 +1793,7 @@ export default function ChatCameraScreen() {
                 })}
               </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
-                <Pressable onPress={() => setCropMode(false)} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
+                <Pressable onPress={cancelCrop} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={resetCropAll} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
                 <Pressable onPress={commitCrop} disabled={cropBusy} style={[styles.drawDoneBtn, { opacity: cropBusy ? 0.5 : 1 }]} hitSlop={8}><Ionicons name="checkmark" size={26} color="#FFFFFF" /></Pressable>
               </View>
