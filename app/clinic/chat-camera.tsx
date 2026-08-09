@@ -1176,6 +1176,7 @@ export default function ChatCameraScreen() {
     if (cropBusy) return;
     const src = basePhotoUri ?? originalUri ?? previewUri;
     if (!src) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const q = (cQuarter + 1) % 4;
     setCropBusy(true);
     try {
@@ -1641,7 +1642,7 @@ export default function ChatCameraScreen() {
                   return (
                     <Pressable
                       key={r}
-                      onPress={() => { if (cropRatio !== r) { setCropRatio(r); resetCrop(); } }}
+                      onPress={() => { if (cropRatio !== r) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCropRatio(r); resetCrop(); } }}
                       hitSlop={6}
                       style={{ paddingHorizontal: 14, paddingVertical: 7, marginHorizontal: 5, borderRadius: 16, backgroundColor: on ? BRAND.blue : 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: on ? BRAND.blue : 'rgba(255,255,255,0.25)' }}
                     >
