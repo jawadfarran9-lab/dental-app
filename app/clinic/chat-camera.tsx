@@ -3,6 +3,7 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -305,6 +306,15 @@ export default function ChatCameraScreen() {
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const [drawMode, setDrawMode] = useState(false);
+  const [cropMode, setCropMode] = useState(false);
+  const [cropActive, setCropActive] = useState(false);
+  const [cropBusy, setCropBusy] = useState(false);
+  const cScale = useSharedValue(1);
+  const cTx = useSharedValue(0);
+  const cTy = useSharedValue(0);
+  const cBaseScale = useSharedValue(1);
+  const cBaseTx = useSharedValue(0);
+  const cBaseTy = useSharedValue(0);
   const [strokes, setStrokes] = useState<{ color: string; width: number; points: { x: number; y: number }[] }[]>([]);
   const [currentD, setCurrentD] = useState('');
   const currentPtsRef = useRef<{ x: number; y: number }[]>([]);
@@ -386,6 +396,9 @@ export default function ChatCameraScreen() {
   const pillLayouts = useRef<Record<number, { x: number; y: number; w: number; h: number }>>({});
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
+  const [originalUri, setOriginalUri] = useState<string | null>(null);
+  const [originalW, setOriginalW] = useState(0);
+  const [originalH, setOriginalH] = useState(0);
   const mic = useMicrophonePermission();
   const [recordSec, setRecordSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -725,6 +738,10 @@ export default function ChatCameraScreen() {
       setThumbT(0.70);
       setPrevMediaW(photo.width ?? 0);
       setPrevMediaH(photo.height ?? 0);
+      setOriginalUri(photo.uri);
+      setOriginalW(photo.width ?? 0);
+      setOriginalH(photo.height ?? 0);
+      cScale.value = 1; cTx.value = 0; cTy.value = 0;
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[chat-camera] capture error', err);
@@ -1073,6 +1090,62 @@ export default function ChatCameraScreen() {
       rot: t.rot,
     }));
     return { items };
+  };
+
+  const _cropAspect = (originalW > 0 ? originalW : SCREEN_WIDTH) / (originalH > 0 ? originalH : SCREEN_H);
+  const _contAspect = SCREEN_WIDTH / SCREEN_H;
+  let cropBaseW = SCREEN_WIDTH, cropBaseH = SCREEN_H;
+  if (_cropAspect >= _contAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _cropAspect; } else { cropBaseH = SCREEN_H; cropBaseW = SCREEN_H * _cropAspect; }
+
+  const cropImgStyle = useAnimatedStyle(() => ({ transform: [{ translateX: cTx.value }, { translateY: cTy.value }, { scale: cScale.value }] as any }));
+  const cropPan = useMemo(() => Gesture.Pan()
+    .onStart(() => { cBaseTx.value = cTx.value; cBaseTy.value = cTy.value; runOnJS(setCropActive)(true); })
+    .onUpdate((e) => {
+      const maxX = (cropBaseW * (cScale.value - 1)) / 2;
+      const maxY = (cropBaseH * (cScale.value - 1)) / 2;
+      cTx.value = Math.max(-maxX, Math.min(maxX, cBaseTx.value + e.translationX));
+      cTy.value = Math.max(-maxY, Math.min(maxY, cBaseTy.value + e.translationY));
+    })
+    .onEnd(() => { runOnJS(setCropActive)(false); }), [cropBaseW, cropBaseH]);
+  const cropPinch = useMemo(() => Gesture.Pinch()
+    .onStart(() => { cBaseScale.value = cScale.value; runOnJS(setCropActive)(true); })
+    .onUpdate((e) => { cScale.value = Math.max(1, Math.min(6, cBaseScale.value * e.scale)); })
+    .onEnd(() => {
+      const maxX = (cropBaseW * (cScale.value - 1)) / 2;
+      const maxY = (cropBaseH * (cScale.value - 1)) / 2;
+      cTx.value = Math.max(-maxX, Math.min(maxX, cTx.value));
+      cTy.value = Math.max(-maxY, Math.min(maxY, cTy.value));
+      runOnJS(setCropActive)(false);
+    }), [cropBaseW, cropBaseH]);
+  const cropGesture = useMemo(() => Gesture.Simultaneous(cropPan, cropPinch), [cropPan, cropPinch]);
+  const enterCrop = () => { setCropActive(false); setCropMode(true); };
+  const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); };
+  const commitCrop = async () => {
+    if (!previewUri || cropBusy) return;
+    setCropBusy(true);
+    try {
+      const s = cScale.value, tx = cTx.value, ty = cTy.value;
+      const mediaW = originalW > 0 ? originalW : SCREEN_WIDTH;
+      const mediaH = originalH > 0 ? originalH : SCREEN_H;
+      let nx = ((s - 1) / 2 - tx / cropBaseW) / s;
+      let ny = ((s - 1) / 2 - ty / cropBaseH) / s;
+      nx = Math.max(0, Math.min(1 - 1 / s, nx));
+      ny = Math.max(0, Math.min(1 - 1 / s, ny));
+      const originX = Math.round(nx * mediaW);
+      const originY = Math.round(ny * mediaH);
+      const cw = Math.max(1, Math.round(mediaW / s));
+      const ch = Math.max(1, Math.round(mediaH / s));
+      const res = await manipulateAsync(originalUri ?? previewUri, [{ crop: { originX, originY, width: cw, height: ch } }], { compress: 1, format: SaveFormat.JPEG });
+      setPreviewUri(res.uri);
+      setPrevMediaW(res.width);
+      setPrevMediaH(res.height);
+      setCropMode(false);
+    } catch (err) {
+      console.error('[chat-camera] crop error', err);
+      Alert.alert('Crop failed', 'Please try again.');
+    } finally {
+      setCropBusy(false);
+    }
   };
 
   const handleSendPhoto = async () => {
@@ -1432,6 +1505,31 @@ export default function ChatCameraScreen() {
             />
           )}
 
+          {cropMode && previewUri && !previewIsVideo && (
+            <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 70, justifyContent: 'center', alignItems: 'center' }}>
+              <GestureDetector gesture={cropGesture}>
+                <View style={{ width: cropBaseW, height: cropBaseH, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' }}>
+                  <Animated.View style={[{ width: cropBaseW, height: cropBaseH }, cropImgStyle]}>
+                    <ExpoImage source={{ uri: originalUri ?? previewUri }} style={{ width: cropBaseW, height: cropBaseH }} contentFit="cover" />
+                  </Animated.View>
+                  {cropActive && (
+                    <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                      <View style={{ position: 'absolute', left: '33.33%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                      <View style={{ position: 'absolute', left: '66.66%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                      <View style={{ position: 'absolute', top: '33.33%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                      <View style={{ position: 'absolute', top: '66.66%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.5)' }} />
+                    </View>
+                  )}
+                </View>
+              </GestureDetector>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
+                <Pressable onPress={() => setCropMode(false)} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
+                <Pressable onPress={resetCrop} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
+                <Pressable onPress={commitCrop} disabled={cropBusy} style={[styles.drawDoneBtn, { opacity: cropBusy ? 0.5 : 1 }]} hitSlop={8}><Ionicons name="checkmark" size={26} color="#FFFFFF" /></Pressable>
+              </View>
+            </View>
+          )}
+
           {(strokes.length > 0 || currentD) ? (
             <Svg width={SCREEN_WIDTH} height={SCREEN_H} style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]} pointerEvents="none">
               {strokes.map((s, i) => (
@@ -1478,7 +1576,7 @@ export default function ChatCameraScreen() {
             </GestureDetector>
           )}
 
-          {!drawMode && !textMode && (
+          {!drawMode && !textMode && !cropMode && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -1486,14 +1584,14 @@ export default function ChatCameraScreen() {
               <View style={styles.previewTopRight}>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
-                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></View>
+                <Pressable onPress={enterCrop} disabled={texts.length > 0 || strokes.length > 0} style={[styles.previewIconBtn, (texts.length > 0 || strokes.length > 0) ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
                 <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="pencil" size={18} color="#FFFFFF" /></Pressable>
               </View>
             </View>
           )}
-          {!drawMode && !textMode && (canUndo || canRedo) && (
+          {!drawMode && !textMode && !cropMode && (canUndo || canRedo) && (
             <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 54, left: 12, flexDirection: 'row', gap: 8 }}>
               <Pressable onPress={undo} disabled={!canUndo} style={[styles.previewIconBtn, { opacity: canUndo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-undo" size={20} color="#FFFFFF" /></Pressable>
               <Pressable onPress={redo} disabled={!canRedo} style={[styles.previewIconBtn, { opacity: canRedo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-redo" size={20} color="#FFFFFF" /></Pressable>
@@ -1510,7 +1608,7 @@ export default function ChatCameraScreen() {
             theme={{ knob: '#FFFFFF', container: '#1c1c1e', header: '#FFFFFF', category: { icon: '#9aa0a6', iconActive: '#FFFFFF', container: '#2c2c2e', containerActive: '#3a3a3c' } }}
           />
 
-          {!drawMode && !textMode && (
+          {!drawMode && !textMode && !cropMode && (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
