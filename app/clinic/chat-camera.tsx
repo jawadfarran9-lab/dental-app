@@ -152,6 +152,10 @@ const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
+
+const TRASH_CX = SCREEN_WIDTH / 2;
+const TRASH_CY = SCREEN_H - 130;
+const TRASH_R = 56;
 const DIAL_WIDTH = SCREEN_WIDTH * 0.85;
 const DIAL_HEIGHT = 48;
 const DIAL_ARC_RADIUS = SCREEN_WIDTH * 1.2;
@@ -326,6 +330,8 @@ export default function ChatCameraScreen() {
   const baseScale = useSharedValue(1);
   const ptrs = useSharedValue(0);
   const didManip = useSharedValue(false);
+  const overTrashSV = useSharedValue(false);
+  const [overTrash, setOverTrash] = useState(false);
   const activeSV = useSharedValue(-1);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
@@ -814,6 +820,9 @@ export default function ChatCameraScreen() {
 
   const grabHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
 
+  const deleteText = (i: number) => setTexts((prev) => prev.filter((_, idx) => idx !== i));
+  const trashHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
+
   const manipGesture = useMemo(() => {
     const pan = Gesture.Pan()
       .manualActivation(true)
@@ -848,16 +857,26 @@ export default function ChatCameraScreen() {
         liveTx.value = baseTx.value + e.translationX;
         liveTy.value = baseTy.value + e.translationY;
         if (Math.abs(e.translationX) + Math.abs(e.translationY) > 6) didManip.value = true;
+        const dxT = e.absoluteX - TRASH_CX, dyT = e.absoluteY - TRASH_CY;
+        const overNow = (dxT * dxT + dyT * dyT) < (TRASH_R * TRASH_R);
+        if (overNow !== overTrashSV.value) {
+          overTrashSV.value = overNow;
+          runOnJS(setOverTrash)(overNow);
+          if (overNow) { runOnJS(trashHaptic)(); }
+        }
       })
       .onFinalize(() => {
         const idx = activeSV.value;
         if (idx >= 0) {
-          if (didManip.value) { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
+          if (overTrashSV.value) { runOnJS(deleteText)(idx); }
+          else if (didManip.value) { runOnJS(changeText)(idx, liveTx.value, liveTy.value, liveRot.value, liveScale.value); }
           else { runOnJS(enterEditText)(idx); }
         }
         activeSV.value = -1;
         didManip.value = false;
         ptrs.value = 0;
+        overTrashSV.value = false;
+        runOnJS(setOverTrash)(false);
         runOnJS(setActiveIndex)(null);
       });
     const rotation = Gesture.Rotation()
@@ -1315,6 +1334,11 @@ export default function ChatCameraScreen() {
             <GestureDetector gesture={manipGesture}>
               <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
             </GestureDetector>
+          )}
+          {activeIndex !== null && !textMode && (
+            <View pointerEvents="none" style={{ position: 'absolute', left: TRASH_CX - 32, top: TRASH_CY - 32, width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', backgroundColor: overTrash ? 'rgba(255,59,48,0.92)' : 'rgba(0,0,0,0.45)', transform: [{ scale: overTrash ? 1.18 : 1 }] }}>
+              <Ionicons name="trash" size={28} color="#FFFFFF" />
+            </View>
           )}
 
           {drawMode && (
