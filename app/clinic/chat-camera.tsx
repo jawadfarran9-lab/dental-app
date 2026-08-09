@@ -317,6 +317,7 @@ export default function ChatCameraScreen() {
   const [basePhotoW, setBasePhotoW] = useState(0);
   const [basePhotoH, setBasePhotoH] = useState(0);
   const [cQuarter, setCQuarter] = useState(0);
+  const [cropFromPreview, setCropFromPreview] = useState(false);
   const cScale = useSharedValue(1);
   const cTx = useSharedValue(0);
   const cTy = useSharedValue(0);
@@ -1109,7 +1110,9 @@ export default function ChatCameraScreen() {
     return { items };
   };
 
-  const _cropAspect = (originalW > 0 ? originalW : SCREEN_WIDTH) / (originalH > 0 ? originalH : SCREEN_H);
+  const _srcW = cropFromPreview ? (prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH) : (originalW > 0 ? originalW : SCREEN_WIDTH);
+  const _srcH = cropFromPreview ? (prevMediaH > 0 ? prevMediaH : SCREEN_H) : (originalH > 0 ? originalH : SCREEN_H);
+  const _cropAspect = _srcW / _srcH;
   let cropBaseW = SCREEN_WIDTH, cropBaseH = SCREEN_H;
   if (cropRatio === 'free') {
     const _contAspect = SCREEN_WIDTH / SCREEN_H;
@@ -1170,7 +1173,13 @@ export default function ChatCameraScreen() {
       runOnJS(setCAngleDeg)(Math.round(deg));
     })
     .onEnd(() => { runOnJS(setCropActive)(false); cGrid.value = withTiming(0, { duration: 260 }); }), []);
-  const enterCrop = () => { setCropActive(false); setCropMode(true); };
+  const enterCrop = () => {
+    const fromPrev = texts.length > 0 || strokes.length > 0;
+    setCropFromPreview(fromPrev);
+    if (fromPrev) { cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0); }
+    setCropActive(false);
+    setCropMode(true);
+  };
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
   const handleRotate90 = async () => {
     if (cropBusy) return;
@@ -1200,21 +1209,28 @@ export default function ChatCameraScreen() {
     }
   };
   const resetCropAll = () => {
-    if (basePhotoUri) {
+    if (!cropFromPreview && basePhotoUri) {
       setOriginalUri(basePhotoUri);
       setOriginalW(basePhotoW);
       setOriginalH(basePhotoH);
+      setCQuarter(0);
     }
-    setCQuarter(0);
     resetCrop();
+  };
+  const boxFor = (mw: number, mh: number) => {
+    const a = (mw > 0 ? mw : SCREEN_WIDTH) / (mh > 0 ? mh : SCREEN_H);
+    const ca = SCREEN_WIDTH / SCREEN_H;
+    let bw = SCREEN_WIDTH, bh = SCREEN_H;
+    if (a >= ca) { bw = SCREEN_WIDTH; bh = SCREEN_WIDTH / a; } else { bh = SCREEN_H; bw = SCREEN_H * a; }
+    return { baseW: bw, baseH: bh, offX: (SCREEN_WIDTH - bw) / 2, offY: (SCREEN_H - bh) / 2 };
   };
   const commitCrop = async () => {
     if (!previewUri || cropBusy) return;
     setCropBusy(true);
     try {
       const scaleU = cScale.value, tx = cTx.value, ty = cTy.value, ang = cAngle.value;
-      const mediaW = originalW > 0 ? originalW : SCREEN_WIDTH;
-      const mediaH = originalH > 0 ? originalH : SCREEN_H;
+      const mediaW = cropFromPreview ? (prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH) : (originalW > 0 ? originalW : SCREEN_WIDTH);
+      const mediaH = cropFromPreview ? (prevMediaH > 0 ? prevMediaH : SCREEN_H) : (originalH > 0 ? originalH : SCREEN_H);
       const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
       const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
       const sEff = scaleU * cover;
@@ -1232,7 +1248,33 @@ export default function ChatCameraScreen() {
       originY = Math.max(0, Math.min(RH - ch, originY));
       const cropAction = { crop: { originX: Math.round(originX), originY: Math.round(originY), width: Math.max(1, Math.round(cw)), height: Math.max(1, Math.round(ch)) } };
       const actions: any[] = ang !== 0 ? [{ rotate: (ang * 180) / Math.PI }, cropAction] : [cropAction];
-      const res = await manipulateAsync(originalUri ?? previewUri, actions, { compress: 1, format: SaveFormat.JPEG });
+      const res = await manipulateAsync((cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '', actions, { compress: 1, format: SaveFormat.JPEG });
+      if (texts.length > 0 || strokes.length > 0) {
+        const ob = boxFor(mediaW, mediaH);
+        const nb = boxFor(res.width, res.height);
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        const M = (nb.baseW * mediaW) / (ob.baseW * (res.width || 1));
+        const mapPt = (sx: number, sy: number) => {
+          const nx = (sx - ob.offX) / ob.baseW;
+          const ny = (sy - ob.offY) / ob.baseH;
+          const px = nx * mediaW, py = ny * mediaH;
+          const cxp = px - mediaW / 2, cyp = py - mediaH / 2;
+          const rx = cxp * cosA - cyp * sinA;
+          const ry = cxp * sinA + cyp * cosA;
+          const qx = rx + RW / 2, qy = ry + RH / 2;
+          const fx = qx - originX, fy = qy - originY;
+          const nnx = fx / (cw || 1), nny = fy / (ch || 1);
+          return { x: nb.offX + nnx * nb.baseW, y: nb.offY + nny * nb.baseH };
+        };
+        const remappedTexts = texts.map((t) => {
+          const p = mapPt(SCREEN_WIDTH / 2 + t.dx, SCREEN_H / 2 + t.dy);
+          return { ...t, dx: p.x - SCREEN_WIDTH / 2, dy: p.y - SCREEN_H / 2, scale: t.scale * M, rot: t.rot + ang };
+        });
+        const remappedStrokes = strokes.map((s) => ({ ...s, width: s.width * M, points: s.points.map((pt) => mapPt(pt.x, pt.y)) }));
+        setTexts(remappedTexts);
+        setStrokes(remappedStrokes);
+        clearHistory();
+      }
       setPreviewUri(res.uri);
       setPrevMediaW(res.width);
       setPrevMediaH(res.height);
@@ -1607,7 +1649,7 @@ export default function ChatCameraScreen() {
               <GestureDetector gesture={cropGesture}>
                 <View style={{ width: cropBaseW, height: cropBaseH, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' }}>
                   <Animated.View style={[{ width: cropBaseW, height: cropBaseH }, cropImgStyle]}>
-                    <ExpoImage source={{ uri: originalUri ?? previewUri }} style={{ width: cropBaseW, height: cropBaseH }} contentFit="cover" />
+                    <ExpoImage source={{ uri: (cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '' }} style={{ width: cropBaseW, height: cropBaseH }} contentFit="cover" />
                   </Animated.View>
                   <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, cGridStyle]}>
                     <View style={{ position: 'absolute', left: '33.33%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.45)' }} />
@@ -1713,7 +1755,7 @@ export default function ChatCameraScreen() {
               <View style={styles.previewTopRight}>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
-                <Pressable onPress={enterCrop} disabled={texts.length > 0 || strokes.length > 0} style={[styles.previewIconBtn, (texts.length > 0 || strokes.length > 0) ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
+                <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
                 <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="pencil" size={18} color="#FFFFFF" /></Pressable>
