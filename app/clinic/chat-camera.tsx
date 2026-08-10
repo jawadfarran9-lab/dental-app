@@ -1464,6 +1464,7 @@ export default function ChatCameraScreen() {
           caption: caption.trim() || undefined,
           drawing,
           texts: builtTexts,
+          hd: hdQuality === 'hd',
         });
       }
       router.back();

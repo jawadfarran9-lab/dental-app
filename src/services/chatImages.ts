@@ -37,6 +37,7 @@ export async function sendImageMessage(params: {
   caption?: string;
   drawing?: DrawingDoc | null;
   texts?: TextsDoc | null;
+  hd?: boolean;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -47,7 +48,7 @@ export async function sendImageMessage(params: {
     senderName = 'Clinic',
     senderType = 'clinic',
   } = params;
-  const compressed = await compressImage(localUri, { maxWidth: 1600, quality: 0.7 });
+  const compressed = await compressImage(localUri, params.hd ? { maxWidth: 2560, quality: 0.9 } : { maxWidth: 1600, quality: 0.7 });
   const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.jpg`;
   const blob = await (await fetch(compressed.uri)).blob();
@@ -64,6 +65,7 @@ export async function sendImageMessage(params: {
     imageUrl,
     imageWidth: compressed.width,
     imageHeight: compressed.height,
+    hd: params.hd ?? false,
     storagePath,
     senderName,
     createdAt: Date.now(),
