@@ -5,6 +5,8 @@ import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
+import * as MediaLibrary from 'expo-media-library';
+import { captureRef } from 'react-native-view-shot';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { openDeviceSettings, useMicrophonePermission } from '@/src/hooks/useDevicePermissions';
@@ -15,6 +17,7 @@ import {
     Image,
     Keyboard,
     KeyboardAvoidingView,
+    PixelRatio,
     Platform,
     Pressable,
     ScrollView,
@@ -305,6 +308,10 @@ export default function ChatCameraScreen() {
   const [camMode, setCamMode] = useState<'picture' | 'video'>('picture');
   const [recording, setRecording] = useState(false);
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const compositeRef = useRef<View>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
@@ -1386,6 +1393,45 @@ export default function ChatCameraScreen() {
     }
   };
 
+  const handleSaveToLibrary = async () => {
+    if (!previewUri || saving) return;
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (perm.status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow photo library access to save.');
+      return;
+    }
+    setSaving(true);
+    setCapturing(true);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    let shot = '';
+    try {
+      shot = await captureRef(compositeRef, { format: 'jpg', quality: 0.95, result: 'tmpfile' });
+    } finally {
+      setCapturing(false);
+      setSaving(false);
+    }
+    if (!shot) return;
+    try {
+      const scale = PixelRatio.get();
+      const capW = SCREEN_WIDTH * scale, capH = SCREEN_H * scale;
+      const b = boxFor(prevMediaW, prevMediaH);
+      const crop = {
+        originX: Math.max(0, Math.round((b.offX / SCREEN_WIDTH) * capW)),
+        originY: Math.max(0, Math.round((b.offY / SCREEN_H) * capH)),
+        width: Math.max(1, Math.round((b.baseW / SCREEN_WIDTH) * capW)),
+        height: Math.max(1, Math.round((b.baseH / SCREEN_H) * capH)),
+      };
+      const out = await manipulateAsync(shot, [{ crop }], { compress: 0.95, format: SaveFormat.JPEG });
+      await MediaLibrary.saveToLibraryAsync(out.uri);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch (err) {
+      console.error('[chat-camera] save error', err);
+      Alert.alert('Save failed', 'Please try again.');
+    }
+  };
+
   const handleSendPhoto = async () => {
     if (!previewUri || sending) return;
     if (!clinicId || !patientId) {
@@ -1722,7 +1768,7 @@ export default function ChatCameraScreen() {
       </View>
 
       {previewUri && (
-        <View style={styles.previewOverlay}>
+        <View ref={compositeRef} style={styles.previewOverlay}>
           {previewIsVideo ? (
             <Video
               key="prev-video"
@@ -1846,13 +1892,13 @@ export default function ChatCameraScreen() {
             </GestureDetector>
           )}
 
-          {!drawMode && !textMode && !cropMode && (
+          {!drawMode && !textMode && !cropMode && !capturing && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
               </Pressable>
               <View style={styles.previewTopRight}>
-                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Ionicons name="download-outline" size={20} color="#FFFFFF" /></View>
+                <Pressable onPress={handleSaveToLibrary} disabled={saving} style={[styles.previewIconBtn, saving ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name={savedFlash ? 'checkmark' : 'download-outline'} size={20} color={savedFlash ? '#22C55E' : '#FFFFFF'} /></Pressable>
                 <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
                 <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
@@ -1861,7 +1907,7 @@ export default function ChatCameraScreen() {
               </View>
             </View>
           )}
-          {!drawMode && !textMode && !cropMode && (canUndo || canRedo) && (
+          {!drawMode && !textMode && !cropMode && !capturing && (canUndo || canRedo) && (
             <View pointerEvents="box-none" style={{ position: 'absolute', top: insets.top + 54, left: 12, flexDirection: 'row', gap: 8 }}>
               <Pressable onPress={undo} disabled={!canUndo} style={[styles.previewIconBtn, { opacity: canUndo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-undo" size={20} color="#FFFFFF" /></Pressable>
               <Pressable onPress={redo} disabled={!canRedo} style={[styles.previewIconBtn, { opacity: canRedo ? 1 : 0.35 }]} hitSlop={8}><Ionicons name="arrow-redo" size={20} color="#FFFFFF" /></Pressable>
@@ -1878,7 +1924,7 @@ export default function ChatCameraScreen() {
             theme={{ knob: '#FFFFFF', container: '#1c1c1e', header: '#FFFFFF', category: { icon: '#9aa0a6', iconActive: '#FFFFFF', container: '#2c2c2e', containerActive: '#3a3a3c' } }}
           />
 
-          {!drawMode && !textMode && !cropMode && (
+          {!drawMode && !textMode && !cropMode && !capturing && (
             <KeyboardAvoidingView
               behavior={Platform.OS === 'ios' ? 'padding' : undefined}
               style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}
