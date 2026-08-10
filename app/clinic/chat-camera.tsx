@@ -17,6 +17,7 @@ import {
     Image,
     Keyboard,
     KeyboardAvoidingView,
+    Modal,
     PixelRatio,
     Platform,
     Pressable,
@@ -311,6 +312,8 @@ export default function ChatCameraScreen() {
   const [saving, setSaving] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [savedFlash, setSavedFlash] = useState(false);
+  const [hdQuality, setHdQuality] = useState<'sd' | 'hd'>('sd');
+  const [hdSheetOpen, setHdSheetOpen] = useState(false);
   const compositeRef = useRef<View>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
@@ -1899,7 +1902,7 @@ export default function ChatCameraScreen() {
               </Pressable>
               <View style={styles.previewTopRight}>
                 <Pressable onPress={handleSaveToLibrary} disabled={saving} style={[styles.previewIconBtn, saving ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name={savedFlash ? 'checkmark' : 'download-outline'} size={20} color={savedFlash ? '#22C55E' : '#FFFFFF'} /></Pressable>
-                <View style={[styles.previewIconBtn, styles.previewIconDisabled]}><Text style={styles.previewBtnText}>HD</Text></View>
+                <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#22C55E' }]}>HD</Text></Pressable>
                 <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
@@ -1923,6 +1926,29 @@ export default function ChatCameraScreen() {
             categoryPosition="top"
             theme={{ knob: '#FFFFFF', container: '#1c1c1e', header: '#FFFFFF', category: { icon: '#9aa0a6', iconActive: '#FFFFFF', container: '#2c2c2e', containerActive: '#3a3a3c' } }}
           />
+          <Modal visible={hdSheetOpen} transparent animationType="slide" onRequestClose={() => setHdSheetOpen(false)}>
+            <Pressable onPress={() => setHdSheetOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: '#1C1C1E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingBottom: insets.bottom + 16, paddingHorizontal: 20 }}>
+                <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', marginBottom: 14 }} />
+                <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginBottom: 8 }}>Photo quality</Text>
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHdQuality('sd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+                  <Ionicons name={hdQuality === 'sd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'sd' ? '#22C55E' : 'rgba(255,255,255,0.6)'} />
+                  <View style={{ marginLeft: 14 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Standard quality</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Faster to send · smaller file</Text>
+                  </View>
+                </Pressable>
+                <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHdQuality('hd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+                  <Ionicons name={hdQuality === 'hd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'hd' ? '#22C55E' : 'rgba(255,255,255,0.6)'} />
+                  <View style={{ marginLeft: 14 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>HD quality</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Best detail · larger file</Text>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
 
           {!drawMode && !textMode && !cropMode && !capturing && (
             <KeyboardAvoidingView
