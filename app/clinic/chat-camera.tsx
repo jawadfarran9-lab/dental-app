@@ -1903,7 +1903,7 @@ export default function ChatCameraScreen() {
               </Pressable>
               <View style={styles.previewTopRight}>
                 <Pressable onPress={handleSaveToLibrary} disabled={saving} style={[styles.previewIconBtn, saving ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name={savedFlash ? 'checkmark' : 'download-outline'} size={20} color={savedFlash ? '#22C55E' : '#FFFFFF'} /></Pressable>
-                <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#22C55E' }]}>HD</Text></Pressable>
+                <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: BRAND.blue }]}>HD</Text></Pressable>
                 <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}><Ionicons name="crop-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}><Ionicons name="happy-outline" size={20} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}><Text style={styles.previewBtnText}>Aa</Text></Pressable>
@@ -1933,7 +1933,7 @@ export default function ChatCameraScreen() {
                 <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', marginBottom: 14 }} />
                 <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginBottom: 8 }}>Photo quality</Text>
                 <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHdQuality('sd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
-                  <Ionicons name={hdQuality === 'sd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'sd' ? '#22C55E' : 'rgba(255,255,255,0.6)'} />
+                  <Ionicons name={hdQuality === 'sd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'sd' ? BRAND.blue : 'rgba(255,255,255,0.6)'} />
                   <View style={{ marginLeft: 14 }}>
                     <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Standard quality</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Faster to send · smaller file</Text>
@@ -1941,7 +1941,7 @@ export default function ChatCameraScreen() {
                 </Pressable>
                 <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
                 <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setHdQuality('hd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
-                  <Ionicons name={hdQuality === 'hd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'hd' ? '#22C55E' : 'rgba(255,255,255,0.6)'} />
+                  <Ionicons name={hdQuality === 'hd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'hd' ? BRAND.blue : 'rgba(255,255,255,0.6)'} />
                   <View style={{ marginLeft: 14 }}>
                     <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>HD quality</Text>
                     <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Best detail · larger file</Text>
