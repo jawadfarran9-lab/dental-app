@@ -13,10 +13,14 @@ const DEFAULT_BARS = Array.from({ length: 40 }, () => 0.35);
 const RATE_LABEL: Record<number, string> = { 1: '1×', 1.5: '1.5×', 2: '2×' };
 const GAP = 1.5;
 
+// Shared across all VoiceBubble instances: only one plays at a time.
+let activePause: (() => void) | null = null;
+
 export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, timeLabel }: { audioUrl: string; durationMs: number; waveform?: number[]; sent: boolean; timeLabel?: string }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const seekingRef = useRef(false);
   const wasPlayingRef = useRef(false);
+  const pauseSelfRef = useRef<() => void>(() => {});
   const [playing, setPlaying] = useState(false);
   const [posMs, setPosMs] = useState(0);
   const [rate, setRate] = useState(1);
@@ -24,7 +28,12 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
   const [loadedDurMs, setLoadedDurMs] = useState(0);
 
   useEffect(() => {
-    return () => { soundRef.current?.unloadAsync().catch(() => {}); soundRef.current = null; };
+    pauseSelfRef.current = () => { soundRef.current?.pauseAsync().catch(() => {}); setPlaying(false); };
+    return () => {
+      soundRef.current?.unloadAsync().catch(() => {});
+      soundRef.current = null;
+      if (activePause === pauseSelfRef.current) activePause = null;
+    };
   }, []);
 
   const onStatus = (st: any) => {
@@ -39,6 +48,7 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
       setPlaying(false);
       setPosMs(0);
       soundRef.current?.setPositionAsync(0).catch(() => {});
+      if (activePause === pauseSelfRef.current) activePause = null;
     }
   };
 
@@ -60,8 +70,16 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
     try {
       const s = await ensureSound();
       const st = await s.getStatusAsync();
-      if (st.isLoaded && st.isPlaying) { await s.pauseAsync(); setPlaying(false); }
-      else { await s.playAsync(); setPlaying(true); }
+      if (st.isLoaded && st.isPlaying) {
+        await s.pauseAsync();
+        setPlaying(false);
+        if (activePause === pauseSelfRef.current) activePause = null;
+      } else {
+        if (activePause && activePause !== pauseSelfRef.current) activePause();
+        activePause = pauseSelfRef.current;
+        await s.playAsync();
+        setPlaying(true);
+      }
     } catch (e) {
       console.error('[voice] play', e);
     }
