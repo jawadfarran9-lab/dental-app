@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import VoiceBubble from '@/src/components/VoiceBubble';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
@@ -1816,6 +1817,30 @@ export default function ClinicConversationScreen() {
                 {time}
               </Text>
             )}
+          </View>
+          {reactionBadge}
+          {starBadge}
+        </View>
+      );
+    }
+    if (item.type === 'audio' && item.audioUrl) {
+      if (sent) {
+        return (
+          <View style={{ position: 'relative' }}>
+            <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bubble, styles.bubbleSent]}>
+              <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} sent />
+              {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+            </LinearGradient>
+            {reactionBadge}
+            {starBadge}
+          </View>
+        );
+      }
+      return (
+        <View style={{ position: 'relative' }}>
+          <View style={[styles.bubble, styles.bubbleRecv, { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder }]}>
+            <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} sent={false} />
+            {!!time && <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>}
           </View>
           {reactionBadge}
           {starBadge}
