@@ -835,6 +835,8 @@ export default function ClinicConversationScreen() {
     if (!ok) Alert.alert('Microphone', 'Please allow microphone access to record voice messages.');
   };
   const onCancelVoice = () => { Haptics.selectionAsync().catch(() => {}); voice.cancel(); };
+  const onPauseVoice = async () => { await voice.pause(); };
+  const onResumeVoice = async () => { await voice.resume(); };
   const onSendVoice = async () => {
     if (voiceSending) return;
     setVoiceSending(true);
@@ -2132,25 +2134,32 @@ export default function ClinicConversationScreen() {
             ]}
           >
             {voice.isRecording ? (
-              <>
-                <Pressable onPress={onCancelVoice} style={[styles.attachBtn, { backgroundColor: attachBtnBg }]} hitSlop={6}>
-                  <Ionicons name="trash-outline" size={22} color="#E5484D" />
-                </Pressable>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
-                  <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 26, marginLeft: 12, overflow: 'hidden' }}>
-                    {voice.levels.map((v, i) => (
-                      <View key={i} style={{ width: 2.5, marginRight: 2, borderRadius: 1, height: Math.max(3, Math.round(v * 22)), backgroundColor: '#1E6FD9' }} />
-                    ))}
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Pressable onPress={onCancelVoice} style={[styles.attachBtn, { backgroundColor: attachBtnBg }]} hitSlop={6}>
+                    <Ionicons name="trash-outline" size={22} color="#E5484D" />
+                  </Pressable>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
+                    <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
+                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 26, marginLeft: 12, overflow: 'hidden' }}>
+                      {voice.levels.map((v, i) => (
+                        <View key={i} style={{ width: 2.5, marginRight: 2, borderRadius: 1, height: Math.max(3, Math.round(v * 22)), backgroundColor: voice.isPaused ? '#B8C0CC' : '#1E6FD9' }} />
+                      ))}
+                    </View>
                   </View>
+                  <Pressable onPress={onSendVoice} disabled={voiceSending} style={({ pressed }) => [styles.sendBtn, { opacity: voiceSending ? 0.5 : pressed ? 0.85 : 1 }]}>
+                    <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendBtnInner}>
+                      <Ionicons name="send" size={18} color="#FFFFFF" />
+                    </LinearGradient>
+                  </Pressable>
                 </View>
-                <Pressable onPress={onSendVoice} disabled={voiceSending} style={({ pressed }) => [styles.sendBtn, { opacity: voiceSending ? 0.5 : pressed ? 0.85 : 1 }]}>
-                  <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendBtnInner}>
-                    <Ionicons name="send" size={18} color="#FFFFFF" />
-                  </LinearGradient>
-                </Pressable>
-              </>
+                <View style={{ alignItems: 'center', marginTop: 8 }}>
+                  <Pressable onPress={voice.isPaused ? onResumeVoice : onPauseVoice} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: voice.isPaused ? attachBtnBg : '#1E6FD9' }}>
+                    <Ionicons name={voice.isPaused ? 'mic' : 'pause'} size={20} color={voice.isPaused ? '#1E6FD9' : '#FFFFFF'} />
+                  </Pressable>
+                </View>
+              </View>
             ) : (
               <>
             {editingMessage ? (
