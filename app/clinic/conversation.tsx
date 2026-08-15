@@ -1,13 +1,13 @@
 import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import VoiceBubble from '@/src/components/VoiceBubble';
+import RecordingBar from '@/src/components/RecordingBar';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { TextsDoc, sendAudioMessage } from '@/src/services/chatImages';
-import { useVoiceRecorder } from '@/src/hooks/useVoiceRecorder';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -827,23 +827,14 @@ export default function ClinicConversationScreen() {
   const [sending, setSending] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
-  const voice = useVoiceRecorder();
   const [voiceSending, setVoiceSending] = useState(false);
-  const [recBarsW, setRecBarsW] = useState(0);
-  const onStartVoice = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-    const ok = await voice.start();
-    if (!ok) Alert.alert('Microphone', 'Please allow microphone access to record voice messages.');
-  };
-  const onCancelVoice = () => { Haptics.selectionAsync().catch(() => {}); voice.cancel(); };
-  const onPauseVoice = async () => { await voice.pause(); };
-  const onResumeVoice = async () => { await voice.resume(); };
-  const onSendVoice = async () => {
+  const [isRecording, setIsRecording] = useState(false);
+  const onStartVoice = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); setIsRecording(true); };
+  const onSendVoice = async (r: { uri: string; durationMs: number; waveform: number[] }) => {
     if (voiceSending) return;
     setVoiceSending(true);
     try {
-      const r = await voice.stop();
-      if (r && r.durationMs > 500 && clinicId && patientId) {
+      if (r.durationMs > 500 && clinicId && patientId) {
         await sendAudioMessage({
           clinicId: clinicId as string,
           patientId: patientId as string,
@@ -857,7 +848,7 @@ export default function ClinicConversationScreen() {
         });
       }
     } catch (e) { console.error('[clinic/conversation] voice send', e); }
-    finally { setVoiceSending(false); }
+    finally { setVoiceSending(false); setIsRecording(false); }
   };
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -2136,33 +2127,18 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
-            {voice.isRecording ? (
-              <View style={{ flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                  <Pressable onPress={onCancelVoice} style={[styles.attachBtn, { backgroundColor: attachBtnBg }]} hitSlop={6}>
-                    <Ionicons name="trash-outline" size={22} color="#E5484D" />
-                  </Pressable>
-                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
-                    <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
-                    <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
-                    <View onLayout={(e) => setRecBarsW(e.nativeEvent.layout.width)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', height: 26, marginLeft: 12, overflow: 'hidden' }}>
-                      {voice.levels.slice(-Math.max(1, Math.floor(recBarsW / 4.5))).map((v, i) => (
-                        <View key={i} style={{ width: 2.5, marginRight: 2, borderRadius: 1, height: Math.max(3, Math.round(v * 22)), backgroundColor: voice.isPaused ? '#B8C0CC' : '#1E6FD9' }} />
-                      ))}
-                    </View>
-                  </View>
-                  <Pressable onPress={onSendVoice} disabled={voiceSending} style={({ pressed }) => [styles.sendBtn, { opacity: voiceSending ? 0.5 : pressed ? 0.85 : 1 }]}>
-                    <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendBtnInner}>
-                      <Ionicons name="send" size={18} color="#FFFFFF" />
-                    </LinearGradient>
-                  </Pressable>
-                </View>
-                <View style={{ alignItems: 'center', marginTop: 8 }}>
-                  <Pressable onPress={voice.isPaused ? onResumeVoice : onPauseVoice} hitSlop={8} style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: voice.isPaused ? attachBtnBg : '#1E6FD9' }}>
-                    <Ionicons name={voice.isPaused ? 'mic' : 'pause'} size={20} color={voice.isPaused ? '#1E6FD9' : '#FFFFFF'} />
-                  </Pressable>
-                </View>
-              </View>
+            {isRecording ? (
+              <RecordingBar
+                attachBtnBg={attachBtnBg}
+                textPrimary={textPrimary}
+                attachBtnStyle={styles.attachBtn}
+                sendBtnStyle={styles.sendBtn}
+                sendBtnInnerStyle={styles.sendBtnInner}
+                formatDuration={formatVoiceDuration}
+                sending={voiceSending}
+                onCancel={() => setIsRecording(false)}
+                onSend={onSendVoice}
+              />
             ) : (
               <>
             {editingMessage ? (
