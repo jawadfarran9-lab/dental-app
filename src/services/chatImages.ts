@@ -151,6 +151,42 @@ export async function sendVideoMessage(params: {
   await updateThreadOnMessage(clinicId, patientId, patientName, '🎬 Video', senderType, dbInstance);
 }
 
+export async function sendAudioMessage(params: {
+  clinicId: string;
+  patientId: string;
+  patientName: string;
+  localUri: string;
+  durationMs: number;
+  waveform?: number[];
+  from?: 'clinic' | 'patient';
+  senderName?: string;
+  senderType?: 'clinic' | 'patient';
+}, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
+  const {
+    clinicId, patientId, patientName, localUri, durationMs,
+    waveform = [],
+    from = 'clinic', senderName = 'Clinic', senderType = 'clinic',
+  } = params;
+  const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.m4a`;
+  const blob = await (await fetch(localUri)).blob();
+  const snap = await uploadBytes(ref(storageInstance, storagePath), blob, { contentType: 'audio/m4a' });
+  const audioUrl = await getDownloadURL(snap.ref);
+  await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
+    from,
+    text: '',
+    type: 'audio',
+    audioUrl,
+    storagePath,
+    durationMs,
+    waveform,
+    mimeType: 'audio/m4a',
+    senderName,
+    createdAt: Date.now(),
+  });
+  await updateThreadOnMessage(clinicId, patientId, patientName, '🎤 Voice message', senderType, dbInstance);
+}
+
 export async function sendAlbumMessage(
   params: {
     clinicId: string;

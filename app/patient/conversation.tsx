@@ -87,11 +87,15 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image';
+  type?: 'image' | 'audio';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   storagePath?: string;
+  audioUrl?: string;
+  durationMs?: number | null;
+  waveform?: number[];
+  mimeType?: string;
   reactionClinic?: string;
   reactionPatient?: string;
   seenAt?: number;
@@ -674,7 +678,7 @@ export default function ClinicConversationScreen() {
             try {
               await deleteDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`));
               if (wasLast && clinicId) {
-                const preview = prev ? (prev.type === 'image' ? 'Photo' : prev.text) : '';
+                const preview = prev ? (prev.type === 'image' ? 'Photo' : prev.type === 'audio' ? '🎤 Voice message' : prev.text) : '';
                 try {
                   await updateDoc(doc(patientDb, 'threads', `${clinicId}_${patientId}`), { lastMessageText: preview });
                 } catch {
