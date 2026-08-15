@@ -5,7 +5,8 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
-import { TextsDoc } from '@/src/services/chatImages';
+import { TextsDoc, sendAudioMessage } from '@/src/services/chatImages';
+import { useVoiceRecorder } from '@/src/hooks/useVoiceRecorder';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -86,6 +87,8 @@ function formatInfoTime(ts?: number): string {
   h = h % 12 || 12;
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${h}:${m} ${ampm}`;
 }
+
+const formatVoiceDuration = (ms: number) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
 type Message = {
   id: string;
@@ -823,6 +826,34 @@ export default function ClinicConversationScreen() {
   const [sending, setSending] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
+  const voice = useVoiceRecorder();
+  const [voiceSending, setVoiceSending] = useState(false);
+  const onStartVoice = async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+    const ok = await voice.start();
+    if (!ok) Alert.alert('Microphone', 'Please allow microphone access to record voice messages.');
+  };
+  const onCancelVoice = () => { Haptics.selectionAsync().catch(() => {}); voice.cancel(); };
+  const onSendVoice = async () => {
+    if (voiceSending) return;
+    setVoiceSending(true);
+    try {
+      const r = await voice.stop();
+      if (r && r.durationMs > 500 && clinicId && patientId) {
+        await sendAudioMessage({
+          clinicId: clinicId as string,
+          patientId: patientId as string,
+          patientName,
+          localUri: r.uri,
+          durationMs: r.durationMs,
+          from: 'clinic',
+          senderName: 'Clinic',
+          senderType: 'clinic',
+        });
+      }
+    } catch (e) { console.error('[clinic/conversation] voice send', e); }
+    finally { setVoiceSending(false); }
+  };
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -2076,6 +2107,23 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
+            {voice.isRecording ? (
+              <>
+                <Pressable onPress={onCancelVoice} style={[styles.attachBtn, { backgroundColor: attachBtnBg }]} hitSlop={6}>
+                  <Ionicons name="trash-outline" size={22} color="#E5484D" />
+                </Pressable>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
+                  <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
+                  <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
+                </View>
+                <Pressable onPress={onSendVoice} disabled={voiceSending} style={({ pressed }) => [styles.sendBtn, { opacity: voiceSending ? 0.5 : pressed ? 0.85 : 1 }]}>
+                  <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendBtnInner}>
+                    <Ionicons name="send" size={18} color="#FFFFFF" />
+                  </LinearGradient>
+                </Pressable>
+              </>
+            ) : (
+              <>
             {editingMessage ? (
               <Pressable
                 onPress={cancelEdit}
@@ -2112,7 +2160,7 @@ export default function ClinicConversationScreen() {
             </View>
             {!editingMessage && (
               <Pressable
-                onPress={() => Haptics.selectionAsync().catch(() => {})}
+                onPress={onStartVoice}
                 style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
                 hitSlop={6}
               >
@@ -2136,6 +2184,8 @@ export default function ClinicConversationScreen() {
                 <Ionicons name={editingMessage ? 'checkmark' : 'send'} size={18} color="#FFFFFF" />
               </LinearGradient>
             </Pressable>
+              </>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
