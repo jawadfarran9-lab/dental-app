@@ -281,6 +281,7 @@ export default function ClinicConversationScreen() {
     if (!m) return [];
     const isOwn = m.from === 'patient';
     const isImage = m.type === 'image';
+    const isAudio = m.type === 'audio';
     if (isOwn && isImage) {
       return [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
@@ -290,7 +291,7 @@ export default function ClinicConversationScreen() {
       ];
     }
     if (isOwn) {
-      return [
+      const items: ActionItem[] = [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
         { key: 'copy', label: 'Copy', icon: 'copy-outline' },
         { key: 'edit', label: 'Edit', icon: 'create-outline' },
@@ -298,6 +299,7 @@ export default function ClinicConversationScreen() {
         { key: 'star', label: 'Star', icon: 'star-outline' },
         { key: 'remove', label: 'Remove', icon: 'trash-outline', danger: true },
       ];
+      return items.filter((a) => !(isAudio && (a.key === 'copy' || a.key === 'edit')));
     }
     if (isImage) {
       return [
