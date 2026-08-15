@@ -829,6 +829,7 @@ export default function ClinicConversationScreen() {
   const [attachBusy, setAttachBusy] = useState(false);
   const voice = useVoiceRecorder();
   const [voiceSending, setVoiceSending] = useState(false);
+  const [recBarsW, setRecBarsW] = useState(0);
   const onStartVoice = async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
     const ok = await voice.start();
@@ -2142,8 +2143,8 @@ export default function ClinicConversationScreen() {
                   <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
                     <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
                     <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
-                    <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 26, marginLeft: 12, overflow: 'hidden' }}>
-                      {voice.levels.map((v, i) => (
+                    <View onLayout={(e) => setRecBarsW(e.nativeEvent.layout.width)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', height: 26, marginLeft: 12, overflow: 'hidden' }}>
+                      {voice.levels.slice(-Math.max(1, Math.floor(recBarsW / 4.5))).map((v, i) => (
                         <View key={i} style={{ width: 2.5, marginRight: 2, borderRadius: 1, height: Math.max(3, Math.round(v * 22)), backgroundColor: voice.isPaused ? '#B8C0CC' : '#1E6FD9' }} />
                       ))}
                     </View>

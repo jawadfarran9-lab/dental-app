@@ -3,7 +3,7 @@ import { Audio } from 'expo-av';
 
 export type VoiceStop = { uri: string; durationMs: number; waveform: number[] } | null;
 
-const LIVE_WINDOW = 32;
+const LIVE_WINDOW = 96;
 
 function buildWaveform(raw: number[], bars = 40): number[] {
   if (raw.length === 0) return [];
