@@ -2141,6 +2141,11 @@ export default function ClinicConversationScreen() {
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14 }}>
                   <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: '#E5484D', marginRight: 10 }} />
                   <Text style={{ color: textPrimary, fontSize: 16, fontVariant: ['tabular-nums'] }}>{formatVoiceDuration(voice.durationMs)}</Text>
+                  <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 26, marginLeft: 12, overflow: 'hidden' }}>
+                    {voice.levels.map((v, i) => (
+                      <View key={i} style={{ width: 2.5, marginRight: 2, borderRadius: 1, height: Math.max(3, Math.round(v * 22)), backgroundColor: '#1E6FD9' }} />
+                    ))}
+                  </View>
                 </View>
                 <Pressable onPress={onSendVoice} disabled={voiceSending} style={({ pressed }) => [styles.sendBtn, { opacity: voiceSending ? 0.5 : pressed ? 0.85 : 1 }]}>
                   <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendBtnInner}>
