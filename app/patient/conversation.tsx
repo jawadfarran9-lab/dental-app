@@ -2,6 +2,7 @@ import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import VoiceBubble from '@/src/components/VoiceBubble';
 import RecordingBar from '@/src/components/RecordingBar';
+import { ZoomableImage } from '@/src/components/ZoomableImage';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { sendImageMessage, sendAudioMessage } from '@/src/services/chatImages';
@@ -17,7 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, cloneElement, isValidElement } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -39,7 +40,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import EmojiPicker from 'rn-emoji-keyboard';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -106,6 +110,8 @@ type Message = {
   starredPatient?: boolean;
 };
 
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string };
+
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
 const RECENTS_KEY = 'reactions:recent:v3';
@@ -127,7 +133,9 @@ const MessageBubble = ({ item, children, onOpen }: MessageBubbleProps) => {
   };
   return (
     <Pressable ref={ref} onLongPress={handleLongPress} delayLongPress={350} style={{ maxWidth: '78%' }}>
-      {children}
+      {isValidElement(children)
+        ? cloneElement(children as any, { onLongPress: handleLongPress })
+        : children}
     </Pressable>
   );
 };
@@ -150,6 +158,14 @@ export default function ClinicConversationScreen() {
   const [sending, setSending] = useState(false);
   const [voiceSending, setVoiceSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerPages, setViewerPages] = useState<ViewerPage[]>([]);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const viewerListRef = useRef<FlatList<ViewerPage>>(null);
+  const stripRef = useRef<ScrollView>(null);
+  const [viewerZoomed, setViewerZoomed] = useState(false);
+  const [stickerKbOpen, setStickerKbOpen] = useState(false);
+  const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -173,6 +189,52 @@ export default function ClinicConversationScreen() {
   const [messageInfoOpen, setMessageInfoOpen] = useState(false);
   const [messageInfoTarget, setMessageInfoTarget] = useState<Message | null>(null);
   const openMessageInfo = (m: Message) => { setMessageInfoTarget(m); setMessageInfoOpen(true); };
+  const buildAllChatImages = (): ViewerPage[] => {
+    const out: ViewerPage[] = [];
+    for (const m of messages) {
+      if (m.type === 'image' && m.imageUrl) {
+        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
+      }
+    }
+    return out;
+  };
+  const openViewerSingle = (m: Message) => {
+    const pages = buildAllChatImages();
+    const start = Math.max(0, pages.findIndex((p) => p.msgId === m.id));
+    setViewerPages(pages);
+    setViewerIndex(start);
+    setViewerZoomed(false);
+    setViewerOpen(true);
+  };
+  const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const shareViewerCurrent = async (url?: string, caption?: string) => {
+    if (!url) return;
+    try {
+      await Share.share({ message: caption ? `${caption}\n${url}` : url });
+    } catch {
+      // user cancelled or share failed — no-op
+    }
+  };
+
+  useEffect(() => {
+    if (!viewerOpen) return;
+    const cur = viewerPages[viewerIndex];
+    if (cur && !messages.some((m) => m.id === cur.msgId)) {
+      closeViewer();
+    }
+  }, [messages, viewerOpen, viewerPages, viewerIndex]);
+
+  useEffect(() => {
+    if (!viewerOpen || viewerPages.length <= 1) return;
+    const SCREEN_W = Dimensions.get('window').width;
+    const contentWidth = 32 + viewerPages.length * 40 + (viewerPages.length - 1) * 8;
+    const maxX = Math.max(0, contentWidth - SCREEN_W);
+    const targetX = Math.min(maxX, Math.max(0, 36 + viewerIndex * 48 - SCREEN_W / 2));
+    const t = setTimeout(() => {
+      stripRef.current?.scrollTo({ x: targetX, animated: true });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [viewerOpen, viewerIndex, viewerPages.length]);
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
@@ -750,7 +812,7 @@ export default function ClinicConversationScreen() {
 
   const palette = AVATAR_PALETTE[hashName(clinicName || 'Clinic') % AVATAR_PALETTE.length];
 
-  const BubbleBody = ({ item, sent, time }: { item: Message; sent: boolean; time: string }) => {
+  const BubbleBody = ({ item, sent, time, onLongPress }: { item: Message; sent: boolean; time: string; onLongPress?: () => void }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     const reactionBadge = hasReaction ? (
       <Pressable
@@ -786,11 +848,13 @@ export default function ClinicConversationScreen() {
               !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
             ]}
           >
-            <Image
-              source={{ uri: item.imageUrl }}
-              style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
-              resizeMode="cover"
-            />
+            <Pressable onPress={() => openViewerSingle(item)} onLongPress={onLongPress} delayLongPress={350}>
+              <Image
+                source={{ uri: item.imageUrl }}
+                style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+                resizeMode="cover"
+              />
+            </Pressable>
             {!!time && (
               <Text
                 style={[
@@ -1612,6 +1676,179 @@ export default function ClinicConversationScreen() {
         </View>
       </Modal>
 
+      <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
+        {viewerOpen && viewerPages.length > 0 ? (() => {
+          const SCREEN_W = Dimensions.get('window').width;
+          const SCREEN_H = Dimensions.get('window').height;
+          const pages = viewerPages;
+          const current = pages[viewerIndex] ?? pages[0];
+          const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
+          const isOwn = curMsg?.from === 'patient';
+          const isStarred = !!curMsg?.starredPatient;
+          const curSticker = curMsg?.reactionPatient;
+          return (
+            <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={{ flex: 1, backgroundColor: '#000' }}>
+              <FlatList
+                ref={viewerListRef}
+                data={pages}
+                keyExtractor={(_, i) => `viewer_${i}`}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                initialScrollIndex={viewerIndex}
+                scrollEnabled={!viewerZoomed}
+                getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+                onMomentumScrollEnd={(e) => {
+                  const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+                  setViewerIndex(idx);
+                  setViewerZoomed(false);
+                }}
+                renderItem={({ item: page }) => (
+                  <View style={[styles.viewerPage, { width: SCREEN_W }]}>
+                    <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                  </View>
+                )}
+              />
+              <View style={[styles.viewerHeader, { top: insets.top + 8 }]} pointerEvents="box-none">
+                <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
+                  <Ionicons name="close" size={22} color="#FFFFFF" />
+                </Pressable>
+                <View style={styles.viewerWho}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
+                    {isOwn ? 'You' : (clinicName || 'Clinic')}
+                  </Text>
+                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
+                    {formatInfoTime(curMsg?.createdAt)}
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
+                <Pressable
+                  onPress={() => {
+                    if (!current) return;
+                    setStickerTarget({ msgId: current.msgId });
+                    setStickerKbOpen(true);
+                  }}
+                  style={styles.viewerClose}
+                  hitSlop={8}
+                >
+                  {curSticker ? (
+                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                  ) : (
+                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                  )}
+                </Pressable>
+              </View>
+              {pages.length > 1 && (
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
+                  <ScrollView
+                    ref={stripRef}
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.viewerStripContent}
+                  >
+                    {pages.map((thumb, i) => (
+                      <Pressable
+                        key={`thumb_${i}`}
+                        onPress={() => {
+                          setViewerIndex(i);
+                          viewerListRef.current?.scrollToIndex({ index: i, animated: true });
+                        }}
+                        style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
+                      >
+                        <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.92)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <View style={styles.viewerBarRow}>
+                  <Pressable onPress={() => shareViewerCurrent(current?.url, curMsg?.text)} hitSlop={8} style={styles.viewerBarBtn}>
+                    <View style={styles.viewerBarIcon}>
+                      <Ionicons name="share-outline" size={24} color="#FFFFFF" />
+                    </View>
+                    <Text style={styles.viewerBarLabel}>Share</Text>
+                  </Pressable>
+                  <Pressable onPress={() => { if (curMsg) toggleStar(curMsg); }} hitSlop={8} style={styles.viewerBarBtn}>
+                    <View style={[styles.viewerBarIcon, isStarred && styles.viewerBarIconStar]}>
+                      <Ionicons name={isStarred ? 'star' : 'star-outline'} size={24} color={isStarred ? '#F5A623' : '#FFFFFF'} />
+                    </View>
+                    <Text style={styles.viewerBarLabel}>Star</Text>
+                  </Pressable>
+                  {isOwn && curMsg && (
+                    <Pressable onPress={() => handleRemoveMessage(curMsg)} hitSlop={8} style={styles.viewerBarBtn}>
+                      <View style={[styles.viewerBarIcon, styles.viewerBarIconDanger]}>
+                        <Ionicons name="trash-outline" size={24} color="#FF8A80" />
+                      </View>
+                      <Text style={[styles.viewerBarLabel, styles.viewerBarLabelDanger]}>Delete</Text>
+                    </Pressable>
+                  )}
+                </View>
+              </View>
+            </View>
+              {stickerKbOpen ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                  />
+                  <View style={styles.stickerKbSheet}>
+                    <View style={styles.stickerKbHeader}>
+                      {curSticker ? (
+                        <Pressable
+                          onPress={() => {
+                            if (!stickerTarget || !curSticker) return;
+                            const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
+                            if (tmsg) setMessageReaction(tmsg, curSticker);
+                          }}
+                          style={styles.stickerKbCurrent}
+                          hitSlop={8}
+                        >
+                          <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                        </Pressable>
+                      ) : (
+                        <View />
+                      )}
+                      <Pressable
+                        onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                        style={styles.stickerKbClose}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={20} color="#111111" />
+                      </Pressable>
+                    </View>
+                    <EmojiKeyboard
+                      onEmojiSelected={(e) => {
+                        const picked = e?.emoji;
+                        if (picked && stickerTarget) {
+                          const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
+                          if (tmsg) setMessageReaction(tmsg, picked);
+                        }
+                        setStickerKbOpen(false);
+                        setStickerTarget(null);
+                      }}
+                      enableSearchBar
+                      enableRecentlyUsed
+                      defaultHeight={380}
+                    />
+                  </View>
+                </View>
+              ) : null}
+            </GestureHandlerRootView>
+          );
+        })() : null}
+      </Modal>
+
       <Modal visible={datePickerOpen} transparent animationType="slide" onRequestClose={() => setDatePickerOpen(false)}>
         <Pressable style={styles.reactionSheetBackdrop} onPress={() => setDatePickerOpen(false)} />
         <View style={[styles.reactionSheet, { paddingBottom: insets.bottom + 20 }]}>
@@ -2087,4 +2324,103 @@ const styles = StyleSheet.create({
     borderRadius: 22,
   },
   copiedPillText: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  viewerClose: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerHeader: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    zIndex: 10,
+  },
+  viewerWho: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  viewerPage: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  viewerStrip: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+  },
+  viewerStripContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  viewerThumb: {
+    width: 40,
+    height: 54,
+    borderRadius: 6,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  viewerThumbActive: {
+    borderColor: '#4DA3FF',
+    backgroundColor: '#FFFFFF',
+    padding: 2,
+  },
+  viewerBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 18 },
+  viewerBarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
+  viewerBarBtn: { alignItems: 'center', justifyContent: 'center' },
+  viewerBarIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  viewerBarIconStar: { backgroundColor: 'rgba(245,166,35,0.18)', borderColor: 'rgba(245,166,35,0.55)' },
+  viewerBarIconDanger: { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: 'rgba(239,68,68,0.5)' },
+  viewerBarLabel: { fontSize: 11, marginTop: 7, color: '#FFFFFF', fontWeight: '600' },
+  viewerBarLabelDanger: { color: '#FF8A80' },
+  viewerBottomActions: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+  },
+  stickerKbSheet: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 420,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  stickerKbHeader: {
+    height: 40,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  stickerKbClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  stickerKbCurrent: {
+    minWidth: 32,
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
