@@ -29,6 +29,7 @@ export function useVoiceRecorder() {
   const [isRecording, setIsRecording] = useState(false);
   const [durationMs, setDurationMs] = useState(0);
   const [levels, setLevels] = useState<number[]>([]);
+  const [isPaused, setIsPaused] = useState(false);
 
   const start = useCallback(async (): Promise<boolean> => {
     try {
@@ -59,6 +60,7 @@ export function useVoiceRecorder() {
       recRef.current = rec;
       setDurationMs(0);
       setIsRecording(true);
+      setIsPaused(false);
       return true;
     } catch (e) {
       console.error('[voice] start error', e);
@@ -70,6 +72,7 @@ export function useVoiceRecorder() {
     const rec = recRef.current;
     recRef.current = null;
     setIsRecording(false);
+    setIsPaused(false);
     setLevels([]);
     if (!rec) return null;
     try {
@@ -88,6 +91,33 @@ export function useVoiceRecorder() {
     }
   }, [durationMs]);
 
+  const pause = useCallback(async (): Promise<boolean> => {
+    const rec = recRef.current;
+    if (!rec) return false;
+    try {
+      await rec.pauseAsync();
+      setIsPaused(true);
+      return true;
+    } catch (e) {
+      // Android API < 24 rejects pauseAsync; keep recording, report unsupported.
+      console.warn('[voice] pause unsupported/failed', e);
+      return false;
+    }
+  }, []);
+
+  const resume = useCallback(async (): Promise<boolean> => {
+    const rec = recRef.current;
+    if (!rec) return false;
+    try {
+      await rec.startAsync(); // resumes a prepared/paused recorder
+      setIsPaused(false);
+      return true;
+    } catch (e) {
+      console.warn('[voice] resume failed', e);
+      return false;
+    }
+  }, []);
+
   const cancel = useCallback(async (): Promise<void> => {
     const rec = recRef.current;
     recRef.current = null;
@@ -95,11 +125,12 @@ export function useVoiceRecorder() {
     setIsRecording(false);
     setDurationMs(0);
     setLevels([]);
+    setIsPaused(false);
     if (rec) {
       try { await rec.stopAndUnloadAsync(); } catch {}
       try { await Audio.setAudioModeAsync({ allowsRecordingIOS: false }); } catch {}
     }
   }, []);
 
-  return { isRecording, durationMs, levels, start, stop, cancel };
+  return { isRecording, isPaused, durationMs, levels, start, stop, pause, resume, cancel };
 }
