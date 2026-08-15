@@ -1829,8 +1829,7 @@ export default function ClinicConversationScreen() {
         return (
           <View style={{ position: 'relative' }}>
             <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bubble, styles.bubbleSent]}>
-              <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} sent />
-              {!!time && <Text style={styles.bubbleSentTime}>{time}</Text>}
+              <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent />
             </LinearGradient>
             {reactionBadge}
             {starBadge}
@@ -1840,8 +1839,7 @@ export default function ClinicConversationScreen() {
       return (
         <View style={{ position: 'relative' }}>
           <View style={[styles.bubble, styles.bubbleRecv, { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder }]}>
-            <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} sent={false} />
-            {!!time && <Text style={[styles.bubbleRecvTime, { color: textMuted }]}>{time}</Text>}
+            <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent={false} />
           </View>
           {reactionBadge}
           {starBadge}

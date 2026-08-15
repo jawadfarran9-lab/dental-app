@@ -13,7 +13,7 @@ const DEFAULT_BARS = Array.from({ length: 40 }, () => 0.35);
 const RATE_LABEL: Record<number, string> = { 1: '1×', 1.5: '1.5×', 2: '2×' };
 const GAP = 1.5;
 
-export default function VoiceBubble({ audioUrl, durationMs, waveform, sent }: { audioUrl: string; durationMs: number; waveform?: number[]; sent: boolean }) {
+export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, timeLabel }: { audioUrl: string; durationMs: number; waveform?: number[]; sent: boolean; timeLabel?: string }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const seekingRef = useRef(false);
   const wasPlayingRef = useRef(false);
@@ -107,14 +107,15 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent }: { 
   const fg = sent ? '#FFFFFF' : '#1E6FD9';
   const track = sent ? 'rgba(255,255,255,0.4)' : 'rgba(30,111,217,0.25)';
   const labelColor = sent ? 'rgba(255,255,255,0.9)' : '#1E6FD9';
-  const label = playing || posMs > 0 ? fmt(Math.max(0, total - posMs)) : fmt(durationMs);
+  const timeColor = sent ? 'rgba(255,255,255,0.7)' : '#8A93A6';
   const pillBg = sent ? 'rgba(255,255,255,0.22)' : 'rgba(30,111,217,0.12)';
+  const label = playing || posMs > 0 ? fmt(Math.max(0, total - posMs)) : fmt(durationMs);
 
   const bars = waveform && waveform.length > 0 ? waveform : DEFAULT_BARS;
   const barW = barsW > 0 ? Math.max(1.5, (barsW - GAP * (bars.length - 1)) / bars.length) : 2.5;
   const frac = Math.max(0, Math.min(1, posMs / total));
   const playedIdx = Math.floor(frac * bars.length);
-  const knobLeft = Math.max(0, Math.min(barsW - 11, frac * barsW - 5.5));
+  const knobLeft = Math.max(0, Math.min(barsW - 12, frac * barsW - 6));
 
   return (
     <View style={{ width: 236 }}>
@@ -125,31 +126,34 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent }: { 
         <Pressable onPress={toggle} hitSlop={8} style={{ marginRight: 10 }}>
           <Ionicons name={playing ? 'pause' : 'play'} size={26} color={fg} />
         </Pressable>
-        <View style={{ flex: 1 }}>
-          <View
-            onLayout={(e) => setBarsW(e.nativeEvent.layout.width)}
-            onStartShouldSetResponder={() => true}
-            onMoveShouldSetResponder={() => true}
-            onResponderGrant={seekBegin}
-            onResponderMove={seekMove}
-            onResponderRelease={seekEnd}
-            onResponderTerminate={() => { seekingRef.current = false; }}
-            style={{ height: 24, justifyContent: 'center' }}
-          >
+        <View
+          style={{ flex: 1, paddingVertical: 10 }}
+          onLayout={(e) => setBarsW(e.nativeEvent.layout.width)}
+          onStartShouldSetResponder={() => true}
+          onMoveShouldSetResponder={() => true}
+          onResponderGrant={seekBegin}
+          onResponderMove={seekMove}
+          onResponderRelease={seekEnd}
+          onResponderTerminate={() => { seekingRef.current = false; }}
+        >
+          <View style={{ height: 30, justifyContent: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {bars.map((v, i) => (
                 <View
                   key={i}
-                  style={{ width: barW, marginRight: i === bars.length - 1 ? 0 : GAP, borderRadius: 1, height: Math.max(3, Math.round((v ?? 0) * 20)), backgroundColor: i <= playedIdx ? fg : track }}
+                  style={{ width: barW, marginRight: i === bars.length - 1 ? 0 : GAP, borderRadius: 1.5, height: Math.max(4, Math.round((v ?? 0) * 28)), backgroundColor: i <= playedIdx ? fg : track }}
                 />
               ))}
             </View>
             {(playing || posMs > 0) && barsW > 0 ? (
-              <View pointerEvents="none" style={{ position: 'absolute', left: knobLeft, top: 6, width: 11, height: 11, borderRadius: 6, backgroundColor: fg }} />
+              <View pointerEvents="none" style={{ position: 'absolute', left: knobLeft, top: 9, width: 12, height: 12, borderRadius: 6, backgroundColor: fg }} />
             ) : null}
           </View>
-          <Text style={{ marginTop: 3, fontSize: 11, fontWeight: '600', color: labelColor, fontVariant: ['tabular-nums'] }}>{label}</Text>
         </View>
+      </View>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 2 }}>
+        <Text style={{ fontSize: 11.5, fontWeight: '600', color: labelColor, fontVariant: ['tabular-nums'] }}>{label}</Text>
+        {timeLabel ? <Text style={{ fontSize: 10.5, fontWeight: '600', color: timeColor, fontVariant: ['tabular-nums'] }}>{timeLabel}</Text> : null}
       </View>
     </View>
   );
