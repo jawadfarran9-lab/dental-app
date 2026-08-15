@@ -17,7 +17,6 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
   const soundRef = useRef<Audio.Sound | null>(null);
   const seekingRef = useRef(false);
   const wasPlayingRef = useRef(false);
-  const lastSeekRef = useRef(0);
   const [playing, setPlaying] = useState(false);
   const [posMs, setPosMs] = useState(0);
   const [rate, setRate] = useState(1);
@@ -85,21 +84,15 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
     setPosMs(fracAt(e) * total);
   };
   const seekMove = (e: GestureResponderEvent) => {
-    const target = fracAt(e) * total;
-    setPosMs(target);
-    const now = Date.now();
-    if (soundRef.current && now - lastSeekRef.current > 90) {
-      lastSeekRef.current = now;
-      soundRef.current.setPositionAsync(target).catch(() => {});
-    }
+    setPosMs(fracAt(e) * total);
   };
   const seekEnd = async (e: GestureResponderEvent) => {
     const target = fracAt(e) * total;
     setPosMs(target);
     try {
       const s = await ensureSound();
-      await s.setPositionAsync(target);
-      if (wasPlayingRef.current) { await s.playAsync(); setPlaying(true); }
+      await s.setStatusAsync({ positionMillis: target, shouldPlay: wasPlayingRef.current, seekMillisToleranceBefore: 60, seekMillisToleranceAfter: 60 });
+      setPlaying(wasPlayingRef.current);
     } catch {}
     seekingRef.current = false;
   };
@@ -131,12 +124,13 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
           onLayout={(e) => setBarsW(e.nativeEvent.layout.width)}
           onStartShouldSetResponder={() => true}
           onMoveShouldSetResponder={() => true}
+          onResponderTerminationRequest={() => false}
           onResponderGrant={seekBegin}
           onResponderMove={seekMove}
           onResponderRelease={seekEnd}
           onResponderTerminate={() => { seekingRef.current = false; }}
         >
-          <View style={{ height: 30, justifyContent: 'center' }}>
+          <View pointerEvents="none" style={{ height: 30, justifyContent: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               {bars.map((v, i) => (
                 <View
