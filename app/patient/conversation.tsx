@@ -1,9 +1,10 @@
 import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import VoiceBubble from '@/src/components/VoiceBubble';
+import RecordingBar from '@/src/components/RecordingBar';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
-import { sendImageMessage } from '@/src/services/chatImages';
+import { sendImageMessage, sendAudioMessage } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/threadsHelper';
@@ -82,6 +83,8 @@ function formatInfoTime(ts?: number): string {
   return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} · ${h}:${m} ${ampm}`;
 }
 
+const formatVoiceDuration = (ms: number) => { const s = Math.floor(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
 type Message = {
   id: string;
   from: 'patient' | 'clinic';
@@ -145,6 +148,8 @@ export default function ClinicConversationScreen() {
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [voiceSending, setVoiceSending] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -625,6 +630,28 @@ export default function ClinicConversationScreen() {
     }
   };
 
+  const onStartVoice = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {}); setIsRecording(true); };
+  const onSendVoice = async (r: { uri: string; durationMs: number; waveform: number[] }) => {
+    if (voiceSending) return;
+    setVoiceSending(true);
+    try {
+      if (r.durationMs > 500 && clinicId && patientId) {
+        await sendAudioMessage({
+          clinicId,
+          patientId,
+          patientName: patientName ?? '',
+          localUri: r.uri,
+          durationMs: r.durationMs,
+          waveform: r.waveform,
+          from: 'patient',
+          senderName: 'Patient',
+          senderType: 'patient',
+        }, patientDb);
+      }
+    } catch (e) { console.error('[patient/conversation] voice send', e); }
+    finally { setVoiceSending(false); setIsRecording(false); }
+  };
+
   const startEditMessage = (m: Message) => {
     preEditDraftRef.current = draft;
     setEditingMessage(m);
@@ -1084,6 +1111,20 @@ export default function ClinicConversationScreen() {
               },
             ]}
           >
+            {isRecording ? (
+              <RecordingBar
+                attachBtnBg={attachBtnBg}
+                textPrimary={textPrimary}
+                attachBtnStyle={styles.attachBtn}
+                sendBtnStyle={styles.sendBtn}
+                sendBtnInnerStyle={styles.sendBtnInner}
+                formatDuration={formatVoiceDuration}
+                sending={voiceSending}
+                onCancel={() => setIsRecording(false)}
+                onSend={onSendVoice}
+              />
+            ) : (
+              <>
             {editingMessage ? (
               <Pressable
                 onPress={cancelEdit}
@@ -1120,7 +1161,7 @@ export default function ClinicConversationScreen() {
             </View>
             {!editingMessage && (
               <Pressable
-                onPress={() => Haptics.selectionAsync().catch(() => {})}
+                onPress={onStartVoice}
                 style={[styles.attachBtn, { backgroundColor: attachBtnBg }]}
                 hitSlop={6}
               >
@@ -1144,6 +1185,8 @@ export default function ClinicConversationScreen() {
                 <Ionicons name={editingMessage ? 'checkmark' : 'send'} size={18} color="#FFFFFF" />
               </LinearGradient>
             </Pressable>
+              </>
+            )}
           </View>
         </View>
       </KeyboardAvoidingView>
