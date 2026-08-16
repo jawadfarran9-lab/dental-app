@@ -408,7 +408,7 @@ export default function ClinicConversationScreen() {
     const isImage = m.type === 'image';
     const isAudio = m.type === 'audio';
     const isAlbum = m.type === 'album';
-    if (isOwn && (isImage || isAlbum)) {
+    if (isOwn && isImage) {
       return [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
         { key: 'info', label: 'Info', icon: 'information-circle-outline' },
@@ -1617,7 +1617,7 @@ export default function ClinicConversationScreen() {
             />
           </View>
         )}
-        {rowPos && selectedMessage && (
+        {rowPos && selectedMessage && selectedMessage.type !== 'album' && (
           <View
             style={[
               styles.reactionRow,
