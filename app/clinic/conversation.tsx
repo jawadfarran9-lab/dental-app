@@ -351,12 +351,16 @@ export default function ClinicConversationScreen() {
 
   const stickerSheetEntries = useMemo(() => {
     const t = stickerSheetTarget;
-    if (!t) return [];
+    if (!t) return { clinic: [] as Array<{ index: number; url: string; sticker: string }>, patient: [] as Array<{ index: number; url: string; sticker: string }> };
     const m = messages.find((x) => x.id === t.id) ?? t;
-    if (m.type !== 'album' || !Array.isArray(m.media)) return [];
-    return m.media
-      .map((mm, idx) => ({ index: idx, url: mm.url, sticker: mm.sticker }))
-      .filter((e) => !!e.sticker);
+    if (m.type !== 'album' || !Array.isArray(m.media)) return { clinic: [] as Array<{ index: number; url: string; sticker: string }>, patient: [] as Array<{ index: number; url: string; sticker: string }> };
+    const clinic: Array<{ index: number; url: string; sticker: string }> = [];
+    const patient: Array<{ index: number; url: string; sticker: string }> = [];
+    m.media.forEach((mm, idx) => {
+      if (mm.sticker) clinic.push({ index: idx, url: mm.url, sticker: mm.sticker });
+      if (mm.stickerPatient) patient.push({ index: idx, url: mm.url, sticker: mm.stickerPatient });
+    });
+    return { clinic, patient };
   }, [stickerSheetTarget, messages]);
 
   const infoMsg = useMemo(
@@ -1960,23 +1964,41 @@ export default function ClinicConversationScreen() {
           </View>
           <View style={styles.reactionSheetKnob} />
           <Text style={[styles.reactionSheetTitle, { color: textPrimary }]}>
-            {stickerSheetEntries.length} Sticker{stickerSheetEntries.length === 1 ? '' : 's'}
+            {stickerSheetEntries.clinic.length + stickerSheetEntries.patient.length} Sticker{stickerSheetEntries.clinic.length + stickerSheetEntries.patient.length === 1 ? '' : 's'}
           </Text>
-          {stickerSheetEntries.length > 0 && (
-            <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, marginLeft: 4, marginTop: 2, marginBottom: 8 }}>
-              You
-            </Text>
+          {stickerSheetEntries.clinic.length > 0 && (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, marginLeft: 4, marginTop: 2, marginBottom: 8 }}>
+                You
+              </Text>
+              {stickerSheetEntries.clinic.map((e) => (
+                <Pressable key={`stc-${e.index}`} onPress={() => removeSticker(e)} style={styles.reactionSheetRow}>
+                  <Image source={{ uri: e.url }} style={{ width: 44, height: 44, borderRadius: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.reactionSheetRowName, { color: textPrimary }]}>Photo {e.index + 1}</Text>
+                    <Text style={[styles.reactionSheetRowSub, { color: textSecondary }]}>Tap to remove</Text>
+                  </View>
+                  <Text style={styles.reactionSheetRowEmoji}>{e.sticker}</Text>
+                </Pressable>
+              ))}
+            </>
           )}
-          {stickerSheetEntries.map((e) => (
-            <Pressable key={`st-${e.index}`} onPress={() => removeSticker(e)} style={styles.reactionSheetRow}>
-              <Image source={{ uri: e.url }} style={{ width: 44, height: 44, borderRadius: 10 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.reactionSheetRowName, { color: textPrimary }]}>Photo {e.index + 1}</Text>
-                <Text style={[styles.reactionSheetRowSub, { color: textSecondary }]}>Tap to remove</Text>
-              </View>
-              <Text style={styles.reactionSheetRowEmoji}>{e.sticker}</Text>
-            </Pressable>
-          ))}
+          {stickerSheetEntries.patient.length > 0 && (
+            <>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: textSecondary, marginLeft: 4, marginTop: 8, marginBottom: 8 }}>
+                {patientName}
+              </Text>
+              {stickerSheetEntries.patient.map((e) => (
+                <View key={`stp-${e.index}`} style={[styles.reactionSheetRow, { opacity: 0.7 }]}>
+                  <Image source={{ uri: e.url }} style={{ width: 44, height: 44, borderRadius: 10 }} />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.reactionSheetRowName, { color: textPrimary }]}>Photo {e.index + 1}</Text>
+                  </View>
+                  <Text style={styles.reactionSheetRowEmoji}>{e.sticker}</Text>
+                </View>
+              ))}
+            </>
+          )}
         </View>
       </Modal>
 
