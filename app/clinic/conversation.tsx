@@ -505,6 +505,11 @@ export default function ClinicConversationScreen() {
     setViewerOpen(true);
   };
   const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const openStickerForPage = (page: ViewerPage) => {
+    setReactionTarget(null);
+    setStickerTarget({ msgId: page.msgId, mediaIndex: page.mediaIndex });
+    setStickerKbOpen(true);
+  };
   const openAlbumGallery = (m: Message) => { setGalleryMessage(m); setGalleryOpen(true); };
   const closeGallery = () => { setGalleryOpen(false); setGalleryMessage(null); };
   const shareViewerCurrent = async (url?: string, caption?: string) => {
@@ -2263,6 +2268,7 @@ export default function ClinicConversationScreen() {
           const isOwn = curMsg?.from === 'clinic';
           const isStarred = !!curMsg?.starredClinic;
           const curMediaIndex = current?.mediaIndex;
+          const isAlbumPageForCurrent = !!(curMsg && curMsg.type === 'album' && typeof curMediaIndex === 'number' && Array.isArray(curMsg.media));
           const curSticker = curMsg
             ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
                 ? curMsg.media?.[curMediaIndex]?.sticker
@@ -2286,15 +2292,48 @@ export default function ClinicConversationScreen() {
                   setViewerIndex(idx);
                   setViewerZoomed(false);
                 }}
-                renderItem={({ item: page, index: i }) => (
-                  <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                    {page.kind === 'video' && page.videoUrl ? (
-                      <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
-                    ) : (
-                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
-                    )}
-                  </View>
-                )}
+                renderItem={({ item: page, index: i }) => {
+                  const pmsg = messages.find((m) => m.id === page.msgId) ?? null;
+                  const isAlbumPage = typeof page.mediaIndex === 'number' && pmsg?.type === 'album' && Array.isArray(pmsg.media);
+                  const mItem = isAlbumPage ? pmsg!.media![page.mediaIndex!] : null;
+                  const own = mItem?.sticker;
+                  const other = mItem?.stickerPatient;
+                  const pAspect = page.width && page.height ? page.width / page.height : SCREEN_W / SCREEN_H;
+                  const cAspect = SCREEN_W / SCREEN_H;
+                  let baseW = SCREEN_W;
+                  let baseH = SCREEN_H;
+                  if (pAspect >= cAspect) { baseW = SCREEN_W; baseH = SCREEN_W / pAspect; }
+                  else { baseH = SCREEN_H; baseW = SCREEN_H * pAspect; }
+                  const offX = (SCREEN_W - baseW) / 2;
+                  const offY = (SCREEN_H - baseH) / 2;
+                  return (
+                    <View style={[styles.viewerPage, { width: SCREEN_W }]}>
+                      {page.kind === 'video' && page.videoUrl ? (
+                        <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
+                      ) : (
+                        <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
+                      )}
+                      {isAlbumPage ? (
+                        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+                          {own ? (
+                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
+                              <Text style={styles.galStickerText}>{own}</Text>
+                            </Pressable>
+                          ) : (
+                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
+                              <Ionicons name="happy-outline" size={18} color="#1E6FD9" />
+                            </Pressable>
+                          )}
+                          {other ? (
+                            <View style={[styles.viewerStickerRight, { top: undefined, bottom: insets.bottom + 200, right: 20 }]}>
+                              <Text style={styles.galStickerText}>{other}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                }}
               />
               <View style={[styles.viewerHeader, { top: insets.top + 8 }]} pointerEvents="box-none">
                 <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
@@ -2310,24 +2349,26 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
-              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + (isVideo ? 228 : 200) }]} pointerEvents="box-none">
-                <Pressable
-                  onPress={() => {
-                    if (!current) return;
-                    setReactionTarget(null);
-                    setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
-                    setStickerKbOpen(true);
-                  }}
-                  style={styles.viewerClose}
-                  hitSlop={8}
-                >
-                  {curSticker ? (
-                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                  ) : (
-                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
-                  )}
-                </Pressable>
-              </View>
+              {!isAlbumPageForCurrent && (
+                <View style={[styles.viewerBottomActions, { bottom: insets.bottom + (isVideo ? 228 : 200) }]} pointerEvents="box-none">
+                  <Pressable
+                    onPress={() => {
+                      if (!current) return;
+                      setReactionTarget(null);
+                      setStickerTarget({ msgId: current.msgId, mediaIndex: current.mediaIndex });
+                      setStickerKbOpen(true);
+                    }}
+                    style={styles.viewerClose}
+                    hitSlop={8}
+                  >
+                    {curSticker ? (
+                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                    ) : (
+                      <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                    )}
+                  </Pressable>
+                </View>
+              )}
               {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 162 : 132) }]}>
                   <ScrollView
@@ -2917,6 +2958,39 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   galStickerText: { fontSize: 18 },
+  viewerStickerRight: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+    opacity: 0.9,
+  },
+  viewerStickerLeft: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
   reactionSheetBackdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.45)' },
   reactionSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 16, overflow: 'hidden' },
   reactionSheetKnob: { alignSelf: 'center', width: 40, height: 5, borderRadius: 3, backgroundColor: 'rgba(128,128,128,0.35)', marginBottom: 12 },

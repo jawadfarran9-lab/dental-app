@@ -178,7 +178,7 @@ export default function ClinicConversationScreen() {
   const stripRef = useRef<ScrollView>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
-  const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
+  const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
   const [stickerSheetOpen, setStickerSheetOpen] = useState(false);
   const [stickerSheetTarget, setStickerSheetTarget] = useState<Message | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
@@ -241,6 +241,10 @@ export default function ClinicConversationScreen() {
     setViewerOpen(true);
   };
   const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const openStickerForPage = (page: ViewerPage) => {
+    setStickerTarget({ msgId: page.msgId, mediaIndex: page.mediaIndex });
+    setStickerKbOpen(true);
+  };
   const openAlbumGallery = (m: Message) => { setGalleryMessage(m); setGalleryOpen(true); };
   const closeGallery = () => { setGalleryOpen(false); setGalleryMessage(null); };
   const shareViewerCurrent = async (url?: string, caption?: string) => {
@@ -1976,7 +1980,13 @@ export default function ClinicConversationScreen() {
           const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
           const isOwn = curMsg?.from === 'patient';
           const isStarred = !!curMsg?.starredPatient;
-          const curSticker = curMsg?.reactionPatient;
+          const curMediaIndex = current?.mediaIndex;
+          const isAlbumPageForCurrent = !!(curMsg && curMsg.type === 'album' && typeof curMediaIndex === 'number' && Array.isArray(curMsg.media));
+          const curSticker = curMsg
+            ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
+                ? curMsg.media?.[curMediaIndex]?.stickerPatient
+                : curMsg.reactionPatient)
+            : undefined;
           return (
             <GestureHandlerRootView style={{ flex: 1 }}>
             <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -1995,11 +2005,44 @@ export default function ClinicConversationScreen() {
                   setViewerIndex(idx);
                   setViewerZoomed(false);
                 }}
-                renderItem={({ item: page }) => (
-                  <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                    <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
-                  </View>
-                )}
+                renderItem={({ item: page }) => {
+                  const pmsg = messages.find((m) => m.id === page.msgId) ?? null;
+                  const isAlbumPage = typeof page.mediaIndex === 'number' && pmsg?.type === 'album' && Array.isArray(pmsg.media);
+                  const mItem = isAlbumPage ? pmsg!.media![page.mediaIndex!] : null;
+                  const own = mItem?.stickerPatient;
+                  const other = mItem?.sticker;
+                  const pAspect = page.width && page.height ? page.width / page.height : SCREEN_W / SCREEN_H;
+                  const cAspect = SCREEN_W / SCREEN_H;
+                  let baseW = SCREEN_W;
+                  let baseH = SCREEN_H;
+                  if (pAspect >= cAspect) { baseW = SCREEN_W; baseH = SCREEN_W / pAspect; }
+                  else { baseH = SCREEN_H; baseW = SCREEN_H * pAspect; }
+                  const offX = (SCREEN_W - baseW) / 2;
+                  const offY = (SCREEN_H - baseH) / 2;
+                  return (
+                    <View style={[styles.viewerPage, { width: SCREEN_W }]}>
+                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                      {isAlbumPage ? (
+                        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
+                          {own ? (
+                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
+                              <Text style={styles.galStickerText}>{own}</Text>
+                            </Pressable>
+                          ) : (
+                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
+                              <Ionicons name="happy-outline" size={18} color="#1E6FD9" />
+                            </Pressable>
+                          )}
+                          {other ? (
+                            <View style={[styles.viewerStickerRight, { top: undefined, bottom: insets.bottom + 200, right: 20 }]}>
+                              <Text style={styles.galStickerText}>{other}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </View>
+                  );
+                }}
               />
               <View style={[styles.viewerHeader, { top: insets.top + 8 }]} pointerEvents="box-none">
                 <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
@@ -2015,23 +2058,25 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
-              <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
-                <Pressable
-                  onPress={() => {
-                    if (!current) return;
-                    setStickerTarget({ msgId: current.msgId });
-                    setStickerKbOpen(true);
-                  }}
-                  style={styles.viewerClose}
-                  hitSlop={8}
-                >
-                  {curSticker ? (
-                    <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                  ) : (
-                    <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
-                  )}
-                </Pressable>
-              </View>
+              {!isAlbumPageForCurrent && (
+                <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
+                  <Pressable
+                    onPress={() => {
+                      if (!current) return;
+                      setStickerTarget({ msgId: current.msgId });
+                      setStickerKbOpen(true);
+                    }}
+                    style={styles.viewerClose}
+                    hitSlop={8}
+                  >
+                    {curSticker ? (
+                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                    ) : (
+                      <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
+                    )}
+                  </Pressable>
+                </View>
+              )}
               {pages.length > 1 && (
                 <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
                   <ScrollView
@@ -2100,7 +2145,11 @@ export default function ClinicConversationScreen() {
                           onPress={() => {
                             if (!stickerTarget || !curSticker) return;
                             const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                            if (tmsg) setMessageReaction(tmsg, curSticker);
+                            if (tmsg?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
+                              setImageSticker(stickerTarget, curSticker);
+                            } else if (tmsg) {
+                              setMessageReaction(tmsg, curSticker);
+                            }
                           }}
                           style={styles.stickerKbCurrent}
                           hitSlop={8}
@@ -2123,7 +2172,11 @@ export default function ClinicConversationScreen() {
                         const picked = e?.emoji;
                         if (picked && stickerTarget) {
                           const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                          if (tmsg) setMessageReaction(tmsg, picked);
+                          if (tmsg?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
+                            setImageSticker(stickerTarget, picked);
+                          } else if (tmsg) {
+                            setMessageReaction(tmsg, picked);
+                          }
                         }
                         setStickerKbOpen(false);
                         setStickerTarget(null);
@@ -2962,4 +3015,37 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   galStickerText: { fontSize: 18 },
+  viewerStickerRight: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+    opacity: 0.9,
+  },
+  viewerStickerLeft: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
 });
