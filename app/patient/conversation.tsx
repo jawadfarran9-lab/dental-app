@@ -1982,6 +1982,7 @@ export default function ClinicConversationScreen() {
           const isStarred = !!curMsg?.starredPatient;
           const curMediaIndex = current?.mediaIndex;
           const isAlbumPageForCurrent = !!(curMsg && curMsg.type === 'album' && typeof curMediaIndex === 'number' && Array.isArray(curMsg.media));
+          const isImagePageForCurrent = curMsg?.type === 'image';
           const curSticker = curMsg
             ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
                 ? curMsg.media?.[curMediaIndex]?.stickerPatient
@@ -2008,9 +2009,10 @@ export default function ClinicConversationScreen() {
                 renderItem={({ item: page }) => {
                   const pmsg = messages.find((m) => m.id === page.msgId) ?? null;
                   const isAlbumPage = typeof page.mediaIndex === 'number' && pmsg?.type === 'album' && Array.isArray(pmsg.media);
+                  const isImagePage = typeof page.mediaIndex !== 'number' && pmsg?.type === 'image';
                   const mItem = isAlbumPage ? pmsg!.media![page.mediaIndex!] : null;
-                  const own = mItem?.stickerPatient;
-                  const other = mItem?.sticker;
+                  const own = isAlbumPage ? mItem?.stickerPatient : (isImagePage ? pmsg?.reactionPatient : undefined);
+                  const other = isAlbumPage ? mItem?.sticker : (isImagePage ? pmsg?.reactionClinic : undefined);
                   const pAspect = page.width && page.height ? page.width / page.height : SCREEN_W / SCREEN_H;
                   const cAspect = SCREEN_W / SCREEN_H;
                   let baseW = SCREEN_W;
@@ -2022,7 +2024,7 @@ export default function ClinicConversationScreen() {
                   return (
                     <View style={[styles.viewerPage, { width: SCREEN_W }]}>
                       <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
-                      {isAlbumPage ? (
+                      {(isAlbumPage || isImagePage) ? (
                         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
                           {own ? (
                             <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
@@ -2058,7 +2060,7 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
-              {!isAlbumPageForCurrent && (
+              {!isAlbumPageForCurrent && !isImagePageForCurrent && (
                 <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
                   <Pressable
                     onPress={() => {
