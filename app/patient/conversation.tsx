@@ -2018,6 +2018,11 @@ export default function ClinicConversationScreen() {
                       style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
                     >
                       <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                      {it.sticker ? (
+                        <View style={styles.galStickerBadge}>
+                          <Text style={styles.galStickerText}>{it.sticker}</Text>
+                        </View>
+                      ) : null}
                     </Pressable>
                   );
                 })}
@@ -2669,4 +2674,21 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     zIndex: 10,
   },
+  galStickerBadge: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  galStickerText: { fontSize: 18 },
 });
