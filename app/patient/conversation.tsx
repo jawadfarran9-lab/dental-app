@@ -113,6 +113,7 @@ type Message = {
     posterUrl?: string;
     durationMs?: number;
     sticker?: string;
+    stickerPatient?: string;
   }[];
   reactionClinic?: string;
   reactionPatient?: string;
@@ -125,6 +126,8 @@ type ViewerPage = { url: string; width?: number; height?: number; msgId: string;
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
 const RECENTS_KEY = 'reactions:recent:v3';
+const STICKER_QUICKS = ['⭐', '❤️', '💯', '👍', '👏', '🔥'];
+const STICKER_RECENTS_KEY = 'stickers:recent:v1';
 
 type MessageBubbleProps = {
   item: Message;
@@ -178,6 +181,8 @@ export default function ClinicConversationScreen() {
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
   const [galleryOpen, setGalleryOpen] = useState(false);
   const [galleryMessage, setGalleryMessage] = useState<Message | null>(null);
+  const [galStickerTarget, setGalStickerTarget] = useState<{ msgId: string; mediaIndex: number } | null>(null);
+  const [galKbOpen, setGalKbOpen] = useState(false);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -274,6 +279,8 @@ export default function ClinicConversationScreen() {
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
+  const [stickerRecents, setStickerRecents] = useState<string[]>([]);
+  const [stickerRecentsLoaded, setStickerRecentsLoaded] = useState(false);
   const [copiedVisible, setCopiedVisible] = useState(false);
   const copiedAnim = useRef(new Animated.Value(0)).current;
   const inputRef = useRef<TextInput>(null);
@@ -487,6 +494,28 @@ export default function ClinicConversationScreen() {
     }
   };
 
+  const setImageSticker = async (target: { msgId: string; mediaIndex?: number }, emoji: string) => {
+    if (!patientId) return;
+    const msg = messages.find((m) => m.id === target.msgId);
+    if (!msg) return;
+    if (msg.type === 'album' && typeof target.mediaIndex === 'number' && Array.isArray(msg.media)) {
+      const mi = target.mediaIndex;
+      const newMedia = msg.media.map((it, idx) => {
+        if (idx !== mi) return it;
+        if (it.stickerPatient === emoji) {
+          const { stickerPatient, ...rest } = it;
+          return rest;
+        }
+        return { ...it, stickerPatient: emoji };
+      });
+      try {
+        await updateDoc(doc(patientDb, `patients/${patientId}/messages/${target.msgId}`), { media: newMedia });
+      } catch (e) {
+        console.error('[conversation] set sticker error', e);
+      }
+    }
+  };
+
   const toggleStar = async (m: Message) => {
     if (!patientId) return;
     try {
@@ -560,11 +589,34 @@ export default function ClinicConversationScreen() {
       .catch(() => setRecentsLoaded(true));
   }, []);
 
+  useEffect(() => {
+    AsyncStorage.getItem(STICKER_RECENTS_KEY)
+      .then((raw) => {
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) setStickerRecents(arr.filter((x) => typeof x === 'string'));
+          } catch {}
+        }
+        setStickerRecentsLoaded(true);
+      })
+      .catch(() => setStickerRecentsLoaded(true));
+  }, []);
+
   const pushRecent = (emoji: string) => {
     if (!recentsLoaded) return;
     setRecents((prev) => {
       const next = [emoji, ...prev.filter((x) => x !== emoji)].slice(0, RECENT_MAX);
       AsyncStorage.setItem(RECENTS_KEY, JSON.stringify(next)).catch(() => {});
+      return next;
+    });
+  };
+
+  const pushStickerRecent = (emoji: string) => {
+    if (!stickerRecentsLoaded) return;
+    setStickerRecents((prev) => {
+      const next = [emoji, ...prev.filter((x) => x !== emoji)].slice(0, RECENT_MAX);
+      AsyncStorage.setItem(STICKER_RECENTS_KEY, JSON.stringify(next)).catch(() => {});
       return next;
     });
   };
@@ -2015,13 +2067,28 @@ export default function ClinicConversationScreen() {
                     <Pressable
                       key={`galimg_${i}`}
                       onPress={() => { if (gm) openViewerFromGallery(gm, i); }}
+                      onLongPress={() => { if (gm) setGalStickerTarget({ msgId: gm.id, mediaIndex: i }); }}
+                      delayLongPress={350}
                       style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
                     >
                       <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
                       {it.sticker ? (
-                        <View style={styles.galStickerBadge}>
+                        <Pressable
+                          style={styles.galStickerBadge}
+                          hitSlop={8}
+                          onPress={() => { if (gm) setGalStickerTarget({ msgId: gm.id, mediaIndex: i }); }}
+                        >
                           <Text style={styles.galStickerText}>{it.sticker}</Text>
-                        </View>
+                        </Pressable>
+                      ) : null}
+                      {it.stickerPatient ? (
+                        <Pressable
+                          style={styles.galStickerBadgeRight}
+                          hitSlop={8}
+                          onPress={() => { if (gm) setGalStickerTarget({ msgId: gm.id, mediaIndex: i }); }}
+                        >
+                          <Text style={styles.galStickerText}>{it.stickerPatient}</Text>
+                        </Pressable>
                       ) : null}
                     </Pressable>
                   );
@@ -2048,6 +2115,99 @@ export default function ClinicConversationScreen() {
                 </View>
                 <View style={{ width: 40 }} />
               </View>
+              {galStickerTarget ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <Pressable style={StyleSheet.absoluteFill} onPress={() => setGalStickerTarget(null)} />
+                  <View
+                    style={[
+                      styles.reactionRow,
+                      {
+                        bottom: insets.bottom + 24,
+                        left: Math.max(8, (SCREEN_W - 360) / 2),
+                        backgroundColor: isDark ? '#1D2233' : '#FFFFFF',
+                        borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(27,37,66,0.08)',
+                      },
+                    ]}
+                  >
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.reactionStripScroll} contentContainerStyle={styles.reactionRowContent}>
+                      {STICKER_QUICKS.map((e) => {
+                        const cur = gMedia[galStickerTarget.mediaIndex]?.stickerPatient;
+                        const isSelected = cur === e;
+                        return (
+                          <Pressable
+                            key={e}
+                            onPress={() => { if (galStickerTarget) setImageSticker(galStickerTarget, e); setGalStickerTarget(null); }}
+                            style={({ pressed }) => [
+                              styles.reactionChip,
+                              isSelected && styles.reactionChipSelected,
+                              pressed && { opacity: 0.5 },
+                            ]}
+                          >
+                            <Text style={styles.reactionEmoji}>{e}</Text>
+                          </Pressable>
+                        );
+                      })}
+                      {stickerRecents.filter((e) => !STICKER_QUICKS.includes(e)).map((e) => {
+                        const cur = gMedia[galStickerTarget.mediaIndex]?.stickerPatient;
+                        const isSelected = cur === e;
+                        return (
+                          <Pressable
+                            key={`strip-${e}`}
+                            onPress={() => { if (galStickerTarget) setImageSticker(galStickerTarget, e); setGalStickerTarget(null); }}
+                            style={({ pressed }) => [
+                              styles.reactionChip,
+                              isSelected && styles.reactionChipSelected,
+                              pressed && { opacity: 0.5 },
+                            ]}
+                          >
+                            <Text style={styles.reactionEmoji}>{e}</Text>
+                          </Pressable>
+                        );
+                      })}
+                    </ScrollView>
+                    <Pressable
+                      onPress={() => setGalKbOpen(true)}
+                      style={({ pressed }) => [styles.reactionChip, pressed && { opacity: 0.5 }]}
+                    >
+                      <Ionicons name="add" size={22} color={isDark ? '#FFFFFF' : '#1B2542'} />
+                    </Pressable>
+                  </View>
+                </View>
+              ) : null}
+              {galKbOpen ? (
+                <View style={StyleSheet.absoluteFill}>
+                  <Pressable
+                    style={StyleSheet.absoluteFill}
+                    onPress={() => { setGalKbOpen(false); setGalStickerTarget(null); }}
+                  />
+                  <View style={styles.stickerKbSheet}>
+                    <View style={styles.stickerKbHeader}>
+                      <View />
+                      <Pressable
+                        onPress={() => { setGalKbOpen(false); setGalStickerTarget(null); }}
+                        style={styles.stickerKbClose}
+                        hitSlop={8}
+                      >
+                        <Ionicons name="close" size={20} color="#111111" />
+                      </Pressable>
+                    </View>
+                    <EmojiKeyboard
+                      onEmojiSelected={(e) => {
+                        const picked = e?.emoji;
+                        if (picked && galStickerTarget) {
+                          setImageSticker(galStickerTarget, picked);
+                          if (!STICKER_QUICKS.includes(picked)) pushStickerRecent(picked);
+                        }
+                        setGalKbOpen(false);
+                        setGalStickerTarget(null);
+                      }}
+                      enableSearchBar
+                      enableRecentlyUsed
+                      defaultHeight={380}
+                    />
+                  </View>
+                </View>
+              ) : null}
             </View>
           );
         })() : null}
@@ -2678,6 +2838,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 10,
     left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  galStickerBadgeRight: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
     borderRadius: 999,
     paddingHorizontal: 6,
     paddingVertical: 3,

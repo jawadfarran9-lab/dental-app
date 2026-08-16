@@ -123,6 +123,7 @@ type Message = {
     posterUrl?: string;
     durationMs?: number;
     sticker?: string;
+    stickerPatient?: string;
   }[];
   reactionClinic?: string;
   reactionPatient?: string;
@@ -916,7 +917,7 @@ export default function ClinicConversationScreen() {
   const BubbleBody = ({ item, sent, time, onOpenViewer, onLongPress }: { item: Message; sent: boolean; time: string; onOpenViewer?: (index: number) => void; onLongPress?: () => void }) => {
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
     const stickerList = item.type === 'album'
-      ? (item.media || []).map((mm) => mm.sticker).filter(Boolean)
+      ? (item.media || []).flatMap((mm) => [mm.sticker, mm.stickerPatient]).filter(Boolean)
       : [];
     const hasSticker = stickerList.length > 0;
     const stickerBadge = hasSticker ? (
@@ -2094,6 +2095,11 @@ export default function ClinicConversationScreen() {
                           <Text style={styles.galStickerText}>{it.sticker}</Text>
                         </Pressable>
                       ) : null}
+                      {it.stickerPatient ? (
+                        <View style={styles.galStickerBadgeRight}>
+                          <Text style={styles.galStickerText}>{it.stickerPatient}</Text>
+                        </View>
+                      ) : null}
                     </Pressable>
                   );
                 })}
@@ -2860,6 +2866,22 @@ const styles = StyleSheet.create({
     position: 'absolute',
     bottom: 10,
     left: 10,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.06)',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  galStickerBadgeRight: {
+    position: 'absolute',
+    bottom: 10,
+    right: 10,
     borderRadius: 999,
     paddingHorizontal: 6,
     paddingVertical: 3,
