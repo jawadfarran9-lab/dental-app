@@ -95,7 +95,7 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'audio';
+  type?: 'image' | 'audio' | 'album';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -104,13 +104,23 @@ type Message = {
   durationMs?: number | null;
   waveform?: number[];
   mimeType?: string;
+  media?: {
+    kind: 'image' | 'video';
+    url: string;
+    storagePath: string;
+    width?: number;
+    height?: number;
+    posterUrl?: string;
+    durationMs?: number;
+    sticker?: string;
+  }[];
   reactionClinic?: string;
   reactionPatient?: string;
   seenAt?: number;
   starredPatient?: boolean;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
@@ -166,6 +176,8 @@ export default function ClinicConversationScreen() {
   const [viewerZoomed, setViewerZoomed] = useState(false);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [galleryMessage, setGalleryMessage] = useState<Message | null>(null);
   const [attachVisible, setAttachVisible] = useState(false);
   const [attachBusy, setAttachBusy] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -194,6 +206,10 @@ export default function ClinicConversationScreen() {
     for (const m of messages) {
       if (m.type === 'image' && m.imageUrl) {
         out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
+      } else if (m.type === 'album' && Array.isArray(m.media)) {
+        m.media.forEach((it, idx) => {
+          out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+        });
       }
     }
     return out;
@@ -206,7 +222,20 @@ export default function ClinicConversationScreen() {
     setViewerZoomed(false);
     setViewerOpen(true);
   };
+  const openViewerFromGallery = (albumMsg: Message, mediaIndex: number) => {
+    const pages = buildAllChatImages();
+    const albumStart = pages.findIndex((p) => p.msgId === albumMsg.id);
+    const start = albumStart >= 0 ? albumStart + mediaIndex : 0;
+    setGalleryOpen(false);
+    setGalleryMessage(null);
+    setViewerPages(pages);
+    setViewerIndex(Math.max(0, start));
+    setViewerZoomed(false);
+    setViewerOpen(true);
+  };
   const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
+  const openAlbumGallery = (m: Message) => { setGalleryMessage(m); setGalleryOpen(true); };
+  const closeGallery = () => { setGalleryOpen(false); setGalleryMessage(null); };
   const shareViewerCurrent = async (url?: string, caption?: string) => {
     if (!url) return;
     try {
@@ -235,6 +264,13 @@ export default function ClinicConversationScreen() {
     }, 60);
     return () => clearTimeout(t);
   }, [viewerOpen, viewerIndex, viewerPages.length]);
+
+  useEffect(() => {
+    if (!galleryOpen || !galleryMessage) return;
+    if (!messages.some((m) => m.id === galleryMessage.id)) {
+      closeGallery();
+    }
+  }, [messages, galleryOpen, galleryMessage]);
   const closeMessageInfo = () => setMessageInfoOpen(false);
   const [recents, setRecents] = useState<string[]>([]);
   const [recentsLoaded, setRecentsLoaded] = useState(false);
@@ -344,7 +380,8 @@ export default function ClinicConversationScreen() {
     const isOwn = m.from === 'patient';
     const isImage = m.type === 'image';
     const isAudio = m.type === 'audio';
-    if (isOwn && isImage) {
+    const isAlbum = m.type === 'album';
+    if (isOwn && (isImage || isAlbum)) {
       return [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
         { key: 'info', label: 'Info', icon: 'information-circle-outline' },
@@ -832,6 +869,113 @@ export default function ClinicConversationScreen() {
       </View>
     ) : null;
 
+    if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
+      const ALBUM_W = 220;
+      const GAP = 3;
+      const cellSquare = Math.floor((ALBUM_W - GAP) / 2);
+      const wideH = 130;
+      const media = item.media;
+      const extra = media.length - 3;
+      let grid: React.ReactNode = null;
+      if (media.length === 1) {
+        grid = (
+          <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
+            <Image
+              source={{ uri: media[0].url }}
+              style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
+              resizeMode="cover"
+            />
+          </Pressable>
+        );
+      } else if (media.length === 2) {
+        grid = (
+          <View style={[styles.albumRow, { width: ALBUM_W }]}>
+            <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
+              <Image
+                source={{ uri: media[0].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                resizeMode="cover"
+              />
+            </Pressable>
+            <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
+              <Image
+                source={{ uri: media[1].url }}
+                style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                resizeMode="cover"
+              />
+            </Pressable>
+          </View>
+        );
+      } else {
+        grid = (
+          <View style={{ width: ALBUM_W }}>
+            <View style={[styles.albumRow, { marginBottom: GAP }]}>
+              <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
+                <Image
+                  source={{ uri: media[0].url }}
+                  style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                  resizeMode="cover"
+                />
+              </Pressable>
+              <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
+                <Image
+                  source={{ uri: media[1].url }}
+                  style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
+                  resizeMode="cover"
+                />
+              </Pressable>
+            </View>
+            <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ position: 'relative' }}>
+              <Image
+                source={{ uri: media[2].url }}
+                style={[styles.albumCellWide, { width: ALBUM_W, height: wideH }]}
+                resizeMode="cover"
+              />
+              {extra > 0 && (
+                <View style={styles.albumMore}>
+                  <Text style={styles.albumMoreText}>+{extra}</Text>
+                </View>
+              )}
+            </Pressable>
+          </View>
+        );
+      }
+      return (
+        <View style={{ position: 'relative' }}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <View style={styles.albumWrap}>{grid}</View>
+            {!!item.text && (
+              <Text
+                style={[
+                  styles.albumCaption,
+                  sent ? styles.bubbleSentText : [styles.bubbleRecvText, { color: recvText }],
+                ]}
+              >
+                {item.text}
+              </Text>
+            )}
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
+          {reactionBadge}
+          {starBadge}
+        </View>
+      );
+    }
     if (item.type === 'image' && item.imageUrl) {
       const BUBBLE_MAX_W = 220;
       const ratio =
@@ -1849,6 +1993,61 @@ export default function ClinicConversationScreen() {
         })() : null}
       </Modal>
 
+      <Modal visible={galleryOpen} transparent={false} animationType="slide" onRequestClose={closeGallery} statusBarTranslucent>
+        {galleryOpen && galleryMessage ? (() => {
+          const SCREEN_W = Dimensions.get('window').width;
+          const gm = messages.find((m) => m.id === galleryMessage.id) ?? galleryMessage;
+          const gMedia = gm?.media ?? [];
+          const isOwn = gm?.from === 'patient';
+          const GAP = 10;
+          return (
+            <View style={{ flex: 1 }}>
+              <PremiumGradientBackground isDark={isDark} showSparkles={!isDark} />
+              <ScrollView
+                contentContainerStyle={{ paddingTop: insets.top + 60, paddingBottom: insets.bottom + 24 }}
+                showsVerticalScrollIndicator={false}
+              >
+                {gMedia.map((it, i) => {
+                  const imgW = SCREEN_W - 16;
+                  const aspect = it.width && it.height ? it.width / it.height : 1;
+                  const h = imgW / aspect;
+                  return (
+                    <Pressable
+                      key={`galimg_${i}`}
+                      onPress={() => { if (gm) openViewerFromGallery(gm, i); }}
+                      style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
+                    >
+                      <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+              <View style={[styles.galleryHeader, { paddingTop: insets.top + 8 }]}>
+                <LinearGradient
+                  colors={isDark ? ['rgba(0,0,0,0.75)', 'transparent'] : ['rgba(224,242,254,0.95)', 'rgba(224,242,254,0)']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 0, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                />
+                <Pressable onPress={closeGallery} style={[styles.viewerClose, !isDark && { backgroundColor: '#FFFFFF' }]} hitSlop={8}>
+                  <Ionicons name="close" size={22} color={isDark ? '#FFFFFF' : textPrimary} />
+                </Pressable>
+                <View style={styles.viewerWho}>
+                  <Text style={{ color: isDark ? '#FFFFFF' : textPrimary, fontSize: 14, fontWeight: '700' }}>
+                    {isOwn ? 'You' : (clinicName || 'Clinic')}
+                  </Text>
+                  <Text style={{ color: isDark ? 'rgba(255,255,255,0.72)' : textSecondary, fontSize: 12, marginTop: 2 }}>
+                    {gMedia.length} photos
+                  </Text>
+                </View>
+                <View style={{ width: 40 }} />
+              </View>
+            </View>
+          );
+        })() : null}
+      </Modal>
+
       <Modal visible={datePickerOpen} transparent animationType="slide" onRequestClose={() => setDatePickerOpen(false)}>
         <Pressable style={styles.reactionSheetBackdrop} onPress={() => setDatePickerOpen(false)} />
         <View style={[styles.reactionSheet, { paddingBottom: insets.bottom + 20 }]}>
@@ -2422,5 +2621,52 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.06)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  albumWrap: {
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  albumRow: {
+    flexDirection: 'row',
+  },
+  albumCell: {
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  albumCellWide: {
+    borderRadius: 6,
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  albumMore: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 6,
+  },
+  albumMoreText: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: -0.3,
+  },
+  albumCaption: {
+    marginTop: 6,
+    marginHorizontal: 4,
+  },
+  galleryHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingBottom: 12,
+    zIndex: 10,
   },
 });
