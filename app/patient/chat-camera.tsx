@@ -17,6 +17,7 @@ import {
     Dimensions,
     Image,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Pressable,
     StatusBar,
@@ -170,6 +171,8 @@ export default function PatientChatCameraScreen() {
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
+  const [hdQuality, setHdQuality] = useState<'sd' | 'hd'>('sd');
+  const [hdSheetOpen, setHdSheetOpen] = useState(false);
   useEffect(() => {
     if (recording) {
       setRecordSec(0);
@@ -505,6 +508,7 @@ export default function PatientChatCameraScreen() {
           from: 'patient',
           senderName: 'Patient',
           senderType: 'patient',
+          hd: hdQuality === 'hd',
         }, patientDb);
       }
       router.back();
@@ -786,7 +790,37 @@ export default function PatientChatCameraScreen() {
             <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
               <Ionicons name="close" size={24} color="#FFFFFF" />
             </Pressable>
+            {!previewIsVideo && (
+              <View style={styles.previewTopRight}>
+                <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
+                  <Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#1E6FD9' }]}>HD</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
+          <Modal visible={hdSheetOpen} transparent animationType="slide" onRequestClose={() => setHdSheetOpen(false)}>
+            <Pressable onPress={() => setHdSheetOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
+              <Pressable onPress={() => {}} style={{ backgroundColor: '#1C1C1E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingBottom: insets.bottom + 16, paddingHorizontal: 20 }}>
+                <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', marginBottom: 14 }} />
+                <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginBottom: 8 }}>Photo quality</Text>
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setHdQuality('sd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+                  <Ionicons name={hdQuality === 'sd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'sd' ? '#1E6FD9' : 'rgba(255,255,255,0.6)'} />
+                  <View style={{ marginLeft: 14 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Standard quality</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Faster to send · smaller file</Text>
+                  </View>
+                </Pressable>
+                <View style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+                <Pressable onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setHdQuality('hd'); setHdSheetOpen(false); }} style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 14 }}>
+                  <Ionicons name={hdQuality === 'hd' ? 'radio-button-on' : 'radio-button-off'} size={22} color={hdQuality === 'hd' ? '#1E6FD9' : 'rgba(255,255,255,0.6)'} />
+                  <View style={{ marginLeft: 14 }}>
+                    <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>HD quality</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 12, marginTop: 2 }}>Best detail · larger file</Text>
+                  </View>
+                </Pressable>
+              </Pressable>
+            </Pressable>
+          </Modal>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}>
             <View style={styles.previewCaptionRow}>
               <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
@@ -879,7 +913,9 @@ const styles = StyleSheet.create({
   previewOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 50 },
   previewImage: { width: SCREEN_WIDTH, height: SCREEN_H },
   previewTopBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+  previewTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   previewIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  previewBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   previewBottom: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
   previewCaptionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 14, paddingVertical: 6, marginBottom: 12 },
   previewCaptionInput: { flex: 1, color: '#FFFFFF', fontSize: 16, paddingVertical: 6, maxHeight: 100 },
