@@ -1120,6 +1120,19 @@ export default function ClinicConversationScreen() {
                 style={{ width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
                 resizeMode="cover"
               />
+              {item.drawing && item.drawing.strokes.length > 0 ? (
+                <Svg
+                  pointerEvents="none"
+                  viewBox={`0 0 ${item.drawing.vb[0]} ${item.drawing.vb[1]}`}
+                  preserveAspectRatio="xMidYMid slice"
+                  style={{ position: 'absolute', left: 0, top: 0, width: BUBBLE_MAX_W, height: imgH, borderRadius: 14 }}
+                >
+                  {item.drawing.strokes.map((s, i) => (
+                    <Path key={`bd_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
+                </Svg>
+              ) : null}
+              <BubbleTextsOverlay items={item.texts?.items} mediaW={item.imageWidth} mediaH={item.imageHeight} boxW={BUBBLE_MAX_W} boxH={imgH} radius={14} />
             </Pressable>
             {!!time && (
               <Text
