@@ -1,6 +1,7 @@
 import { patientDb } from '@/firebaseConfig';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
-import { sendImageMessage } from '@/src/services/chatImages';
+import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
+import { openDeviceSettings, useMicrophonePermission } from '@/src/hooks/useDevicePermissions';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -37,6 +38,8 @@ import Svg, { G, Line, Text as SvgText } from 'react-native-svg';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
+
+const fmtSec = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 
 const MAX_ZOOM_RATIO = 5;
 const MAX_CAMERA_ZOOM = 0.5; // cap so we never hit the device's extreme hardware max
@@ -152,6 +155,21 @@ export default function PatientChatCameraScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [ready, setReady] = useState(false);
   const [taking, setTaking] = useState(false);
+  const [camMode, setCamMode] = useState<'picture' | 'video'>('picture');
+  const [recording, setRecording] = useState(false);
+  const [recordSec, setRecordSec] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mic = useMicrophonePermission();
+  useEffect(() => {
+    if (recording) {
+      setRecordSec(0);
+      timerRef.current = setInterval(() => setRecordSec((s) => s + 1), 1000);
+    } else {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+      setRecordSec(0);
+    }
+    return () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  }, [recording]);
   const [zoomLevel, setZoomLevel] = useState<number>(ZOOM_1X);
   const [activePreset, setActivePreset] = useState(0);
   const zoomAtPinchStartRef = useRef(0);
@@ -458,6 +476,37 @@ export default function PatientChatCameraScreen() {
     }
   };
 
+  const handleRecordToggle = async () => {
+    if (!cameraRef.current || !ready) return;
+    if (!clinicId || !patientId) { Alert.alert('Missing info', 'Cannot send right now.'); return; }
+    if (recording) { cameraRef.current.stopRecording(); return; }
+    if (mic.status !== 'granted') {
+      const res = await mic.request();
+      if (res !== 'granted') { if (!mic.canAskAgain) openDeviceSettings(); return; }
+    }
+    try {
+      setRecording(true);
+      const video = await cameraRef.current.recordAsync({ maxDuration: 60 });
+      setRecording(false);
+      if (video?.uri) {
+        await sendVideoMessage({
+          clinicId,
+          patientId,
+          patientName,
+          localUri: video.uri,
+          from: 'patient',
+          senderName: 'Patient',
+          senderType: 'patient',
+        }, patientDb);
+        router.back();
+      }
+    } catch (err) {
+      console.error('[patient-chat-camera] record error', err);
+      setRecording(false);
+      Alert.alert('Upload failed', 'Please try again.');
+    }
+  };
+
   if (!permission) {
     return (
       <GestureHandlerRootView style={styles.root}>
@@ -500,14 +549,23 @@ export default function PatientChatCameraScreen() {
       <StatusBar barStyle="light-content" />
 
       <CameraView
-        key={facing}
+        key={`${facing}-${camMode}`}
         ref={cameraRef}
         style={StyleSheet.absoluteFill}
         facing={facing}
-        mode="picture"
+        mode={camMode}
         zoom={zoomLevel}
-        onCameraReady={() => setReady(true)}
+        onCameraReady={() => { setReady(true); showAndHold(); scheduleHide(); }}
       />
+
+      {recording && (
+        <View style={[styles.recPillWrap, { top: insets.top + 8 }]} pointerEvents="none">
+          <View style={styles.recPill}>
+            <View style={styles.recDot} />
+            <Text style={styles.recTime}>{fmtSec(recordSec)}</Text>
+          </View>
+        </View>
+      )}
 
       <GestureDetector gesture={pinchGesture}>
         <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
@@ -630,14 +688,41 @@ export default function PatientChatCameraScreen() {
       </Animated.View>
 
       <View
-        style={[styles.captureButtonContainer, { bottom: insets.bottom + 28 }]}
+        style={[styles.captureButtonContainer, { bottom: insets.bottom + 64 }]}
         pointerEvents="box-none"
       >
-        <Pressable onPress={handleTakePhoto} disabled={!ready || taking}>
+        <Pressable
+          onPress={camMode === 'picture' ? handleTakePhoto : handleRecordToggle}
+          disabled={(!ready || taking) && !recording}
+        >
           <View style={styles.captureOuter}>
-            <View style={styles.captureInnerButton} />
+            <View style={[styles.captureInnerButton, recording && styles.captureInnerRecording]} />
           </View>
         </Pressable>
+      </View>
+
+      <View
+        style={[styles.modeToggleContainer, { bottom: insets.bottom + 20 }]}
+        pointerEvents="box-none"
+      >
+        <View style={styles.modeToggleRow}>
+          <Pressable
+            onPress={() => setCamMode('picture')}
+            style={[styles.modeSegment, camMode === 'picture' && styles.modeSegmentActive]}
+            hitSlop={8}
+            disabled={recording}
+          >
+            <Text style={[styles.modeSegmentText, camMode === 'picture' && styles.modeSegmentTextActive]}>Photo</Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setCamMode('video')}
+            style={[styles.modeSegment, camMode === 'video' && styles.modeSegmentActive]}
+            hitSlop={8}
+            disabled={recording}
+          >
+            <Text style={[styles.modeSegmentText, camMode === 'video' && styles.modeSegmentTextActive]}>Video</Text>
+          </Pressable>
+        </View>
       </View>
     </GestureHandlerRootView>
   );
@@ -693,6 +778,19 @@ const styles = StyleSheet.create({
     borderRadius: CAPTURE_INNER / 2,
     backgroundColor: '#FFFFFF',
   },
+  captureInnerRecording: { backgroundColor: '#FF3B30', borderRadius: 10 },
+
+  recPillWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 11 },
+  recPill: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.6)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  recDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#FF3B30' },
+  recTime: { color: '#FFFFFF', fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] },
+
+  modeToggleContainer: { position: 'absolute', left: 0, right: 0, alignItems: 'center', zIndex: 10 },
+  modeToggleRow: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 2 },
+  modeSegment: { paddingHorizontal: 12, paddingVertical: 3, borderRadius: 10 },
+  modeSegmentActive: { backgroundColor: '#FFFFFF' },
+  modeSegmentText: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '700' },
+  modeSegmentTextActive: { color: '#111111' },
 
   dialContainer: {
     position: 'absolute',
