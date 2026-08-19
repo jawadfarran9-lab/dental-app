@@ -2208,6 +2208,14 @@ export default function ClinicConversationScreen() {
                         style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
                       >
                         <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+                        {thumb.drawing && thumb.drawing.strokes.length > 0 ? (
+                          <Svg pointerEvents="none" viewBox={`0 0 ${thumb.drawing.vb[0]} ${thumb.drawing.vb[1]}`} preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFill}>
+                            {thumb.drawing.strokes.map((s, si) => (
+                              <Path key={`td_${si}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            ))}
+                          </Svg>
+                        ) : null}
+                        <BubbleTextsOverlay items={thumb.texts?.items} mediaW={thumb.width} mediaH={thumb.height} boxW={40} boxH={54} radius={6} />
                       </Pressable>
                     ))}
                   </ScrollView>
