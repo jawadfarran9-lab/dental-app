@@ -3,9 +3,11 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import VoiceBubble from '@/src/components/VoiceBubble';
 import RecordingBar from '@/src/components/RecordingBar';
 import { ZoomableImage } from '@/src/components/ZoomableImage';
+import { ViewerVideo } from '@/src/components/ViewerVideo';
+import { BubbleTextsOverlay } from '@/src/components/BubbleTextsOverlay';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
-import { sendImageMessage, sendAudioMessage } from '@/src/services/chatImages';
+import { sendImageMessage, sendAudioMessage, TextsDoc } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForPatient, updateThreadOnMessage } from '@/src/utils/threadsHelper';
@@ -41,6 +43,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import Svg, { Path } from 'react-native-svg';
 import EmojiPicker, { EmojiKeyboard } from 'rn-emoji-keyboard';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -95,11 +98,16 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'audio' | 'album';
+  type?: 'image' | 'audio' | 'album' | 'video';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
   storagePath?: string;
+  videoUrl?: string;
+  posterUrl?: string | null;
+  posterPath?: string | null;
+  videoWidth?: number | null;
+  videoHeight?: number | null;
   audioUrl?: string;
   durationMs?: number | null;
   waveform?: number[];
@@ -119,9 +127,11 @@ type Message = {
   reactionPatient?: string;
   seenAt?: number;
   starredPatient?: boolean;
+  drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
+  texts?: TextsDoc | null;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number };
+type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null; texts?: TextsDoc | null };
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
@@ -177,6 +187,7 @@ export default function ClinicConversationScreen() {
   const viewerListRef = useRef<FlatList<ViewerPage>>(null);
   const stripRef = useRef<ScrollView>(null);
   const [viewerZoomed, setViewerZoomed] = useState(false);
+  const [scrubbing, setScrubbing] = useState(false);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
   const [stickerSheetOpen, setStickerSheetOpen] = useState(false);
@@ -212,10 +223,21 @@ export default function ClinicConversationScreen() {
     const out: ViewerPage[] = [];
     for (const m of messages) {
       if (m.type === 'image' && m.imageUrl) {
-        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id });
+        out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id, drawing: m.drawing ?? null, texts: m.texts ?? null });
       } else if (m.type === 'album' && Array.isArray(m.media)) {
         m.media.forEach((it, idx) => {
           out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+        });
+      } else if (m.type === 'video' && (m.videoUrl || m.posterUrl)) {
+        out.push({
+          url: m.posterUrl ?? '',
+          videoUrl: m.videoUrl,
+          width: m.videoWidth ?? undefined,
+          height: m.videoHeight ?? undefined,
+          msgId: m.id,
+          kind: 'video',
+          drawing: m.drawing ?? null,
+          texts: m.texts ?? null,
         });
       }
     }
@@ -1115,6 +1137,77 @@ export default function ClinicConversationScreen() {
         </View>
       );
     }
+    if (item.type === 'video' && (item.videoUrl || item.posterUrl)) {
+      const BUBBLE_MAX_W = 220;
+      const ratio =
+        item.videoWidth && item.videoHeight
+          ? item.videoHeight / item.videoWidth
+          : 1;
+      const vidH = Math.min(Math.max(BUBBLE_MAX_W * ratio, 120), 320);
+      let durStr: string | null = null;
+      if (item.durationMs && item.durationMs > 0) {
+        const s = Math.round(item.durationMs / 1000);
+        durStr = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+      }
+      return (
+        <View style={{ position: 'relative' }}>
+          <View
+            style={[
+              styles.imageBubble,
+              sent ? styles.imageBubbleSent : styles.imageBubbleRecv,
+              !sent && { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder, borderWidth: 1 },
+            ]}
+          >
+            <Pressable onPress={() => openViewerSingle(item)} onLongPress={onLongPress} delayLongPress={350}>
+              {item.posterUrl ? (
+                <Image
+                  source={{ uri: item.posterUrl }}
+                  style={{ width: BUBBLE_MAX_W, height: vidH, borderRadius: 14 }}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View style={{ width: BUBBLE_MAX_W, height: vidH, borderRadius: 14, backgroundColor: '#0B1220' }} />
+              )}
+              {item.drawing && item.drawing.strokes.length > 0 ? (
+                <Svg
+                  pointerEvents="none"
+                  viewBox={`0 0 ${item.drawing.vb[0]} ${item.drawing.vb[1]}`}
+                  preserveAspectRatio="xMidYMid slice"
+                  style={{ position: 'absolute', left: 0, top: 0, width: BUBBLE_MAX_W, height: vidH, borderRadius: 14 }}
+                >
+                  {item.drawing.strokes.map((s, i) => (
+                    <Path key={`bd_${i}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  ))}
+                </Svg>
+              ) : null}
+              <BubbleTextsOverlay items={item.texts?.items} mediaW={item.videoWidth} mediaH={item.videoHeight} boxW={BUBBLE_MAX_W} boxH={vidH} radius={14} />
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
+                <View style={{ width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' }}>
+                  <Ionicons name="play" size={28} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                </View>
+              </View>
+              {durStr && (
+                <View style={{ position: 'absolute', left: 8, bottom: 8, backgroundColor: 'rgba(0,0,0,0.55)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{durStr}</Text>
+                </View>
+              )}
+            </Pressable>
+            {!!time && (
+              <Text
+                style={[
+                  styles.imageBubbleTime,
+                  { color: sent ? 'rgba(255,255,255,0.78)' : textMuted },
+                ]}
+              >
+                {time}
+              </Text>
+            )}
+          </View>
+          {reactionBadge}
+          {starBadge}
+        </View>
+      );
+    }
     if (item.type === 'audio' && item.audioUrl) {
       if (sent) {
         return (
@@ -1983,6 +2076,7 @@ export default function ClinicConversationScreen() {
           const curMediaIndex = current?.mediaIndex;
           const isAlbumPageForCurrent = !!(curMsg && curMsg.type === 'album' && typeof curMediaIndex === 'number' && Array.isArray(curMsg.media));
           const isImagePageForCurrent = curMsg?.type === 'image';
+          const isVideo = current?.kind === 'video';
           const curSticker = curMsg
             ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
                 ? curMsg.media?.[curMediaIndex]?.stickerPatient
@@ -1999,14 +2093,14 @@ export default function ClinicConversationScreen() {
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 initialScrollIndex={viewerIndex}
-                scrollEnabled={!viewerZoomed}
+                scrollEnabled={!(viewerZoomed || scrubbing)}
                 getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
                 onMomentumScrollEnd={(e) => {
                   const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
                   setViewerIndex(idx);
                   setViewerZoomed(false);
                 }}
-                renderItem={({ item: page }) => {
+                renderItem={({ item: page, index: i }) => {
                   const pmsg = messages.find((m) => m.id === page.msgId) ?? null;
                   const isAlbumPage = typeof page.mediaIndex === 'number' && pmsg?.type === 'album' && Array.isArray(pmsg.media);
                   const isImagePage = typeof page.mediaIndex !== 'number' && pmsg?.type === 'image';
@@ -2023,7 +2117,11 @@ export default function ClinicConversationScreen() {
                   const offY = (SCREEN_H - baseH) / 2;
                   return (
                     <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                      <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} onZoomChange={setViewerZoomed} />
+                      {page.kind === 'video' && page.videoUrl ? (
+                        <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
+                      ) : (
+                        <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
+                      )}
                       {(isAlbumPage || isImagePage) ? (
                         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
                           {own ? (
@@ -2061,7 +2159,7 @@ export default function ClinicConversationScreen() {
                 <View style={{ width: 40 }} />
               </View>
               {!isAlbumPageForCurrent && !isImagePageForCurrent && (
-                <View style={[styles.viewerBottomActions, { bottom: insets.bottom + 200 }]} pointerEvents="box-none">
+                <View style={[styles.viewerBottomActions, { bottom: insets.bottom + (isVideo ? 228 : 200) }]} pointerEvents="box-none">
                   <Pressable
                     onPress={() => {
                       if (!current) return;
@@ -2080,7 +2178,7 @@ export default function ClinicConversationScreen() {
                 </View>
               )}
               {pages.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + 132 }]}>
+                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 162 : 132) }]}>
                   <ScrollView
                     ref={stripRef}
                     horizontal
@@ -2102,7 +2200,7 @@ export default function ClinicConversationScreen() {
                   </ScrollView>
                 </View>
               )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + 14 }]} pointerEvents="box-none">
+              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 72 : 14) }]} pointerEvents="box-none">
                 <LinearGradient
                   colors={['transparent', 'rgba(0,0,0,0.92)']}
                   start={{ x: 0, y: 0 }}
