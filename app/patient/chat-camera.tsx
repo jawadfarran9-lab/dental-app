@@ -6,6 +6,7 @@ import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { ResizeMode, Video } from 'expo-av';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
@@ -14,10 +15,14 @@ import {
     ActivityIndicator,
     Alert,
     Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     StatusBar,
     StyleSheet,
     Text,
+    TextInput,
     View,
 } from 'react-native';
 import {
@@ -54,6 +59,7 @@ const ZOOM_PRESET_VALUES = [
 const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 const DIAL_WIDTH = SCREEN_WIDTH * 0.85;
 const DIAL_HEIGHT = 48;
 const DIAL_ARC_RADIUS = SCREEN_WIDTH * 1.2;
@@ -160,6 +166,10 @@ export default function PatientChatCameraScreen() {
   const [recordSec, setRecordSec] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mic = useMicrophonePermission();
+  const [previewUri, setPreviewUri] = useState<string | null>(null);
+  const [previewIsVideo, setPreviewIsVideo] = useState(false);
+  const [caption, setCaption] = useState('');
+  const [sending, setSending] = useState(false);
   useEffect(() => {
     if (recording) {
       setRecordSec(0);
@@ -458,22 +468,58 @@ export default function PatientChatCameraScreen() {
     try {
       const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
       if (!photo?.uri) return;
-      await sendImageMessage({
-        clinicId,
-        patientId,
-        patientName,
-        localUri: photo.uri,
-        from: 'patient',
-        senderName: 'Patient',
-        senderType: 'patient',
-      }, patientDb);
+      setCaption('');
+      setPreviewIsVideo(false);
+      setPreviewUri(photo.uri);
+    } catch (err) {
+      console.error('[patient-chat-camera] capture error', err);
+      Alert.alert('Capture failed', 'Please try again.');
+    } finally {
+      setTaking(false);
+    }
+  };
+
+  const handleSendPreview = async () => {
+    if (!previewUri || sending) return;
+    if (!clinicId || !patientId) { Alert.alert('Missing info', 'Cannot send right now.'); return; }
+    setSending(true);
+    try {
+      if (previewIsVideo) {
+        await sendVideoMessage({
+          clinicId,
+          patientId,
+          patientName,
+          localUri: previewUri,
+          caption: caption.trim() || undefined,
+          from: 'patient',
+          senderName: 'Patient',
+          senderType: 'patient',
+        }, patientDb);
+      } else {
+        await sendImageMessage({
+          clinicId,
+          patientId,
+          patientName,
+          localUri: previewUri,
+          caption: caption.trim() || undefined,
+          from: 'patient',
+          senderName: 'Patient',
+          senderType: 'patient',
+        }, patientDb);
+      }
       router.back();
     } catch (err) {
       console.error('[patient-chat-camera] send error', err);
       Alert.alert('Upload failed', 'Please try again.');
     } finally {
-      setTaking(false);
+      setSending(false);
     }
+  };
+
+  const handleRetake = () => {
+    setPreviewUri(null);
+    setPreviewIsVideo(false);
+    setCaption('');
   };
 
   const handleRecordToggle = async () => {
@@ -489,16 +535,9 @@ export default function PatientChatCameraScreen() {
       const video = await cameraRef.current.recordAsync({ maxDuration: 60 });
       setRecording(false);
       if (video?.uri) {
-        await sendVideoMessage({
-          clinicId,
-          patientId,
-          patientName,
-          localUri: video.uri,
-          from: 'patient',
-          senderName: 'Patient',
-          senderType: 'patient',
-        }, patientDb);
-        router.back();
+        setCaption('');
+        setPreviewIsVideo(true);
+        setPreviewUri(video.uri);
       }
     } catch (err) {
       console.error('[patient-chat-camera] record error', err);
@@ -548,6 +587,8 @@ export default function PatientChatCameraScreen() {
       <Stack.Screen options={{ headerShown: false }} />
       <StatusBar barStyle="light-content" />
 
+      {!previewUri && (
+        <>
       <CameraView
         key={`${facing}-${camMode}`}
         ref={cameraRef}
@@ -724,6 +765,49 @@ export default function PatientChatCameraScreen() {
           </Pressable>
         </View>
       </View>
+        </>
+      )}
+
+      {previewUri && (
+        <View style={styles.previewOverlay}>
+          {previewIsVideo ? (
+            <Video
+              source={{ uri: previewUri }}
+              style={styles.previewImage}
+              resizeMode={ResizeMode.CONTAIN}
+              isLooping
+              shouldPlay
+              useNativeControls={false}
+            />
+          ) : (
+            <Image source={{ uri: previewUri }} style={styles.previewImage} resizeMode="contain" />
+          )}
+          <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+            <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
+              <Ionicons name="close" size={24} color="#FFFFFF" />
+            </Pressable>
+          </View>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}>
+            <View style={styles.previewCaptionRow}>
+              <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.previewCaptionInput}
+                placeholder="Add a caption..."
+                placeholderTextColor="rgba(255,255,255,0.6)"
+                value={caption}
+                onChangeText={setCaption}
+                multiline
+              />
+            </View>
+            <View style={styles.previewSendRow}>
+              <View style={styles.previewWhoChip}><Text style={styles.previewWhoText}>You</Text></View>
+              <Pressable onPress={handleSendPreview} disabled={sending} style={[styles.previewSendBtn, sending && { opacity: 0.6 }]} hitSlop={8}>
+                <Ionicons name="send" size={22} color="#FFFFFF" />
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </View>
+      )}
     </GestureHandlerRootView>
   );
 }
@@ -791,6 +875,18 @@ const styles = StyleSheet.create({
   modeSegmentActive: { backgroundColor: '#FFFFFF' },
   modeSegmentText: { color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '700' },
   modeSegmentTextActive: { color: '#111111' },
+
+  previewOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 50 },
+  previewImage: { width: SCREEN_WIDTH, height: SCREEN_H },
+  previewTopBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
+  previewIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  previewBottom: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
+  previewCaptionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 14, paddingVertical: 6, marginBottom: 12 },
+  previewCaptionInput: { flex: 1, color: '#FFFFFF', fontSize: 16, paddingVertical: 6, maxHeight: 100 },
+  previewSendRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  previewWhoChip: { backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
+  previewWhoText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  previewSendBtn: { width: 52, height: 52, borderRadius: 26, backgroundColor: '#25D366', alignItems: 'center', justifyContent: 'center' },
 
   dialContainer: {
     position: 'absolute',
