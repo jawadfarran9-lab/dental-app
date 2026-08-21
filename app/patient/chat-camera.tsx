@@ -865,6 +865,78 @@ export default function PatientChatCameraScreen() {
     setCropMode(true);
   };
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
+  const safeManipulate = (uri: string, acts: any[]): Promise<any> => Promise.race([
+    manipulateAsync(uri, acts, { compress: 1, format: SaveFormat.JPEG }),
+    new Promise((_, reject) => setTimeout(() => reject(new Error('manipulate-timeout-20s')), 20000)),
+  ]);
+  const handleRotate90 = async () => {
+    if (cropBusy) return;
+    if (cropFromPreview) {
+      if (!previewUri) return;
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setCropBusy(true);
+      try {
+        const oldW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
+        const oldH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
+        const res: any = await safeManipulate(previewUri, [{ rotate: 90 }]);
+        if (texts.length > 0 || strokes.length > 0) {
+          const ob = boxFor(oldW, oldH);
+          const nb = boxFor(res.width, res.height);
+          const M = (nb.baseW * oldW) / (ob.baseW * (res.width || 1));
+          const mapPt = (sx: number, sy: number) => {
+            const nx = (sx - ob.offX) / ob.baseW;
+            const ny = (sy - ob.offY) / ob.baseH;
+            const px = nx * oldW, py = ny * oldH;
+            const rpx = oldH - py, rpy = px;
+            const nnx = rpx / (res.width || 1), nny = rpy / (res.height || 1);
+            return { x: nb.offX + nnx * nb.baseW, y: nb.offY + nny * nb.baseH };
+          };
+          const rt = texts.map((t) => {
+            const p = mapPt(SCREEN_WIDTH / 2 + t.dx, SCREEN_H / 2 + t.dy);
+            return { ...t, dx: p.x - SCREEN_WIDTH / 2, dy: p.y - SCREEN_H / 2, scale: t.scale * M, rot: t.rot + Math.PI / 2 };
+          });
+          const rs = strokes.map((s) => ({ ...s, width: s.width * M, points: s.points.map((pt) => mapPt(pt.x, pt.y)) }));
+          setTexts(rt);
+          setStrokes(rs);
+          clearHistory();
+        }
+        setPreviewUri(res.uri);
+        setPrevMediaW(res.width);
+        setPrevMediaH(res.height);
+        resetCrop();
+      } catch (err) {
+        console.error('[patient-chat-camera] rotate90 (preview) error', err);
+        Alert.alert('Rotate failed', 'Please try again.');
+      } finally {
+        setCropBusy(false);
+      }
+      return;
+    }
+    const src = basePhotoUri ?? originalUri ?? previewUri;
+    if (!src) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    const q = (cQuarter + 1) % 4;
+    setCropBusy(true);
+    try {
+      if (q === 0) {
+        setOriginalUri(basePhotoUri ?? src);
+        setOriginalW(basePhotoW);
+        setOriginalH(basePhotoH);
+      } else {
+        const res: any = await safeManipulate(basePhotoUri ?? src, [{ rotate: q * 90 }]);
+        setOriginalUri(res.uri);
+        setOriginalW(res.width);
+        setOriginalH(res.height);
+      }
+      setCQuarter(q);
+      resetCrop();
+    } catch (err) {
+      console.error('[patient-chat-camera] rotate90 error', err);
+      Alert.alert('Rotate failed', 'Please try again.');
+    } finally {
+      setCropBusy(false);
+    }
+  };
   const resetCropAll = () => {
     if (cropFromPreview) {
       const snap = preCropSnapRef.current;
@@ -1688,6 +1760,11 @@ export default function PatientChatCameraScreen() {
                   );
                 })}
               </View>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 12, height: 34, justifyContent: 'center' }} pointerEvents="box-none">
+                <Pressable onPress={handleRotate90} disabled={cropBusy} hitSlop={6} style={[styles.drawIconBtn, { width: 34, height: 34, borderRadius: 17, opacity: cropBusy ? 0.4 : 1 }]}>
+                  <MaterialIcons name="crop-rotate" size={18} color="#FFFFFF" />
+                </Pressable>
+              </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
                 <Pressable onPress={cancelCrop} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
                 <Pressable onPress={resetCropAll} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
@@ -1714,7 +1791,7 @@ export default function PatientChatCameraScreen() {
               ))}
             </View>
           ) : null}
-          {texts.length > 0 && !textMode && !drawMode && (
+          {texts.length > 0 && !textMode && !drawMode && !cropMode && (
             <GestureDetector gesture={manipGesture}>
               <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
             </GestureDetector>
