@@ -8,6 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
@@ -394,6 +396,29 @@ export default function PatientChatCameraScreen() {
   const [penColor, setPenColor] = useState<string>('#1E6FD9');
   const penColorRef = useRef<string>('#1E6FD9');
   const [thumbT, setThumbT] = useState(0.70);
+  const [cropMode, setCropMode] = useState(false);
+  const [cropActive, setCropActive] = useState(false);
+  const [cropBusy, setCropBusy] = useState(false);
+  const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '9:16'>('free');
+  const [basePhotoUri, setBasePhotoUri] = useState<string | null>(null);
+  const [basePhotoW, setBasePhotoW] = useState(0);
+  const [basePhotoH, setBasePhotoH] = useState(0);
+  const [cQuarter, setCQuarter] = useState(0);
+  const [cropFromPreview, setCropFromPreview] = useState(false);
+  const [originalUri, setOriginalUri] = useState<string | null>(null);
+  const [originalW, setOriginalW] = useState(0);
+  const [originalH, setOriginalH] = useState(0);
+  const [cAngleDeg, setCAngleDeg] = useState(0);
+  const cScale = useSharedValue(1);
+  const cTx = useSharedValue(0);
+  const cTy = useSharedValue(0);
+  const cBaseScale = useSharedValue(1);
+  const cBaseTx = useSharedValue(0);
+  const cBaseTy = useSharedValue(0);
+  const cAngle = useSharedValue(0);
+  const cGrid = useSharedValue(0);
+  const preCropSnapRef = useRef<{ uri: string | null; w: number; h: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
+  const cancelSnapRef = useRef<{ previewUri: string | null; prevMediaW: number; prevMediaH: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
   const textsRef = useRef(texts); textsRef.current = texts;
   const strokesRef = useRef(strokes); strokesRef.current = strokes;
   const pastRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
@@ -739,6 +764,15 @@ export default function PatientChatCameraScreen() {
       setPreviewIsVideo(false);
       setPrevMediaW(photo.width ?? 0);
       setPrevMediaH(photo.height ?? 0);
+      setOriginalUri(photo.uri);
+      setOriginalW(photo.width ?? 0);
+      setOriginalH(photo.height ?? 0);
+      setBasePhotoUri(photo.uri);
+      setBasePhotoW(photo.width ?? 0);
+      setBasePhotoH(photo.height ?? 0);
+      setCQuarter(0);
+      preCropSnapRef.current = null;
+      cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
       setPreviewUri(photo.uri);
     } catch (err) {
       console.error('[patient-chat-camera] capture error', err);
@@ -754,6 +788,228 @@ export default function PatientChatCameraScreen() {
     let bw = SCREEN_WIDTH, bh = SCREEN_H;
     if (a >= ca) { bw = SCREEN_WIDTH; bh = SCREEN_WIDTH / a; } else { bh = SCREEN_H; bw = SCREEN_H * a; }
     return { baseW: bw, baseH: bh, offX: (SCREEN_WIDTH - bw) / 2, offY: (SCREEN_H - bh) / 2 };
+  };
+
+  const _srcW = cropFromPreview ? (prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH) : (originalW > 0 ? originalW : SCREEN_WIDTH);
+  const _srcH = cropFromPreview ? (prevMediaH > 0 ? prevMediaH : SCREEN_H) : (originalH > 0 ? originalH : SCREEN_H);
+  const _cropAspect = _srcW / _srcH;
+  let cropBaseW = SCREEN_WIDTH, cropBaseH = SCREEN_H;
+  if (cropRatio === 'free') {
+    const _contAspect = SCREEN_WIDTH / SCREEN_H;
+    if (_cropAspect >= _contAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _cropAspect; } else { cropBaseH = SCREEN_H; cropBaseW = SCREEN_H * _cropAspect; }
+  } else {
+    const _ratioAspect = cropRatio === '1:1' ? 1 : cropRatio === '4:5' ? (4 / 5) : (9 / 16);
+    const _availH = SCREEN_H - insets.top - insets.bottom - 200;
+    const _fitAspect = SCREEN_WIDTH / _availH;
+    if (_ratioAspect >= _fitAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _ratioAspect; } else { cropBaseH = _availH; cropBaseW = _availH * _ratioAspect; }
+  }
+
+  const cropImgStyle = useAnimatedStyle(() => {
+    const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+    const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+    const sEff = cScale.value * cover;
+    return { transform: [{ translateX: cTx.value }, { translateY: cTy.value }, { rotateZ: `${cAngle.value}rad` }, { scale: sEff }] as any };
+  }, [cropBaseW, cropBaseH]);
+  const cGridStyle = useAnimatedStyle(() => ({ opacity: cGrid.value }));
+  const cropPan = useMemo(() => Gesture.Pan()
+    .onStart(() => { cBaseTx.value = cTx.value; cBaseTy.value = cTy.value; runOnJS(setCropActive)(true); cGrid.value = withTiming(1, { duration: 140 }); })
+    .onUpdate((e) => {
+      const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = cScale.value * cover;
+      const maxX = (cropBaseW * (sEff - 1)) / 2;
+      const maxY = (cropBaseH * (sEff - 1)) / 2;
+      cTx.value = Math.max(-maxX, Math.min(maxX, cBaseTx.value + e.translationX));
+      cTy.value = Math.max(-maxY, Math.min(maxY, cBaseTy.value + e.translationY));
+    })
+    .onEnd(() => { runOnJS(setCropActive)(false); cGrid.value = withTiming(0, { duration: 260 }); }), [cropBaseW, cropBaseH]);
+  const cropPinch = useMemo(() => Gesture.Pinch()
+    .onStart(() => { cBaseScale.value = cScale.value; runOnJS(setCropActive)(true); cGrid.value = withTiming(1, { duration: 140 }); })
+    .onUpdate((e) => { cScale.value = Math.max(1, Math.min(6, cBaseScale.value * e.scale)); })
+    .onEnd(() => {
+      const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = cScale.value * cover;
+      const maxX = (cropBaseW * (sEff - 1)) / 2;
+      const maxY = (cropBaseH * (sEff - 1)) / 2;
+      cTx.value = Math.max(-maxX, Math.min(maxX, cTx.value));
+      cTy.value = Math.max(-maxY, Math.min(maxY, cTy.value));
+      runOnJS(setCropActive)(false);
+      cGrid.value = withTiming(0, { duration: 260 });
+    }), [cropBaseW, cropBaseH]);
+  const cropGesture = useMemo(() => Gesture.Simultaneous(cropPan, cropPinch), [cropPan, cropPinch]);
+
+  const enterCrop = () => {
+    const fromPrev = texts.length > 0 || strokes.length > 0;
+    setCropFromPreview(fromPrev);
+    if (fromPrev) {
+      if (!preCropSnapRef.current) {
+        preCropSnapRef.current = {
+          uri: previewUri,
+          w: prevMediaW,
+          h: prevMediaH,
+          texts: texts.slice(),
+          strokes: strokes.map((s) => ({ ...s, points: s.points.slice() })),
+        };
+      }
+      cancelSnapRef.current = {
+        previewUri,
+        prevMediaW,
+        prevMediaH,
+        texts: texts.slice(),
+        strokes: strokes.map((s) => ({ ...s, points: s.points.slice() })),
+      };
+      cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
+    }
+    setCropActive(false);
+    setCropMode(true);
+  };
+  const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
+  const resetCropAll = () => {
+    if (cropFromPreview) {
+      const snap = preCropSnapRef.current;
+      if (snap) {
+        setPreviewUri(snap.uri);
+        setPrevMediaW(snap.w);
+        setPrevMediaH(snap.h);
+        setTexts(snap.texts);
+        setStrokes(snap.strokes);
+      }
+      if (basePhotoUri) {
+        setOriginalUri(basePhotoUri);
+        setOriginalW(basePhotoW);
+        setOriginalH(basePhotoH);
+        setCQuarter(0);
+      }
+      clearHistory();
+      resetCrop();
+      setCropMode(false);
+      return;
+    }
+    if (basePhotoUri) {
+      setOriginalUri(basePhotoUri);
+      setOriginalW(basePhotoW);
+      setOriginalH(basePhotoH);
+      setCQuarter(0);
+    }
+    resetCrop();
+  };
+  const cancelCrop = () => {
+    if (cropFromPreview) {
+      const s = cancelSnapRef.current;
+      if (s) {
+        setPreviewUri(s.previewUri);
+        setPrevMediaW(s.prevMediaW);
+        setPrevMediaH(s.prevMediaH);
+        setTexts(s.texts);
+        setStrokes(s.strokes);
+        clearHistory();
+      }
+      resetCrop();
+      setCropMode(false);
+      return;
+    }
+    setCropMode(false);
+  };
+  const commitCrop = async () => {
+    if (!previewUri || cropBusy) return;
+    setCropBusy(true);
+    try {
+      const scaleU = cScale.value, tx = cTx.value, ty = cTy.value, ang = cAngle.value;
+      const mediaW = cropFromPreview ? (prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH) : (originalW > 0 ? originalW : SCREEN_WIDTH);
+      const mediaH = cropFromPreview ? (prevMediaH > 0 ? prevMediaH : SCREEN_H) : (originalH > 0 ? originalH : SCREEN_H);
+      const c = Math.abs(Math.cos(ang)), sn = Math.abs(Math.sin(ang));
+      const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
+      const sEff = scaleU * cover;
+      const RW = mediaW * c + mediaH * sn;
+      const RH = mediaW * sn + mediaH * c;
+      const frameAsp = cropBaseW / cropBaseH;
+      const coverW = Math.min(mediaW, mediaH * frameAsp);
+      const coverH = Math.min(mediaH, mediaW / frameAsp);
+      const dInv = coverW / (cropBaseW * sEff);
+      const cw = coverW / sEff;
+      const ch = coverH / sEff;
+      let originX = RW / 2 - tx * dInv - cw / 2;
+      let originY = RH / 2 - ty * dInv - ch / 2;
+      originX = Math.max(0, Math.min(RW - cw, originX));
+      originY = Math.max(0, Math.min(RH - ch, originY));
+      const cropAction = { crop: { originX: Math.round(originX), originY: Math.round(originY), width: Math.max(1, Math.round(cw)), height: Math.max(1, Math.round(ch)) } };
+      const actions: any[] = ang !== 0 ? [{ rotate: (ang * 180) / Math.PI }, cropAction] : [cropAction];
+      const _srcUri = (cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '';
+      let _workUri = _srcUri;
+      try {
+        const _dest = `${FileSystem.cacheDirectory}cropsrc_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: _srcUri, to: _dest });
+        _workUri = _dest;
+      } catch (e) {
+      }
+      const res: any = await (async () => {
+        // helper: run a manipulate with the same 20s timeout safety net
+        const _manip = (u: string, acts: any[]) => Promise.race([
+          manipulateAsync(u, acts, { compress: 1, format: SaveFormat.JPEG }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('manipulate-timeout-20s')), 20000)),
+        ]);
+
+        // 1) Normalize EXIF orientation: re-encode with NO crop so pixel dims match display dims.
+        const _norm: any = await _manip(_workUri, []);
+
+        // 2) Clamp the crop rect to the normalized image bounds (guarantees in-bounds → never hangs).
+        //    Only safe to clamp directly when there is no rotation action (ang === 0, current PC5a state).
+        let _res: any;
+        if (ang === 0) {
+          const NW = _norm.width, NH = _norm.height;
+          let ox = Math.round(cropAction.crop.originX);
+          let oy = Math.round(cropAction.crop.originY);
+          let cw = Math.round(cropAction.crop.width);
+          let ch = Math.round(cropAction.crop.height);
+          ox = Math.max(0, Math.min(ox, NW - 1));
+          oy = Math.max(0, Math.min(oy, NH - 1));
+          cw = Math.max(1, Math.min(cw, NW - ox));
+          ch = Math.max(1, Math.min(ch, NH - oy));
+          const _clampedActions = [{ crop: { originX: ox, originY: oy, width: cw, height: ch } }];
+          _res = await _manip(_norm.uri, _clampedActions);
+        } else {
+          // rotation path (not used in PC5a): fall back to original actions on the normalized image
+          _res = await _manip(_norm.uri, actions);
+        }
+        return _res;
+      })();
+      if (texts.length > 0 || strokes.length > 0) {
+        const ob = boxFor(mediaW, mediaH);
+        const nb = boxFor(res.width, res.height);
+        const cosA = Math.cos(ang), sinA = Math.sin(ang);
+        const M = (nb.baseW * mediaW) / (ob.baseW * (res.width || 1));
+        const mapPt = (sx: number, sy: number) => {
+          const nx = (sx - ob.offX) / ob.baseW;
+          const ny = (sy - ob.offY) / ob.baseH;
+          const px = nx * mediaW, py = ny * mediaH;
+          const cxp = px - mediaW / 2, cyp = py - mediaH / 2;
+          const rx = cxp * cosA - cyp * sinA;
+          const ry = cxp * sinA + cyp * cosA;
+          const qx = rx + RW / 2, qy = ry + RH / 2;
+          const fx = qx - originX, fy = qy - originY;
+          const nnx = fx / (cw || 1), nny = fy / (ch || 1);
+          return { x: nb.offX + nnx * nb.baseW, y: nb.offY + nny * nb.baseH };
+        };
+        const remappedTexts = texts.map((t) => {
+          const p = mapPt(SCREEN_WIDTH / 2 + t.dx, SCREEN_H / 2 + t.dy);
+          return { ...t, dx: p.x - SCREEN_WIDTH / 2, dy: p.y - SCREEN_H / 2, scale: t.scale * M, rot: t.rot + ang };
+        });
+        const remappedStrokes = strokes.map((s) => ({ ...s, width: s.width * M, points: s.points.map((pt) => mapPt(pt.x, pt.y)) }));
+        setTexts(remappedTexts);
+        setStrokes(remappedStrokes);
+        clearHistory();
+      }
+      setPreviewUri(res.uri);
+      setPrevMediaW(res.width);
+      setPrevMediaH(res.height);
+      setCropMode(false);
+    } catch (err) {
+      console.error('[patient-chat-camera] crop error', err);
+      Alert.alert('Crop failed', 'Please try again.');
+    } finally {
+      setCropBusy(false);
+    }
   };
 
   const beginStroke = (x: number, y: number) => {
@@ -1402,6 +1658,44 @@ export default function PatientChatCameraScreen() {
             />
           )}
 
+          {cropMode && previewUri && !previewIsVideo && (
+            <View style={{ ...StyleSheet.absoluteFillObject, backgroundColor: '#000000', zIndex: 70, justifyContent: 'center', alignItems: 'center' }}>
+              <GestureDetector gesture={cropGesture}>
+                <View style={{ width: cropBaseW, height: cropBaseH, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.9)' }}>
+                  <Animated.View style={[{ width: cropBaseW, height: cropBaseH }, cropImgStyle]}>
+                    <ExpoImage source={{ uri: (cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '' }} style={{ width: cropBaseW, height: cropBaseH }} contentFit="cover" />
+                  </Animated.View>
+                  <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, cGridStyle]}>
+                    <View style={{ position: 'absolute', left: '33.33%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.45)' }} />
+                    <View style={{ position: 'absolute', left: '66.66%', top: 0, bottom: 0, width: 1, backgroundColor: 'rgba(255,255,255,0.45)' }} />
+                    <View style={{ position: 'absolute', top: '33.33%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.45)' }} />
+                    <View style={{ position: 'absolute', top: '66.66%', left: 0, right: 0, height: 1, backgroundColor: 'rgba(255,255,255,0.45)' }} />
+                  </Animated.View>
+                </View>
+              </GestureDetector>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
+                {(['free', '1:1', '4:5', '9:16'] as const).map((r) => {
+                  const on = cropRatio === r;
+                  return (
+                    <Pressable
+                      key={r}
+                      onPress={() => { if (cropRatio !== r) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCropRatio(r); resetCrop(); } }}
+                      hitSlop={6}
+                      style={{ paddingHorizontal: 14, paddingVertical: 7, marginHorizontal: 5, borderRadius: 16, backgroundColor: on ? '#1E6FD9' : 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: on ? '#1E6FD9' : 'rgba(255,255,255,0.25)' }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: on ? '800' : '600', fontSize: 13 }}>{r === 'free' ? 'Free' : r}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 20, left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 28 }} pointerEvents="box-none">
+                <Pressable onPress={cancelCrop} style={styles.drawIconBtn} hitSlop={8}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable>
+                <Pressable onPress={resetCropAll} hitSlop={8}><Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 15 }}>Reset</Text></Pressable>
+                <Pressable onPress={commitCrop} disabled={cropBusy} style={[styles.drawDoneBtn, { opacity: cropBusy ? 0.5 : 1 }]} hitSlop={8}><Ionicons name="checkmark" size={26} color="#FFFFFF" /></Pressable>
+              </View>
+            </View>
+          )}
+
           {(strokes.length > 0 || currentD) ? (
             <Svg width={SCREEN_WIDTH} height={SCREEN_H} style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]} pointerEvents="none">
               {strokes.map((s, i) => (
@@ -1442,7 +1736,7 @@ export default function PatientChatCameraScreen() {
             <View pointerEvents="none" style={{ position: 'absolute', top: SCREEN_H / 2 - 0.75, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(80,200,255,0.95)' }} />
           )}
 
-          {!textMode && !drawMode && (
+          {!textMode && !drawMode && !cropMode && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -1451,6 +1745,11 @@ export default function PatientChatCameraScreen() {
                 {!previewIsVideo && (
                   <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
                     <Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#1E6FD9' }]}>HD</Text>
+                  </Pressable>
+                )}
+                {!previewIsVideo && (
+                  <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}>
+                    <Ionicons name="crop-outline" size={20} color="#FFFFFF" />
                   </Pressable>
                 )}
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}>
@@ -1485,7 +1784,7 @@ export default function PatientChatCameraScreen() {
               </Pressable>
             </Pressable>
           </Modal>
-          {!textMode && !drawMode && (
+          {!textMode && !drawMode && !cropMode && (
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}>
               <View style={styles.previewCaptionRow}>
                 <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
@@ -1708,6 +2007,7 @@ const styles = StyleSheet.create({
   previewTopBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
   previewTopRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   previewIconBtn: { width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(255,255,255,0.15)', alignItems: 'center', justifyContent: 'center' },
+  previewIconDisabled: { opacity: 0.4 },
   previewBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
   previewBottom: { position: 'absolute', left: 0, right: 0, paddingHorizontal: 12 },
   previewCaptionRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 26, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 14, paddingVertical: 6, marginBottom: 12 },
