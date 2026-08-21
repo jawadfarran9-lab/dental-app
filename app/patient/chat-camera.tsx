@@ -1090,6 +1090,7 @@ export default function PatientChatCameraScreen() {
     setSending(true);
     try {
       const builtTexts = buildTexts();
+      const builtDrawing = buildDrawing();
       if (previewIsVideo) {
         await sendVideoMessage({
           clinicId,
@@ -1100,6 +1101,7 @@ export default function PatientChatCameraScreen() {
           from: 'patient',
           senderName: 'Patient',
           senderType: 'patient',
+          drawing: builtDrawing,
           texts: builtTexts,
         }, patientDb);
       } else {
@@ -1113,6 +1115,7 @@ export default function PatientChatCameraScreen() {
           senderName: 'Patient',
           senderType: 'patient',
           hd: hdQuality === 'hd',
+          drawing: builtDrawing,
           texts: builtTexts,
         }, patientDb);
       }
