@@ -1,6 +1,6 @@
 import { patientDb } from '@/firebaseConfig';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
-import { sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
+import { sendImageMessage, sendVideoMessage, DrawingDoc } from '@/src/services/chatImages';
 import { openDeviceSettings, useMicrophonePermission } from '@/src/hooks/useDevicePermissions';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
@@ -43,12 +43,28 @@ import Animated, {
     withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Circle, G, Line, Path, Text as SvgText } from 'react-native-svg';
+import Svg, { Circle, Defs, G, Line, LinearGradient as SvgLinearGradient, Path, Rect, Stop, Text as SvgText } from 'react-native-svg';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
 
 const fmtSec = (s: number): string => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+const PEN_WIDTH = 6;
+const SLIDER_H = 260;
+function pointsToSmoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y} L ${pts[0].x + 0.1} ${pts[0].y + 0.1}`;
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const midX = (pts[i].x + pts[i + 1].x) / 2;
+    const midY = (pts[i].y + pts[i + 1].y) / 2;
+    d += ` Q ${pts[i].x} ${pts[i].y} ${midX} ${midY}`;
+  }
+  const last = pts[pts.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
 
 const MAX_ZOOM_RATIO = 5;
 const MAX_CAMERA_ZOOM = 0.5; // cap so we never hit the device's extreme hardware max
@@ -371,7 +387,49 @@ export default function PatientChatCameraScreen() {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const hitBoxesSV = useSharedValue<{ index: number; cx: number; cy: number; hw: number; hh: number; dx: number; dy: number; rot: number; scale: number }[]>([]);
   const pillLayouts = useRef<Record<number, { x: number; y: number; w: number; h: number }>>({});
-  const pushHistory = () => {};
+  const [drawMode, setDrawMode] = useState(false);
+  const [strokes, setStrokes] = useState<{ color: string; width: number; points: { x: number; y: number }[] }[]>([]);
+  const [currentD, setCurrentD] = useState('');
+  const currentPtsRef = useRef<{ x: number; y: number }[]>([]);
+  const [penColor, setPenColor] = useState<string>('#1E6FD9');
+  const penColorRef = useRef<string>('#1E6FD9');
+  const [thumbT, setThumbT] = useState(0.70);
+  const textsRef = useRef(texts); textsRef.current = texts;
+  const strokesRef = useRef(strokes); strokesRef.current = strokes;
+  const pastRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
+  const futureRef = useRef<{ texts: typeof texts; strokes: typeof strokes }[]>([]);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const takeSnapshot = () => ({
+    texts: textsRef.current.map((t) => ({ ...t })),
+    strokes: strokesRef.current.map((s) => ({ color: s.color, width: s.width, points: s.points.map((p) => ({ x: p.x, y: p.y })) })),
+  });
+  const pushHistory = () => {
+    pastRef.current.push(takeSnapshot());
+    if (pastRef.current.length > 40) pastRef.current.shift();
+    futureRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+  };
+  const clearHistory = () => { pastRef.current = []; futureRef.current = []; setCanUndo(false); setCanRedo(false); };
+  const undo = () => {
+    if (pastRef.current.length === 0) return;
+    futureRef.current.push(takeSnapshot());
+    const prev = pastRef.current.pop()!;
+    setTexts(prev.texts);
+    setStrokes(prev.strokes);
+    setCanUndo(pastRef.current.length > 0);
+    setCanRedo(true);
+  };
+  const redo = () => {
+    if (futureRef.current.length === 0) return;
+    pastRef.current.push(takeSnapshot());
+    const next = futureRef.current.pop()!;
+    setTexts(next.texts);
+    setStrokes(next.strokes);
+    setCanUndo(true);
+    setCanRedo(futureRef.current.length > 0);
+  };
   useEffect(() => {
     if (recording) {
       setRecordSec(0);
@@ -696,6 +754,76 @@ export default function PatientChatCameraScreen() {
     let bw = SCREEN_WIDTH, bh = SCREEN_H;
     if (a >= ca) { bw = SCREEN_WIDTH; bh = SCREEN_WIDTH / a; } else { bh = SCREEN_H; bw = SCREEN_H * a; }
     return { baseW: bw, baseH: bh, offX: (SCREEN_WIDTH - bw) / 2, offY: (SCREEN_H - bh) / 2 };
+  };
+
+  const beginStroke = (x: number, y: number) => {
+    currentPtsRef.current = [{ x, y }];
+    setCurrentD(pointsToSmoothPath(currentPtsRef.current));
+  };
+  const extendStroke = (x: number, y: number) => {
+    currentPtsRef.current.push({ x, y });
+    setCurrentD(pointsToSmoothPath(currentPtsRef.current));
+  };
+  const endStroke = () => {
+    if (currentPtsRef.current.length > 0) {
+      pushHistory();
+      const pts = currentPtsRef.current.slice();
+      setStrokes((prev) => [...prev, { color: penColorRef.current, width: PEN_WIDTH, points: pts }]);
+    }
+    currentPtsRef.current = [];
+    setCurrentD('');
+  };
+  const resetDrawing = () => { setStrokes([]); setCurrentD(''); currentPtsRef.current = []; setDrawMode(false); };
+
+  const drawPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .maxPointers(1)
+        .onBegin((e) => { runOnJS(beginStroke)(e.x, e.y); })
+        .onUpdate((e) => { runOnJS(extendStroke)(e.x, e.y); })
+        .onEnd(() => { runOnJS(endStroke)(); }),
+    []
+  );
+
+  const pickColorAtY = (y: number) => {
+    const t = Math.max(0, Math.min(1, y / SLIDER_H));
+    const c = colorAt(t);
+    penColorRef.current = c;
+    setThumbT(t);
+    setPenColor(c);
+  };
+  const colorPan = useMemo(
+    () =>
+      Gesture.Pan()
+        .minDistance(0)
+        .onBegin((e) => { runOnJS(pickColorAtY)(e.y); })
+        .onUpdate((e) => { runOnJS(pickColorAtY)(e.y); }),
+    []
+  );
+
+  const buildDrawing = (): DrawingDoc | undefined => {
+    if (strokes.length === 0) return undefined;
+    const mediaW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
+    const mediaH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
+    const aspect = mediaW / mediaH;
+    const containerAspect = SCREEN_WIDTH / SCREEN_H;
+    let baseW = SCREEN_WIDTH;
+    let baseH = SCREEN_H;
+    if (aspect >= containerAspect) { baseW = SCREEN_WIDTH; baseH = SCREEN_WIDTH / aspect; }
+    else { baseH = SCREEN_H; baseW = SCREEN_H * aspect; }
+    const offX = (SCREEN_WIDTH - baseW) / 2;
+    const offY = (SCREEN_H - baseH) / 2;
+    const VB_W = 1000;
+    const VB_H = Math.round(1000 / aspect);
+    const outStrokes = strokes.map((s) => {
+      const npts = s.points.map((p) => ({
+        x: ((p.x - offX) / baseW) * VB_W,
+        y: ((p.y - offY) / baseH) * VB_H,
+      }));
+      return { color: s.color, width: (s.width / baseW) * VB_W, d: pointsToSmoothPath(npts) };
+    });
+    return { vb: [VB_W, VB_H], strokes: outStrokes };
   };
 
   const pickTextColorAtAngle = (x: number, y: number) => {
@@ -1271,6 +1399,17 @@ export default function PatientChatCameraScreen() {
             />
           )}
 
+          {(strokes.length > 0 || currentD) ? (
+            <Svg width={SCREEN_WIDTH} height={SCREEN_H} style={[StyleSheet.absoluteFill, { backgroundColor: 'transparent' }]} pointerEvents="none">
+              {strokes.map((s, i) => (
+                <Path key={`st_${i}`} d={pointsToSmoothPath(s.points)} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              ))}
+              {currentD ? (
+                <Path d={currentD} stroke={penColor} strokeWidth={PEN_WIDTH} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              ) : null}
+            </Svg>
+          ) : null}
+
           {texts.length > 0 && !textMode ? (
             <View style={styles.textOverlayWrap} pointerEvents="box-none">
               {texts.map((t, i) => (
@@ -1278,7 +1417,7 @@ export default function PatientChatCameraScreen() {
               ))}
             </View>
           ) : null}
-          {texts.length > 0 && !textMode && (
+          {texts.length > 0 && !textMode && !drawMode && (
             <GestureDetector gesture={manipGesture}>
               <View style={StyleSheet.absoluteFill} pointerEvents="box-only" />
             </GestureDetector>
@@ -1300,7 +1439,7 @@ export default function PatientChatCameraScreen() {
             <View pointerEvents="none" style={{ position: 'absolute', top: SCREEN_H / 2 - 0.75, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(80,200,255,0.95)' }} />
           )}
 
-          {!textMode && (
+          {!textMode && !drawMode && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
@@ -1313,6 +1452,9 @@ export default function PatientChatCameraScreen() {
                 )}
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}>
                   <Text style={styles.previewBtnText}>Aa</Text>
+                </Pressable>
+                <Pressable onPress={() => setDrawMode(true)} style={styles.previewIconBtn} hitSlop={8}>
+                  <Ionicons name="pencil" size={18} color="#FFFFFF" />
                 </Pressable>
               </View>
             </View>
@@ -1340,7 +1482,7 @@ export default function PatientChatCameraScreen() {
               </Pressable>
             </Pressable>
           </Modal>
-          {!textMode && (
+          {!textMode && !drawMode && (
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}>
               <View style={styles.previewCaptionRow}>
                 <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
@@ -1436,6 +1578,58 @@ export default function PatientChatCameraScreen() {
               </ScrollView>
             </View>
           )}
+
+          {drawMode && (
+            <GestureDetector gesture={drawPan}>
+              <View style={StyleSheet.absoluteFill} />
+            </GestureDetector>
+          )}
+
+          {drawMode && (
+            <View style={[styles.colorSliderWrap, { top: insets.top + 90 }]}>
+              <GestureDetector gesture={colorPan}>
+                <View style={styles.colorSliderTouch}>
+                  <Svg width={14} height={SLIDER_H}>
+                    <Defs>
+                      <SvgLinearGradient id="hueGrad" x1="0" y1="0" x2="0" y2="1">
+                        <Stop offset="0" stopColor="#FFFFFF" />
+                        <Stop offset="0.10" stopColor="#FF3B30" />
+                        <Stop offset="0.22" stopColor="#FF9500" />
+                        <Stop offset="0.34" stopColor="#FFCC00" />
+                        <Stop offset="0.46" stopColor="#34C759" />
+                        <Stop offset="0.58" stopColor="#00C7BE" />
+                        <Stop offset="0.70" stopColor="#3D9EFF" />
+                        <Stop offset="0.82" stopColor="#AF52DE" />
+                        <Stop offset="0.92" stopColor="#FF2D55" />
+                        <Stop offset="1" stopColor="#000000" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Rect x="0" y="0" width="14" height={SLIDER_H} rx="7" ry="7" fill="url(#hueGrad)" />
+                  </Svg>
+                  <View style={[styles.colorThumb, { top: Math.max(0, Math.min(SLIDER_H - 22, thumbT * SLIDER_H - 11)), backgroundColor: penColor }]} />
+                </View>
+              </GestureDetector>
+            </View>
+          )}
+
+          {drawMode && (
+            <View style={[styles.drawBar, { top: insets.top + 8 }]} pointerEvents="box-none">
+              <Pressable onPress={() => setDrawMode(false)} style={styles.drawDoneBtn} hitSlop={8}>
+                <Ionicons name="checkmark" size={26} color="#FFFFFF" />
+              </Pressable>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <Pressable onPress={undo} disabled={!canUndo} style={[styles.drawIconBtn, { opacity: canUndo ? 1 : 0.4 }]} hitSlop={8}>
+                  <Ionicons name="arrow-undo" size={22} color="#FFFFFF" />
+                </Pressable>
+                <Pressable onPress={redo} disabled={!canRedo} style={[styles.drawIconBtn, { opacity: canRedo ? 1 : 0.4 }]} hitSlop={8}>
+                  <Ionicons name="arrow-redo" size={22} color="#FFFFFF" />
+                </Pressable>
+                <View style={styles.drawPenActive}>
+                  <Ionicons name="pencil" size={20} color="#FFFFFF" />
+                </View>
+              </View>
+            </View>
+          )}
         </View>
       )}
     </GestureHandlerRootView>
@@ -1523,6 +1717,10 @@ const styles = StyleSheet.create({
   drawBar: { position: 'absolute', left: 0, right: 0, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 },
   drawDoneBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#1E6FD9', alignItems: 'center', justifyContent: 'center' },
   drawIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
+  drawPenActive: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#1E6FD9', alignItems: 'center', justifyContent: 'center' },
+  colorSliderWrap: { position: 'absolute', right: 14 },
+  colorSliderTouch: { width: 34, height: SLIDER_H, alignItems: 'center' },
+  colorThumb: { position: 'absolute', width: 22, height: 22, borderRadius: 11, borderWidth: 3, borderColor: '#FFFFFF', left: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 3, shadowOffset: { width: 0, height: 1 } },
   colorWheelWrap: { position: 'absolute', right: 12 },
   textInputWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
   textInputField: { fontSize: 32, fontWeight: '700', textAlign: 'center', minWidth: 80, lineHeight: 40, textShadowColor: 'rgba(0,0,0,0.35)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4 },
