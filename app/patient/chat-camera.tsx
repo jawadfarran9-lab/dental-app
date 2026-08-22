@@ -1041,8 +1041,30 @@ export default function PatientChatCameraScreen() {
           const _clampedActions = [{ crop: { originX: ox, originY: oy, width: cw, height: ch } }];
           _res = await _manip(_norm.uri, _clampedActions);
         } else {
-          // rotation path (not used in PC5a): fall back to original actions on the normalized image
-          _res = await _manip(_norm.uri, actions);
+          const NW = _norm.width, NH = _norm.height;
+          const c2 = Math.abs(Math.cos(ang)), sn2 = Math.abs(Math.sin(ang));
+          const cover2 = Math.max((cropBaseW * c2 + cropBaseH * sn2) / cropBaseW,
+                                  (cropBaseW * sn2 + cropBaseH * c2) / cropBaseH);
+          const sEff2 = scaleU * cover2;
+          const RW2 = NW * c2 + NH * sn2;
+          const RH2 = NW * sn2 + NH * c2;
+          const frameAsp2 = cropBaseW / cropBaseH;
+          const coverW2 = Math.min(NW, NH * frameAsp2);
+          const coverH2 = Math.min(NH, NW / frameAsp2);
+          const dInv2 = coverW2 / (cropBaseW * sEff2);
+          const cw2 = coverW2 / sEff2;
+          const ch2 = coverH2 / sEff2;
+          const originX2 = RW2 / 2 - tx * dInv2 - cw2 / 2;
+          const originY2 = RH2 / 2 - ty * dInv2 - ch2 / 2;
+          const ox = Math.max(0, Math.min(Math.round(originX2), Math.floor(RW2) - 1));
+          const oy = Math.max(0, Math.min(Math.round(originY2), Math.floor(RH2) - 1));
+          const cwR = Math.max(1, Math.min(Math.round(cw2), Math.floor(RW2) - ox));
+          const chR = Math.max(1, Math.min(Math.round(ch2), Math.floor(RH2) - oy));
+          const _rotatedActions = [
+            { rotate: (ang * 180) / Math.PI },
+            { crop: { originX: ox, originY: oy, width: cwR, height: chR } },
+          ];
+          _res = await _manip(_norm.uri, _rotatedActions);
         }
         return _res;
       })();
