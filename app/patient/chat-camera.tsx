@@ -8,7 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
@@ -782,6 +783,8 @@ export default function PatientChatCameraScreen() {
       preCropSnapRef.current = null;
       cScale.value = 1; cTx.value = 0; cTy.value = 0; cAngle.value = 0; setCAngleDeg(0);
       setPreviewUri(photo.uri);
+      // warm up the image pipeline so the first real crop isn't the cold call
+      (async () => { try { const c = ImageManipulator.manipulate(photo.uri); c.resize({ width: 16 }); const im = await c.renderAsync(); await im.saveAsync({ compress: 0.5, format: SaveFormat.JPEG }); } catch {} })();
     } catch (err) {
       console.error('[patient-chat-camera] capture error', err);
       Alert.alert('Capture failed', 'Please try again.');
@@ -888,6 +891,16 @@ export default function PatientChatCameraScreen() {
     setCropMode(true);
   };
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
+  const runManip = async (uri: string, apply: (ctx: any) => void): Promise<any> => {
+    const doIt = (async () => {
+      const ctx = ImageManipulator.manipulate(uri);
+      apply(ctx);
+      const img = await ctx.renderAsync();
+      const out = await img.saveAsync({ compress: 1, format: SaveFormat.JPEG });
+      return out;
+    })();
+    return Promise.race([doIt, new Promise((_, rej) => setTimeout(() => rej(new Error('manipulate-timeout-45s')), 45000))]);
+  };
   const handleRotate90 = async () => {
     if (cropBusyRef.current) return;
     cropBusyRef.current = true;
@@ -899,7 +912,7 @@ export default function PatientChatCameraScreen() {
       try {
         const oldW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
         const oldH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
-        const res = await manipulateAsync(previewUri, [{ rotate: 90 }], { compress: 1, format: SaveFormat.JPEG });
+        const res = await runManip(previewUri, (ctx) => { ctx.rotate(90); });
         if (texts.length > 0 || strokes.length > 0) {
           const ob = boxFor(oldW, oldH);
           const nb = boxFor(res.width, res.height);
@@ -945,7 +958,7 @@ export default function PatientChatCameraScreen() {
         setOriginalW(basePhotoW);
         setOriginalH(basePhotoH);
       } else {
-        const res = await manipulateAsync(basePhotoUri ?? src, [{ rotate: q * 90 }], { compress: 1, format: SaveFormat.JPEG });
+        const res = await runManip(basePhotoUri ?? src, (ctx) => { ctx.rotate(q * 90); });
         setOriginalUri(res.uri);
         setOriginalW(res.width);
         setOriginalH(res.height);
@@ -1031,7 +1044,56 @@ export default function PatientChatCameraScreen() {
       originY = Math.max(0, Math.min(RH - ch, originY));
       const cropAction = { crop: { originX: Math.round(originX), originY: Math.round(originY), width: Math.max(1, Math.round(cw)), height: Math.max(1, Math.round(ch)) } };
       const actions: any[] = ang !== 0 ? [{ rotate: (ang * 180) / Math.PI }, cropAction] : [cropAction];
-      const res = await manipulateAsync((cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '', actions, { compress: 1, format: SaveFormat.JPEG });
+      const _srcUri = (cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '';
+      let _workUri = _srcUri;
+      try {
+        const _dest = `${FileSystem.cacheDirectory}cropsrc_${Date.now()}.jpg`;
+        await FileSystem.copyAsync({ from: _srcUri, to: _dest });
+        _workUri = _dest;
+      } catch (e) {
+      }
+      const res: any = await (async () => {
+        // 1) Normalize EXIF orientation: re-encode with NO crop so pixel dims match display dims.
+        const _norm: any = await runManip(_workUri, () => {});
+
+        // 2) Clamp the crop rect to the normalized image bounds (guarantees in-bounds → never hangs).
+        //    Only safe to clamp directly when there is no rotation action (ang === 0, current PC5a state).
+        let _res: any;
+        if (ang === 0) {
+          const NW = _norm.width, NH = _norm.height;
+          let ox = Math.round(cropAction.crop.originX);
+          let oy = Math.round(cropAction.crop.originY);
+          let cw = Math.round(cropAction.crop.width);
+          let ch = Math.round(cropAction.crop.height);
+          ox = Math.max(0, Math.min(ox, NW - 1));
+          oy = Math.max(0, Math.min(oy, NH - 1));
+          cw = Math.max(1, Math.min(cw, NW - ox));
+          ch = Math.max(1, Math.min(ch, NH - oy));
+          _res = await runManip(_norm.uri, (ctx) => { ctx.crop({ originX: ox, originY: oy, width: cw, height: ch }); });
+        } else {
+          const NW = _norm.width, NH = _norm.height;
+          const c2 = Math.abs(Math.cos(ang)), sn2 = Math.abs(Math.sin(ang));
+          const cover2 = Math.max((cropBaseW * c2 + cropBaseH * sn2) / cropBaseW,
+                                  (cropBaseW * sn2 + cropBaseH * c2) / cropBaseH);
+          const sEff2 = scaleU * cover2;
+          const RW2 = NW * c2 + NH * sn2;
+          const RH2 = NW * sn2 + NH * c2;
+          const frameAsp2 = cropBaseW / cropBaseH;
+          const coverW2 = Math.min(NW, NH * frameAsp2);
+          const coverH2 = Math.min(NH, NW / frameAsp2);
+          const dInv2 = coverW2 / (cropBaseW * sEff2);
+          const cw2 = coverW2 / sEff2;
+          const ch2 = coverH2 / sEff2;
+          const originX2 = RW2 / 2 - tx * dInv2 - cw2 / 2;
+          const originY2 = RH2 / 2 - ty * dInv2 - ch2 / 2;
+          const ox = Math.max(0, Math.min(Math.round(originX2), Math.floor(RW2) - 1));
+          const oy = Math.max(0, Math.min(Math.round(originY2), Math.floor(RH2) - 1));
+          const cwR = Math.max(1, Math.min(Math.round(cw2), Math.floor(RW2) - ox));
+          const chR = Math.max(1, Math.min(Math.round(ch2), Math.floor(RH2) - oy));
+          _res = await runManip(_norm.uri, (ctx) => { ctx.rotate((ang * 180) / Math.PI); ctx.crop({ originX: ox, originY: oy, width: cwR, height: chR }); });
+        }
+        return _res;
+      })();
       if (texts.length > 0 || strokes.length > 0) {
         const ob = boxFor(mediaW, mediaH);
         const nb = boxFor(res.width, res.height);
