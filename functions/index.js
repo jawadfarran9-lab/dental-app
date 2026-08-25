@@ -51,7 +51,7 @@ app.post('/stripeWebhook', bodyParser.raw({ type: 'application/json' }), async (
   res.status(200).send('ok');
 });
 
-exports.api = functions.https.onRequest(app);
+// exports.api = functions.https.onRequest(app);  // TEMP: disabled — HTTP fn fails to deploy on Node 20 (deprecated functions.config()); re-enable after migrating Stripe/AI-chat config to env params
 
 // You can add more functions here: create clinic user, set custom claims for clinics, etc.
 
