@@ -9,7 +9,6 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { ResizeMode, Video } from 'expo-av';
 import { Image as ExpoImage } from 'expo-image';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
-import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
@@ -82,6 +81,9 @@ const ZOOM_1X = ZOOM_PRESET_VALUES[0].value;
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_H = Dimensions.get('window').height;
+
+const CROP_DIAL_TICKS = Array.from({ length: 19 }, (_, i) => -45 + i * 5);
+const CROP_DIAL_PX_PER_DEG = 6;
 
 const HUE_STOPS: { t: number; c: [number, number, number] }[] = [
   { t: 0, c: [255, 255, 255] },
@@ -346,6 +348,9 @@ export default function PatientChatCameraScreen() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mic = useMicrophonePermission();
   const [previewUri, setPreviewUri] = useState<string | null>(null);
+  useEffect(() => { setReady(false); }, [camMode]);
+  useEffect(() => { setReady(false); }, [facing]);
+  useEffect(() => { setReady(false); }, [previewUri]);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
@@ -399,6 +404,7 @@ export default function PatientChatCameraScreen() {
   const [cropMode, setCropMode] = useState(false);
   const [cropActive, setCropActive] = useState(false);
   const [cropBusy, setCropBusy] = useState(false);
+  const cropBusyRef = useRef(false);
   const [cropRatio, setCropRatio] = useState<'free' | '1:1' | '4:5' | '9:16'>('free');
   const [basePhotoUri, setBasePhotoUri] = useState<string | null>(null);
   const [basePhotoW, setBasePhotoW] = useState(0);
@@ -416,6 +422,8 @@ export default function PatientChatCameraScreen() {
   const cBaseTx = useSharedValue(0);
   const cBaseTy = useSharedValue(0);
   const cAngle = useSharedValue(0);
+  const cBaseAngle = useSharedValue(0);
+  const cWasZero = useSharedValue(true);
   const cGrid = useSharedValue(0);
   const preCropSnapRef = useRef<{ uri: string | null; w: number; h: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
   const cancelSnapRef = useRef<{ previewUri: string | null; prevMediaW: number; prevMediaH: number; texts: typeof texts; strokes: typeof strokes } | null>(null);
@@ -804,6 +812,7 @@ export default function PatientChatCameraScreen() {
     if (_ratioAspect >= _fitAspect) { cropBaseW = SCREEN_WIDTH; cropBaseH = SCREEN_WIDTH / _ratioAspect; } else { cropBaseH = _availH; cropBaseW = _availH * _ratioAspect; }
   }
 
+  const snapHaptic = () => { Haptics.selectionAsync(); };
   const cropImgStyle = useAnimatedStyle(() => {
     const c = Math.abs(Math.cos(cAngle.value)), sn = Math.abs(Math.sin(cAngle.value));
     const cover = Math.max((cropBaseW * c + cropBaseH * sn) / cropBaseW, (cropBaseW * sn + cropBaseH * c) / cropBaseH);
@@ -811,6 +820,7 @@ export default function PatientChatCameraScreen() {
     return { transform: [{ translateX: cTx.value }, { translateY: cTy.value }, { rotateZ: `${cAngle.value}rad` }, { scale: sEff }] as any };
   }, [cropBaseW, cropBaseH]);
   const cGridStyle = useAnimatedStyle(() => ({ opacity: cGrid.value }));
+  const dialTicksStyle = useAnimatedStyle(() => ({ transform: [{ translateX: -(cAngle.value * 180 / Math.PI) * CROP_DIAL_PX_PER_DEG }] as any }));
   const cropPan = useMemo(() => Gesture.Pan()
     .onStart(() => { cBaseTx.value = cTx.value; cBaseTy.value = cTy.value; runOnJS(setCropActive)(true); cGrid.value = withTiming(1, { duration: 140 }); })
     .onUpdate((e) => {
@@ -838,6 +848,19 @@ export default function PatientChatCameraScreen() {
       cGrid.value = withTiming(0, { duration: 260 });
     }), [cropBaseW, cropBaseH]);
   const cropGesture = useMemo(() => Gesture.Simultaneous(cropPan, cropPinch), [cropPan, cropPinch]);
+  const cropDial = useMemo(() => Gesture.Pan()
+    .onStart(() => { cBaseAngle.value = cAngle.value; runOnJS(setCropActive)(true); cGrid.value = withTiming(1, { duration: 140 }); })
+    .onUpdate((e) => {
+      const degPerPx = 90 / SCREEN_WIDTH;
+      let deg = (cBaseAngle.value * 180 / Math.PI) + e.translationX * degPerPx;
+      deg = Math.max(-45, Math.min(45, deg));
+      const isZero = Math.abs(deg) < 1.2;
+      if (isZero) deg = 0;
+      if (isZero && !cWasZero.value) { runOnJS(snapHaptic)(); }
+      cWasZero.value = isZero;
+      cAngle.value = (deg * Math.PI) / 180;
+    })
+    .onEnd(() => { runOnJS(setCropActive)(false); cGrid.value = withTiming(0, { duration: 260 }); }), []);
 
   const enterCrop = () => {
     const fromPrev = texts.length > 0 || strokes.length > 0;
@@ -865,20 +888,18 @@ export default function PatientChatCameraScreen() {
     setCropMode(true);
   };
   const resetCrop = () => { cScale.value = withTiming(1); cTx.value = withTiming(0); cTy.value = withTiming(0); cAngle.value = withTiming(0); setCAngleDeg(0); };
-  const safeManipulate = (uri: string, acts: any[]): Promise<any> => Promise.race([
-    manipulateAsync(uri, acts, { compress: 1, format: SaveFormat.JPEG }),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('manipulate-timeout-20s')), 20000)),
-  ]);
   const handleRotate90 = async () => {
-    if (cropBusy) return;
+    if (cropBusyRef.current) return;
+    cropBusyRef.current = true;
+    if (cropBusy) { cropBusyRef.current = false; return; }
     if (cropFromPreview) {
-      if (!previewUri) return;
+      if (!previewUri) { cropBusyRef.current = false; return; }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       setCropBusy(true);
       try {
         const oldW = prevMediaW > 0 ? prevMediaW : SCREEN_WIDTH;
         const oldH = prevMediaH > 0 ? prevMediaH : SCREEN_H;
-        const res: any = await safeManipulate(previewUri, [{ rotate: 90 }]);
+        const res = await manipulateAsync(previewUri, [{ rotate: 90 }], { compress: 1, format: SaveFormat.JPEG });
         if (texts.length > 0 || strokes.length > 0) {
           const ob = boxFor(oldW, oldH);
           const nb = boxFor(res.width, res.height);
@@ -908,12 +929,13 @@ export default function PatientChatCameraScreen() {
         console.error('[patient-chat-camera] rotate90 (preview) error', err);
         Alert.alert('Rotate failed', 'Please try again.');
       } finally {
+        cropBusyRef.current = false;
         setCropBusy(false);
       }
       return;
     }
     const src = basePhotoUri ?? originalUri ?? previewUri;
-    if (!src) return;
+    if (!src) { cropBusyRef.current = false; return; }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const q = (cQuarter + 1) % 4;
     setCropBusy(true);
@@ -923,7 +945,7 @@ export default function PatientChatCameraScreen() {
         setOriginalW(basePhotoW);
         setOriginalH(basePhotoH);
       } else {
-        const res: any = await safeManipulate(basePhotoUri ?? src, [{ rotate: q * 90 }]);
+        const res = await manipulateAsync(basePhotoUri ?? src, [{ rotate: q * 90 }], { compress: 1, format: SaveFormat.JPEG });
         setOriginalUri(res.uri);
         setOriginalW(res.width);
         setOriginalH(res.height);
@@ -934,6 +956,7 @@ export default function PatientChatCameraScreen() {
       console.error('[patient-chat-camera] rotate90 error', err);
       Alert.alert('Rotate failed', 'Please try again.');
     } finally {
+      cropBusyRef.current = false;
       setCropBusy(false);
     }
   };
@@ -984,7 +1007,8 @@ export default function PatientChatCameraScreen() {
     setCropMode(false);
   };
   const commitCrop = async () => {
-    if (!previewUri || cropBusy) return;
+    if (!previewUri || cropBusy || cropBusyRef.current) return;
+    cropBusyRef.current = true;
     setCropBusy(true);
     try {
       const scaleU = cScale.value, tx = cTx.value, ty = cTy.value, ang = cAngle.value;
@@ -1007,67 +1031,7 @@ export default function PatientChatCameraScreen() {
       originY = Math.max(0, Math.min(RH - ch, originY));
       const cropAction = { crop: { originX: Math.round(originX), originY: Math.round(originY), width: Math.max(1, Math.round(cw)), height: Math.max(1, Math.round(ch)) } };
       const actions: any[] = ang !== 0 ? [{ rotate: (ang * 180) / Math.PI }, cropAction] : [cropAction];
-      const _srcUri = (cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '';
-      let _workUri = _srcUri;
-      try {
-        const _dest = `${FileSystem.cacheDirectory}cropsrc_${Date.now()}.jpg`;
-        await FileSystem.copyAsync({ from: _srcUri, to: _dest });
-        _workUri = _dest;
-      } catch (e) {
-      }
-      const res: any = await (async () => {
-        // helper: run a manipulate with the same 20s timeout safety net
-        const _manip = (u: string, acts: any[]) => Promise.race([
-          manipulateAsync(u, acts, { compress: 1, format: SaveFormat.JPEG }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('manipulate-timeout-20s')), 20000)),
-        ]);
-
-        // 1) Normalize EXIF orientation: re-encode with NO crop so pixel dims match display dims.
-        const _norm: any = await _manip(_workUri, []);
-
-        // 2) Clamp the crop rect to the normalized image bounds (guarantees in-bounds → never hangs).
-        //    Only safe to clamp directly when there is no rotation action (ang === 0, current PC5a state).
-        let _res: any;
-        if (ang === 0) {
-          const NW = _norm.width, NH = _norm.height;
-          let ox = Math.round(cropAction.crop.originX);
-          let oy = Math.round(cropAction.crop.originY);
-          let cw = Math.round(cropAction.crop.width);
-          let ch = Math.round(cropAction.crop.height);
-          ox = Math.max(0, Math.min(ox, NW - 1));
-          oy = Math.max(0, Math.min(oy, NH - 1));
-          cw = Math.max(1, Math.min(cw, NW - ox));
-          ch = Math.max(1, Math.min(ch, NH - oy));
-          const _clampedActions = [{ crop: { originX: ox, originY: oy, width: cw, height: ch } }];
-          _res = await _manip(_norm.uri, _clampedActions);
-        } else {
-          const NW = _norm.width, NH = _norm.height;
-          const c2 = Math.abs(Math.cos(ang)), sn2 = Math.abs(Math.sin(ang));
-          const cover2 = Math.max((cropBaseW * c2 + cropBaseH * sn2) / cropBaseW,
-                                  (cropBaseW * sn2 + cropBaseH * c2) / cropBaseH);
-          const sEff2 = scaleU * cover2;
-          const RW2 = NW * c2 + NH * sn2;
-          const RH2 = NW * sn2 + NH * c2;
-          const frameAsp2 = cropBaseW / cropBaseH;
-          const coverW2 = Math.min(NW, NH * frameAsp2);
-          const coverH2 = Math.min(NH, NW / frameAsp2);
-          const dInv2 = coverW2 / (cropBaseW * sEff2);
-          const cw2 = coverW2 / sEff2;
-          const ch2 = coverH2 / sEff2;
-          const originX2 = RW2 / 2 - tx * dInv2 - cw2 / 2;
-          const originY2 = RH2 / 2 - ty * dInv2 - ch2 / 2;
-          const ox = Math.max(0, Math.min(Math.round(originX2), Math.floor(RW2) - 1));
-          const oy = Math.max(0, Math.min(Math.round(originY2), Math.floor(RH2) - 1));
-          const cwR = Math.max(1, Math.min(Math.round(cw2), Math.floor(RW2) - ox));
-          const chR = Math.max(1, Math.min(Math.round(ch2), Math.floor(RH2) - oy));
-          const _rotatedActions = [
-            { rotate: (ang * 180) / Math.PI },
-            { crop: { originX: ox, originY: oy, width: cwR, height: chR } },
-          ];
-          _res = await _manip(_norm.uri, _rotatedActions);
-        }
-        return _res;
-      })();
+      const res = await manipulateAsync((cropFromPreview ? previewUri : (originalUri ?? previewUri)) ?? previewUri ?? '', actions, { compress: 1, format: SaveFormat.JPEG });
       if (texts.length > 0 || strokes.length > 0) {
         const ob = boxFor(mediaW, mediaH);
         const nb = boxFor(res.width, res.height);
@@ -1102,6 +1066,7 @@ export default function PatientChatCameraScreen() {
       console.error('[patient-chat-camera] crop error', err);
       Alert.alert('Crop failed', 'Please try again.');
     } finally {
+      cropBusyRef.current = false;
       setCropBusy(false);
     }
   };
@@ -1278,7 +1243,6 @@ export default function PatientChatCameraScreen() {
   const grabHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); };
   const deleteText = (i: number) => { pushHistory(); setTexts((prev) => prev.filter((_, idx) => idx !== i)); };
   const trashHaptic = () => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); };
-  const snapHaptic = () => { Haptics.selectionAsync(); };
 
   const manipGesture = useMemo(() => {
     const pan = Gesture.Pan()
@@ -1767,6 +1731,20 @@ export default function PatientChatCameraScreen() {
                   </Animated.View>
                 </View>
               </GestureDetector>
+              <View style={{ position: 'absolute', bottom: insets.bottom + 74, left: 0, right: 0, height: 54 }} pointerEvents="box-none">
+                <Animated.View pointerEvents="none" style={[{ position: 'absolute', top: 12, left: 0, width: SCREEN_WIDTH, height: 34 }, dialTicksStyle]}>
+                  {CROP_DIAL_TICKS.map((deg) => (
+                    <View key={deg} style={{ position: 'absolute', left: SCREEN_WIDTH / 2 + deg * CROP_DIAL_PX_PER_DEG - 6, top: 0, width: 12, alignItems: 'center' }}>
+                      <View style={{ width: 1, height: deg % 10 === 0 ? 16 : 9, backgroundColor: '#FFFFFF' }} />
+                      {deg % 10 === 0 ? <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>{deg}</Text> : null}
+                    </View>
+                  ))}
+                </Animated.View>
+                <View pointerEvents="none" style={{ position: 'absolute', top: 4, left: SCREEN_WIDTH / 2 - 5, width: 0, height: 0, borderLeftWidth: 5, borderRightWidth: 5, borderTopWidth: 8, borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#1E6FD9' }} />
+                <GestureDetector gesture={cropDial}>
+                  <View style={StyleSheet.absoluteFill} />
+                </GestureDetector>
+              </View>
               <View style={{ position: 'absolute', bottom: insets.bottom + 138, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center' }} pointerEvents="box-none">
                 {(['free', '1:1', '4:5', '9:16'] as const).map((r) => {
                   const on = cropRatio === r;
