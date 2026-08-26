@@ -1490,6 +1490,7 @@ export default function PatientChatCameraScreen() {
           senderType: 'patient',
           drawing: builtDrawing,
           texts: builtTexts,
+          hd: hdQuality === 'hd',
         }, patientDb);
       } else {
         await sendImageMessage({

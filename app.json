@@ -2,8 +2,10 @@
   "expo": {
     "name": "BeSmile AI",
     "slug": "dental-app",
-    "version": "1.0.0",
-    "runtimeVersion": { "policy": "appVersion" },
+    "version": "1.0.1",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "updates": {
       "url": "https://u.expo.dev/07cb00de-22a1-4d43-8dc0-3ff6e1a72ae5"
     },
@@ -86,7 +88,8 @@
         }
       ],
       "expo-secure-store",
-      "expo-video"
+      "expo-video",
+      "react-native-compressor"
     ],
     "experiments": {
       "typedRoutes": true,

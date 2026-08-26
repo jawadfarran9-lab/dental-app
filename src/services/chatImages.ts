@@ -6,6 +6,7 @@ import type { Firestore } from 'firebase/firestore';
 import { addDoc, collection } from 'firebase/firestore';
 import type { FirebaseStorage } from 'firebase/storage';
 import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import { Video as VideoCompressor } from 'react-native-compressor';
 
 export type DrawingDoc = {
   vb: [number, number];
@@ -84,6 +85,7 @@ export async function sendVideoMessage(params: {
   caption?: string;
   drawing?: DrawingDoc | null;
   texts?: TextsDoc | null;
+  hd?: boolean;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -109,7 +111,16 @@ export async function sendVideoMessage(params: {
 
   const messageId = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const storagePath = `clinics/${clinicId}/patients/${patientId}/messages/${messageId}.mp4`;
-  const videoBlob = await (await fetch(localUri)).blob();
+  let uploadUri = localUri;
+  if (!params.hd) {
+    try {
+      uploadUri = await VideoCompressor.compress(localUri, { compressionMethod: 'auto' });
+    } catch (e) {
+      console.warn('[sendVideoMessage] video compress failed, uploading raw', e);
+      uploadUri = localUri;
+    }
+  }
+  const videoBlob = await (await fetch(uploadUri)).blob();
   const videoSnap = await uploadBytes(ref(storageInstance, storagePath), videoBlob, {
     contentType: 'video/mp4',
   });
