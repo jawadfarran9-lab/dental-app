@@ -15,6 +15,14 @@
         { "fieldPath": "clinicId", "order": "ASCENDING" },
         { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "patients",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "archived", "order": "ASCENDING" },
+        { "fieldPath": "archivedAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

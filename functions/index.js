@@ -648,3 +648,57 @@ exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
   console.log(`[issuePatientToken] issued token clinicId=${clinicId} patientId=${patientId}`);
   return { token, clinicId, patientId };
 });
+
+// ---- Scheduled purge of soft-deleted (archived) patients, 6-month retention ----
+const PATIENT_RETENTION_DAYS = 183; // ~6 months; restore is possible any time before purge
+
+exports.purgeArchivedPatients = functions
+  .runWith({ timeoutSeconds: 540, memory: '512MB' })
+  .pubsub.schedule('every 24 hours')
+  .timeZone('UTC')
+  .onRun(async () => {
+    const db = admin.firestore();
+    const bucket = admin.storage().bucket();
+    const cutoff = admin.firestore.Timestamp.fromMillis(
+      Date.now() - PATIENT_RETENTION_DAYS * 24 * 60 * 60 * 1000
+    );
+    const BATCH = 50;
+    const MAX_BATCHES = 20;
+    let purged = 0;
+
+    for (let i = 0; i < MAX_BATCHES; i++) {
+      const snap = await db
+        .collectionGroup('patients')
+        .where('archived', '==', true)
+        .where('archivedAt', '<=', cutoff)
+        .limit(BATCH)
+        .get();
+      if (snap.empty) break;
+
+      for (const docSnap of snap.docs) {
+        const patientRef = docSnap.ref;
+        const clinicRef = patientRef.parent.parent; // clinics/{cid}
+        if (!clinicRef || clinicRef.parent.id !== 'clinics') {
+          console.warn(`[purgeArchivedPatients] skip non-clinic path ${patientRef.path}`);
+          continue;
+        }
+        const clinicId = clinicRef.id;
+        const patientId = patientRef.id;
+        const code = (docSnap.data() || {}).code;
+        try {
+          await bucket.deleteFiles({ prefix: `clinics/${clinicId}/patients/${patientId}/`, force: true });
+          await db.recursiveDelete(db.doc(`patients/${patientId}`));
+          await db.doc(`threads/${clinicId}_${patientId}`).delete().catch(() => {});
+          if (code) await db.doc(`patientCodes/${code}`).delete().catch(() => {});
+          await db.recursiveDelete(patientRef); // LAST: removes the archived marker
+          purged++;
+          console.log(`[purgeArchivedPatients] purged clinic=${clinicId} patient=${patientId}`);
+        } catch (err) {
+          console.error(`[purgeArchivedPatients] failed clinic=${clinicId} patient=${patientId}`, err);
+        }
+      }
+      if (snap.size < BATCH) break;
+    }
+    console.log(`[purgeArchivedPatients] done. purged=${purged}`);
+    return null;
+  });

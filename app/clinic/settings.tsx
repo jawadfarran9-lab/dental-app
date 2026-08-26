@@ -114,6 +114,13 @@ export default function ClinicSettingsScreen() {
           iconColor: '#06B6D4',
         },
         {
+          id: 'archived-patients',
+          title: 'Deleted patients',
+          subtitle: 'View and restore removed patients',
+          icon: 'trash-outline',
+          iconColor: '#F43F5E',
+        },
+        {
           id: 'doctor-email',
           title: 'Doctors',
           subtitle: 'Add and manage your doctors',
@@ -245,6 +252,7 @@ export default function ClinicSettingsScreen() {
                       else if (row.id === 'clinic-status') router.push('/clinic/clinic-status');
                       else if (row.id === 'clinic-profile-photo') router.push('/clinic/clinic-profile-photo');
                       else if (row.id === 'patient-form-fields') router.push('/clinic/patients-list' as any);
+                      else if (row.id === 'archived-patients') router.push('/clinic/archived-patients' as any);
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                       else if (row.id === 'logout') {
                         Alert.alert(
