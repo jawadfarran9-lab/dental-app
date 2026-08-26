@@ -1,7 +1,8 @@
 {
   "cli": {
     "version": ">= 3.0.0",
-    "promptToConfigurePushNotifications": false
+    "promptToConfigurePushNotifications": false,
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -17,7 +18,8 @@
       "channel": "preview"
     },
     "production": {
-      "channel": "production"
+      "channel": "production",
+      "autoIncrement": true
     }
   },
   "submit": {
