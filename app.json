@@ -3,6 +3,10 @@
     "name": "BeSmile AI",
     "slug": "dental-app",
     "version": "1.0.0",
+    "runtimeVersion": { "policy": "appVersion" },
+    "updates": {
+      "url": "https://u.expo.dev/07cb00de-22a1-4d43-8dc0-3ff6e1a72ae5"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "besmileai",
