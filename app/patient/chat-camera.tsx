@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Haptics from 'expo-haptics';
 import { Image as ExpoImage } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import * as MediaLibrary from 'expo-media-library';
 import { Stack, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -21,6 +22,7 @@ import {
   Keyboard,
   KeyboardAvoidingView,
   Modal,
+  PixelRatio,
   Platform,
   Pressable,
   ScrollView,
@@ -44,6 +46,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { captureRef } from 'react-native-view-shot';
 import Svg, { Circle, Defs, G, Line, Path, Rect, Stop, LinearGradient as SvgLinearGradient, Text as SvgText } from 'react-native-svg';
 
 const CAPTURE_OUTER = 80;
@@ -354,6 +357,10 @@ export default function PatientChatCameraScreen() {
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [savedFlash, setSavedFlash] = useState(false);
+  const compositeRef = useRef<View>(null);
   const [hdQuality, setHdQuality] = useState<'sd' | 'hd'>('sd');
   const [hdSheetOpen, setHdSheetOpen] = useState(false);
   const [prevMediaW, setPrevMediaW] = useState(0);
@@ -1503,6 +1510,48 @@ export default function PatientChatCameraScreen() {
     }
   };
 
+  const handleSaveToLibrary = async () => {
+    if (!previewUri || saving) return;
+    const perm = await MediaLibrary.requestPermissionsAsync();
+    if (perm.status !== 'granted') {
+      Alert.alert('Permission needed', 'Please allow photo library access to save.');
+      return;
+    }
+    setSaving(true);
+    setCapturing(true);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+    let shot = '';
+    try {
+      shot = await captureRef(compositeRef, { format: 'jpg', quality: 0.95, result: 'tmpfile' });
+    } finally {
+      setCapturing(false);
+      setSaving(false);
+    }
+    if (!shot) return;
+    try {
+      const scale = PixelRatio.get();
+      const capW = SCREEN_WIDTH * scale, capH = SCREEN_H * scale;
+      const b = boxFor(prevMediaW, prevMediaH);
+      const crop = {
+        originX: Math.max(0, Math.round((b.offX / SCREEN_WIDTH) * capW)),
+        originY: Math.max(0, Math.round((b.offY / SCREEN_H) * capH)),
+        width:  Math.max(1, Math.round((b.baseW / SCREEN_WIDTH) * capW)),
+        height: Math.max(1, Math.round((b.baseH / SCREEN_H) * capH)),
+      };
+      const ctx = ImageManipulator.manipulate(shot);
+      ctx.crop(crop);
+      const im = await ctx.renderAsync();
+      const out = await im.saveAsync({ compress: 0.95, format: SaveFormat.JPEG });
+      await MediaLibrary.saveToLibraryAsync(out.uri);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      setSavedFlash(true);
+      setTimeout(() => setSavedFlash(false), 1500);
+    } catch (err) {
+      console.error('[chat-camera] save error', err);
+      Alert.alert('Save failed', 'Please try again.');
+    }
+  };
+
   const handleRetake = () => {
     setPreviewUri(null);
     setPreviewIsVideo(false);
@@ -1756,7 +1805,7 @@ export default function PatientChatCameraScreen() {
       )}
 
       {previewUri && (
-        <View style={styles.previewOverlay}>
+        <View ref={compositeRef} style={styles.previewOverlay}>
           {previewIsVideo ? (
             <Video
               source={{ uri: previewUri }}
@@ -1874,12 +1923,15 @@ export default function PatientChatCameraScreen() {
             <View pointerEvents="none" style={{ position: 'absolute', top: SCREEN_H / 2 - 0.75, left: 0, right: 0, height: 1.5, backgroundColor: 'rgba(80,200,255,0.95)' }} />
           )}
 
-          {!textMode && !drawMode && !cropMode && (
+          {!textMode && !drawMode && !cropMode && !capturing && (
             <View style={[styles.previewTopBar, { top: insets.top + 8 }]} pointerEvents="box-none">
               <Pressable onPress={handleRetake} style={styles.previewIconBtn} hitSlop={8}>
                 <Ionicons name="close" size={24} color="#FFFFFF" />
               </Pressable>
               <View style={styles.previewTopRight}>
+                <Pressable onPress={handleSaveToLibrary} disabled={saving} style={[styles.previewIconBtn, saving ? styles.previewIconDisabled : null]} hitSlop={8}>
+                  <Ionicons name={savedFlash ? 'checkmark' : 'download-outline'} size={20} color={savedFlash ? '#22C55E' : '#FFFFFF'} />
+                </Pressable>
                 {!previewIsVideo && (
                   <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
                     <Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#1E6FD9' }]}>HD</Text>
