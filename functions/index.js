@@ -625,7 +625,12 @@ exports.issuePatientToken = functions.https.onCall(async (data, _context) => {
     console.error(`[issuePatientToken] patient missing clinicId=${clinicId} patientId=${patientId}`);
     throw new functions.https.HttpsError('not-found', 'Patient not found.');
   }
-  const storedPhone = String((patientSnap.data() || {}).phone || '');
+  const patientData = patientSnap.data() || {};
+  if (patientData.archived === true) {
+    console.log(`[issuePatientToken] archived patient blocked code=${code}`);
+    throw new functions.https.HttpsError('not-found', 'Invalid code.');
+  }
+  const storedPhone = String(patientData.phone || '');
 
   // Normalize BOTH sides through _toStoredPhone using the SERVER-derived countryCode.
   if (_toStoredPhone(phone, countryCode) !== _toStoredPhone(storedPhone, countryCode)) {
