@@ -3,7 +3,6 @@ const admin = require('firebase-admin');
 const express = require('express');
 const cors = require('cors');
 const bodyParser = require('body-parser');
-const Stripe = require('stripe');
 
 // Initialize admin SDK
 admin.initializeApp();
@@ -12,7 +11,7 @@ admin.initializeApp();
 let openai;
 try {
   const { OpenAI } = require('openai');
-  const openaiKey = (functions.config() && functions.config().openai && functions.config().openai.key) || process.env.OPENAI_API_KEY || '';
+  const openaiKey = process.env.OPENAI_API_KEY || '';
   if (openaiKey) {
     openai = new OpenAI({ apiKey: openaiKey });
   }
@@ -20,38 +19,11 @@ try {
   console.warn('[aiChat] OpenAI package not installed or key missing. Install: npm install openai');
 }
 
-// Use Stripe secret from functions config (set via firebase CLI)
-const stripeSecret = (functions.config() && functions.config().stripe && functions.config().stripe.secret) || process.env.STRIPE_SECRET || "sk_test_PLACEHOLDER";
-const stripe = Stripe(stripeSecret);
-
 const app = express();
 app.use(cors({ origin: true }));
 app.use(bodyParser.json());
 
-// A placeholder Stripe webhook handler.
-// In production you must verify the webhook signature using functions.config().stripe.webhook_secret
-app.post('/stripeWebhook', bodyParser.raw({ type: 'application/json' }), async (req, res) => {
-  // NOTE: For simplicity this is a placeholder. Verify signatures in production.
-  let event;
-  try {
-    event = JSON.parse(req.body.toString());
-  } catch (err) {
-    console.error('Webhook parse error', err);
-    return res.status(400).send('invalid payload');
-  }
-
-  // Example: handle checkout.session.completed
-  if (event.type === 'checkout.session.completed') {
-    const session = event.data.object;
-    // TODO: Create clinic record and send email to clinic with access code/password
-    // e.g. admin.firestore().collection('clinics').doc(...).set({...})
-    console.log('Checkout session completed:', session.id);
-  }
-
-  res.status(200).send('ok');
-});
-
-// exports.api = functions.https.onRequest(app);  // TEMP: disabled — HTTP fn fails to deploy on Node 20 (deprecated functions.config()); re-enable after migrating Stripe/AI-chat config to env params
+exports.api = functions.runWith({ secrets: ['OPENAI_API_KEY'] }).https.onRequest(app);
 
 // You can add more functions here: create clinic user, set custom claims for clinics, etc.
 

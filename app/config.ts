@@ -15,7 +15,7 @@ export const FUNCTIONS_BASE =
  * AI Assistant Endpoint
  * Streaming endpoint for AI chat
  */
-export const AI_CHAT_ENDPOINT = `${FUNCTIONS_BASE}/aiChat`;
+export const AI_CHAT_ENDPOINT = `${FUNCTIONS_BASE}/api/aiChat`;
 
 /**
  * AI Request Timeout (milliseconds)
