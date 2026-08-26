@@ -1517,6 +1517,19 @@ export default function PatientChatCameraScreen() {
       Alert.alert('Permission needed', 'Please allow photo library access to save.');
       return;
     }
+    // VIDEO: save the original video file directly (overlays are not burned into video)
+    if (previewIsVideo) {
+      try {
+        await MediaLibrary.saveToLibraryAsync(previewUri);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setSavedFlash(true);
+        setTimeout(() => setSavedFlash(false), 1500);
+      } catch (err) {
+        console.error('[chat-camera] save video error', err);
+        Alert.alert('Save failed', 'Please try again.');
+      }
+      return;
+    }
     setSaving(true);
     setCapturing(true);
     await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
