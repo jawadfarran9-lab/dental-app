@@ -356,6 +356,7 @@ export default function PatientChatCameraScreen() {
   useEffect(() => { setReady(false); }, [facing]);
   useEffect(() => { setReady(false); }, [previewUri]);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(true);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1573,6 +1574,7 @@ export default function PatientChatCameraScreen() {
     setPreviewUri(null);
     setPreviewIsVideo(false);
     setCaption('');
+    setVideoPlaying(true);
   };
 
   const handleRecordToggle = async () => {
@@ -1591,6 +1593,7 @@ export default function PatientChatCameraScreen() {
         setCaption('');
         setPreviewIsVideo(true);
         setPreviewUri(video.uri);
+        setVideoPlaying(true);
       }
     } catch (err) {
       console.error('[patient-chat-camera] record error', err);
@@ -1829,7 +1832,7 @@ export default function PatientChatCameraScreen() {
               style={styles.previewImage}
               resizeMode={ResizeMode.CONTAIN}
               isLooping
-              shouldPlay
+              shouldPlay={videoPlaying}
               useNativeControls={false}
               onReadyForDisplay={(e) => { setPrevMediaW(e.naturalSize.width); setPrevMediaH(e.naturalSize.height); }}
             />
@@ -1841,6 +1844,21 @@ export default function PatientChatCameraScreen() {
               contentFit="contain"
               onLoad={(e) => { setPrevMediaW(e.source?.width ?? 0); setPrevMediaH(e.source?.height ?? 0); }}
             />
+          )}
+
+          {previewIsVideo && !textMode && !drawMode && !cropMode && !sending && texts.length === 0 && (
+            <Pressable
+              onPress={() => setVideoPlaying((p) => !p)}
+              style={StyleSheet.absoluteFill}
+              accessibilityRole="button"
+              accessibilityLabel={videoPlaying ? 'Pause video' : 'Play video'}
+            />
+          )}
+
+          {previewIsVideo && !videoPlaying && !textMode && !drawMode && !cropMode && texts.length === 0 && (
+            <View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '50%', marginTop: -34, width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+              <Ionicons name="play" size={34} color="#FFFFFF" style={{ marginLeft: 3 }} />
+            </View>
           )}
 
           {cropMode && previewUri && !previewIsVideo && (
