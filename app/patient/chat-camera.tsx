@@ -48,6 +48,7 @@ import Animated, {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import Svg, { Circle, Defs, G, Line, Path, Rect, Stop, LinearGradient as SvgLinearGradient, Text as SvgText } from 'react-native-svg';
+import EmojiPicker from 'rn-emoji-keyboard';
 
 const CAPTURE_OUTER = 80;
 const CAPTURE_INNER = 64;
@@ -363,6 +364,7 @@ export default function PatientChatCameraScreen() {
   const compositeRef = useRef<View>(null);
   const [hdQuality, setHdQuality] = useState<'sd' | 'hd'>('sd');
   const [hdSheetOpen, setHdSheetOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [prevMediaW, setPrevMediaW] = useState(0);
   const [prevMediaH, setPrevMediaH] = useState(0);
   const [textMode, setTextMode] = useState(false);
@@ -1227,6 +1229,8 @@ export default function PatientChatCameraScreen() {
       .onUpdate((e) => { runOnJS(pickTextColorAtAngle)(e.x, e.y); }),
     []
   );
+  const addSticker = (emoji: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); pushHistory(); setTexts((prev) => [...prev, { text: emoji, color: '#FFFFFF', align: 'center' as const, bg: 'none' as const, font: undefined, dx: 0, dy: 0, rot: 0, scale: 2 }]); };
+
   const enterTextMode = () => { setTextValue(''); setShowTextColorSlider(false); setTextAlignMode('center'); setTextBg('none'); setTextFont(undefined); setTextColor('#FFFFFF'); textColorRef.current = '#FFFFFF'; setTextThumbT(0); lastHapticT.current = -1; setEditingIndex(null); setTextMode(true); };
   const enterEditText = (i: number) => {
     const t = texts[i];
@@ -1955,6 +1959,9 @@ export default function PatientChatCameraScreen() {
                     <Ionicons name="crop-outline" size={20} color="#FFFFFF" />
                   </Pressable>
                 )}
+                <Pressable onPress={() => setEmojiOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
+                  <Ionicons name="happy-outline" size={20} color="#FFFFFF" />
+                </Pressable>
                 <Pressable onPress={enterTextMode} style={styles.previewIconBtn} hitSlop={8}>
                   <Text style={styles.previewBtnText}>Aa</Text>
                 </Pressable>
@@ -1964,6 +1971,16 @@ export default function PatientChatCameraScreen() {
               </View>
             </View>
           )}
+          <EmojiPicker
+            open={emojiOpen}
+            onClose={() => setEmojiOpen(false)}
+            onEmojiSelected={(e) => { setEmojiOpen(false); addSticker(e.emoji); }}
+            expandable
+            enableSearchBar
+            enableRecentlyUsed
+            categoryPosition="top"
+            theme={{ knob: '#FFFFFF', container: '#1c1c1e', header: '#FFFFFF', category: { icon: '#9aa0a6', iconActive: '#FFFFFF', container: '#2c2c2e', containerActive: '#3a3a3c' } }}
+          />
           <Modal visible={hdSheetOpen} transparent animationType="slide" onRequestClose={() => setHdSheetOpen(false)}>
             <Pressable onPress={() => setHdSheetOpen(false)} style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }}>
               <Pressable onPress={() => {}} style={{ backgroundColor: '#1C1C1E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingTop: 10, paddingBottom: insets.bottom + 16, paddingHorizontal: 20 }}>
