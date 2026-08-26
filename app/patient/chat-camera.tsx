@@ -1967,11 +1967,9 @@ export default function PatientChatCameraScreen() {
                 <Pressable onPress={handleSaveToLibrary} disabled={saving} style={[styles.previewIconBtn, saving ? styles.previewIconDisabled : null]} hitSlop={8}>
                   <Ionicons name={savedFlash ? 'checkmark' : 'download-outline'} size={20} color={savedFlash ? '#22C55E' : '#FFFFFF'} />
                 </Pressable>
-                {!previewIsVideo && (
-                  <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
-                    <Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#1E6FD9' }]}>HD</Text>
-                  </Pressable>
-                )}
+                <Pressable onPress={() => setHdSheetOpen(true)} style={styles.previewIconBtn} hitSlop={8}>
+                  <Text style={[styles.previewBtnText, hdQuality === 'hd' && { color: '#1E6FD9' }]}>HD</Text>
+                </Pressable>
                 {!previewIsVideo && (
                   <Pressable onPress={enterCrop} disabled={cropBusy} style={[styles.previewIconBtn, cropBusy ? styles.previewIconDisabled : null]} hitSlop={8}>
                     <Ionicons name="crop-outline" size={20} color="#FFFFFF" />
