@@ -315,6 +315,7 @@ export default function ClinicConversationScreen() {
   const preEditDraftRef = useRef('');
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
+  const [showScrollDown, setShowScrollDown] = useState(false);
 
   const baseMessages = useMemo(
     () => messages.filter((m) => (m.createdAt ?? 0) > (clearedForPatientAt ?? 0)),
@@ -1511,7 +1512,25 @@ export default function ClinicConversationScreen() {
                     listRef.current?.scrollToOffset({ offset: Math.max(0, info.averageItemLength * info.index), animated: false });
                     setTimeout(() => { try { listRef.current?.scrollToIndex({ index: info.index, animated: true, viewPosition: 0.4 }); } catch {} }, 250);
                   }}
+                  onScroll={(e) => {
+                    const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
+                    const distFromBottom = contentSize.height - (contentOffset.y + layoutMeasurement.height);
+                    const shouldShow = distFromBottom > 400;
+                    setShowScrollDown((prev) => (prev !== shouldShow ? shouldShow : prev));
+                  }}
+                  scrollEventThrottle={16}
                 />
+              )}
+              {showScrollDown && (
+                <Pressable
+                  onPress={() => { listRef.current?.scrollToEnd({ animated: true }); setShowScrollDown(false); }}
+                  style={styles.scrollDownBtn}
+                  hitSlop={8}
+                  accessibilityRole="button"
+                  accessibilityLabel="Scroll to latest message"
+                >
+                  <Ionicons name="chevron-down" size={22} color="#1E6FD9" />
+                </Pressable>
               )}
             </View>
 
@@ -2623,6 +2642,26 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     gap: 6,
     flexGrow: 1,
+  },
+
+  scrollDownBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 12,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(30,111,217,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 20,
   },
 
   bubbleRow: {
