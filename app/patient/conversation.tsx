@@ -79,6 +79,22 @@ function formatBubbleTime(ts: any): string {
   return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
+const startOfDay = (ms: number) => {
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+function formatDaySeparator(ms: number): string {
+  const today = startOfDay(Date.now());
+  const target = startOfDay(ms);
+  const diffDays = Math.round((today - target) / 86400000);
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays > 1 && diffDays < 7) return new Date(ms).toLocaleDateString([], { weekday: 'long' });
+  const d = new Date(ms);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
 function formatInfoTime(ts?: number): string {
   if (!ts) return '';
   const d = new Date(ts);
@@ -1281,17 +1297,29 @@ export default function ClinicConversationScreen() {
     );
   };
 
-  const renderItem = ({ item }: { item: Message }) => {
+  const renderItem = ({ item, index }: { item: Message; index: number }) => {
     const sent = item.from === 'patient';
     const time = formatBubbleTime(item.createdAt);
     const align = sent ? styles.bubbleRowRight : styles.bubbleRowLeft;
     const hasReaction = !!(item.reactionClinic || item.reactionPatient);
-    return (
-      <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
-        <MessageBubble item={item} onOpen={openActionMenu}>
-          <BubbleBody item={item} sent={sent} time={time} />
-        </MessageBubble>
+    const prevMsg = index > 0 ? displayedMessages[index - 1] : null;
+    const showDaySep = !!item.createdAt && (!prevMsg || startOfDay(item.createdAt) !== startOfDay(prevMsg.createdAt ?? 0));
+    const daySeparator = showDaySep ? (
+      <View style={styles.dateSeparator}>
+        <View style={[styles.dateChip, { backgroundColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(15,23,42,0.06)', borderColor: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(30,111,217,0.14)' }]}>
+          <Text style={[styles.dateChipText, { color: isDark ? 'rgba(255,255,255,0.8)' : '#5B6B82' }]}>{formatDaySeparator(item.createdAt)}</Text>
+        </View>
       </View>
+    ) : null;
+    return (
+      <>
+        {daySeparator}
+        <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
+          <MessageBubble item={item} onOpen={openActionMenu}>
+            <BubbleBody item={item} sent={sent} time={time} />
+          </MessageBubble>
+        </View>
+      </>
     );
   };
 
@@ -2663,6 +2691,10 @@ const styles = StyleSheet.create({
     elevation: 6,
     zIndex: 20,
   },
+
+  dateSeparator: { alignItems: 'center', marginTop: 10, marginBottom: 6 },
+  dateChip: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
+  dateChipText: { fontSize: 12, fontWeight: '700', letterSpacing: 0.3 },
 
   bubbleRow: {
     flexDirection: 'row',
