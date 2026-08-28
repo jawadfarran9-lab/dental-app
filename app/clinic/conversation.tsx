@@ -5,6 +5,7 @@ import RecordingBar from '@/src/components/RecordingBar';
 import { TextsOverlay, BubbleTextsOverlay } from '@/src/components/BubbleTextsOverlay';
 import { ZoomableImage } from '@/src/components/ZoomableImage';
 import { ViewerVideo } from '@/src/components/ViewerVideo';
+import { DismissViewerPage } from '@/src/components/DismissViewerPage';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
@@ -2357,11 +2358,13 @@ export default function ClinicConversationScreen() {
                   const offY = (SCREEN_H - baseH) / 2;
                   return (
                     <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                      {page.kind === 'video' && page.videoUrl ? (
-                        <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
-                      ) : (
-                        <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
-                      )}
+                      <DismissViewerPage onDismiss={closeViewer} disabled={viewerZoomed}>
+                        {page.kind === 'video' && page.videoUrl ? (
+                          <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
+                        ) : (
+                          <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
+                        )}
+                      </DismissViewerPage>
                       {(isAlbumPage || isImagePage) ? (
                         <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
                           {own ? (
