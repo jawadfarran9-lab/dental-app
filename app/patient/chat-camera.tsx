@@ -423,7 +423,7 @@ export default function PatientChatCameraScreen() {
   useEffect(() => { setReady(false); }, [facing]);
   useEffect(() => { setReady(false); }, [previewUri]);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
-  const [videoPlaying, setVideoPlaying] = useState(true);
+  const [videoPlaying, setVideoPlaying] = useState(false);
   const [sendPct, setSendPct] = useState<number | null>(null);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
@@ -1646,7 +1646,7 @@ export default function PatientChatCameraScreen() {
     setPreviewUri(null);
     setPreviewIsVideo(false);
     setCaption('');
-    setVideoPlaying(true);
+    setVideoPlaying(false);
   };
 
   const handleRecordToggle = async () => {
@@ -1665,7 +1665,7 @@ export default function PatientChatCameraScreen() {
         setCaption('');
         setPreviewIsVideo(true);
         setPreviewUri(video.uri);
-        setVideoPlaying(true);
+        setVideoPlaying(false);
       }
     } catch (err) {
       console.error('[patient-chat-camera] record error', err);
