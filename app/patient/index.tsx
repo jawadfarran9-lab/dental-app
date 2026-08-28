@@ -11,7 +11,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
     ActivityIndicator,
-    Alert,
     Animated,
     Easing,
     KeyboardAvoidingView,
@@ -24,6 +23,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import Reanimated, { FadeInDown } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /**
@@ -39,6 +39,7 @@ export default function PatientLogin() {
   const [code, setCode] = useState('');
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
@@ -98,9 +99,10 @@ export default function PatientLogin() {
   );
 
   const onLogin = async () => {
+    setError(null);
     const trimmed = code.trim();
-    if (!trimmed) return Alert.alert(t('common.validation'), t('patient.enterCode'));
-    if (!phone.trim()) return Alert.alert(t('common.validation'), t('patient.enterPhone'));
+    if (!trimmed) { setError(t('patient.enterCode')); return; }
+    if (!phone.trim()) { setError(t('patient.enterPhone')); return; }
 
     setLoading(true);
     try {
@@ -108,7 +110,7 @@ export default function PatientLogin() {
       const res = await issueToken({ code: code.trim(), phone: phone.trim() });
       const { token, clinicId, patientId } = (res.data ?? {}) as { token?: string; clinicId?: string; patientId?: string };
       if (!token || !clinicId || !patientId) {
-        Alert.alert(t('common.error'), t('common.error'));
+        setError(t('common.error'));
         setLoading(false);
         return;
       }
@@ -117,13 +119,13 @@ export default function PatientLogin() {
       router.push(`/patient/${patientId}` as any);
       setLoading(false);
     } catch (err: any) {
-      console.error('patient login error', err);
+      if (__DEV__) console.log('patient login error', err);
       if (err.code === 'functions/not-found') {
-        Alert.alert(t('common.error'), t('patient.codeNotFound'));
+        setError(t('patient.codeNotFound'));
       } else if (err.code === 'functions/permission-denied') {
-        Alert.alert(t('common.error'), t('patient.codePhoneMismatch'));
+        setError(t('patient.codePhoneMismatch'));
       } else {
-        Alert.alert(t('common.error'), err.message || t('common.error'));
+        setError(err.message || t('common.error'));
       }
       setLoading(false);
     }
@@ -225,7 +227,7 @@ export default function PatientLogin() {
                     placeholderTextColor={colors.inputPlaceholder}
                     keyboardType="phone-pad"
                     value={phone}
-                    onChangeText={setPhone}
+                    onChangeText={(v) => { setPhone(v); setError(null); }}
                     editable={!loading}
                     onFocus={() => animateFocus(phoneFocusAnim, 1)}
                     onBlur={() => animateFocus(phoneFocusAnim, 0)}
@@ -245,13 +247,29 @@ export default function PatientLogin() {
                     placeholderTextColor={colors.inputPlaceholder}
                     keyboardType="numeric"
                     value={code}
-                    onChangeText={setCode}
+                    onChangeText={(v) => { setCode(v); setError(null); }}
                     editable={!loading}
                     onFocus={() => animateFocus(codeFocusAnim, 1)}
                     onBlur={() => animateFocus(codeFocusAnim, 0)}
                   />
                   <Animated.View pointerEvents="none" style={[styles.focusRing, { opacity: codeFocusAnim }]} />
                 </View>
+
+                {error ? (
+                  <Reanimated.View
+                    entering={FadeInDown.duration(180)}
+                    style={[
+                      styles.errorRow,
+                      {
+                        backgroundColor: isDark ? 'rgba(239,68,68,0.14)' : 'rgba(239,68,68,0.10)',
+                        borderColor: isDark ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.28)',
+                      },
+                    ]}
+                  >
+                    <Ionicons name="alert-circle" size={18} color="#DC2626" style={styles.errorIcon} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </Reanimated.View>
+                ) : null}
 
                 <TouchableOpacity
                   style={styles.btnWrap}
@@ -390,6 +408,26 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
     elevation: 4,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 12,
+  },
+  errorIcon: {
+    marginRight: 2,
+  },
+  errorText: {
+    flex: 1,
+    color: '#DC2626',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   btnWrap: {
     borderRadius: 16,
