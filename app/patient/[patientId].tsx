@@ -48,6 +48,7 @@ export default function PatientView() {
   const [authenticatedPatientId, setAuthenticatedPatientId] = useState<string | null>(null);
   const [clinicId, setClinicId] = useState<string | null>(null);
   const [clinicName, setClinicName] = useState<string>('');
+  const [unreadCount, setUnreadCount] = useState(0);
   const { t } = useTranslation();
   const { colors, isDark } = useTheme();
   const { checkAuthState } = useAuth();
@@ -125,6 +126,20 @@ export default function PatientView() {
     return () => unsub();
   }, [clinicId, authenticatedPatientId, patientAuthReady]);
 
+  useEffect(() => {
+    if (!clinicId || !authenticatedPatientId) return;
+    const threadRef = doc(patientDb, 'threads', `${clinicId}_${authenticatedPatientId}`);
+    const unsub = onSnapshot(
+      threadRef,
+      (snap) => {
+        const n = snap.exists() ? Number((snap.data() as any)?.unreadForPatient ?? 0) : 0;
+        setUnreadCount(Number.isFinite(n) && n > 0 ? n : 0);
+      },
+      () => setUnreadCount(0)
+    );
+    return unsub;
+  }, [clinicId, authenticatedPatientId]);
+
   const onLogout = async () => {
     try {
       await AsyncStorage.multiRemove(['patientId', 'patientClinicId']);
@@ -164,7 +179,7 @@ export default function PatientView() {
               <Ionicons name="log-out-outline" size={18} color={colors.textSecondary} />
               <Text style={[styles.logoutText, { color: colors.textSecondary }]}>{t('patient.logout')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push('/patient/conversation' as any)} activeOpacity={0.85}>
+            <TouchableOpacity onPress={() => router.push('/patient/conversation' as any)} activeOpacity={0.85} style={{ position: 'relative' }}>
               <LinearGradient
                 colors={['#54ACFF', '#1E6FD9']}
                 start={{ x: 0, y: 0 }}
@@ -174,6 +189,11 @@ export default function PatientView() {
                 <Ionicons name="chatbubble-ellipses-outline" size={18} color="#fff" />
                 <Text style={styles.messagesText}>{t('tabs.messages')}</Text>
               </LinearGradient>
+              {unreadCount > 0 && (
+                <View style={styles.unreadBadge}>
+                  <Text style={styles.unreadText}>{unreadCount > 99 ? '99+' : localizeNumber(String(unreadCount))}</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </View>
 
@@ -246,6 +266,22 @@ const styles = StyleSheet.create({
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 16 },
   logoutText: { fontWeight: '700', fontSize: 15 },
   messagesBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 18 },
+  unreadBadge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    minWidth: 22,
+    height: 22,
+    paddingHorizontal: 6,
+    borderRadius: 11,
+    backgroundColor: '#EF4444',
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 5,
+  },
+  unreadText: { color: '#FFFFFF', fontSize: 11, fontWeight: '800', paddingHorizontal: 1 },
   messagesText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   idCard: { borderWidth: 1, borderRadius: 18, padding: 16 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
