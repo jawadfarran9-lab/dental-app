@@ -58,8 +58,10 @@ export default function PatientView() {
     if (!patientAuthReady) return;
     const loadPatientSession = async () => {
       try {
-        const storedPatientId = await AsyncStorage.getItem('patientId');
-        const storedClinicId = await AsyncStorage.getItem('patientClinicId');
+        const [storedPatientId, storedClinicId] = await Promise.all([
+          AsyncStorage.getItem('patientId'),
+          AsyncStorage.getItem('patientClinicId'),
+        ]);
 
         if (!storedPatientId) {
           router.replace('/patient' as any);
@@ -88,22 +90,18 @@ export default function PatientView() {
         if (pSnap.exists()) {
           const patientData = { id: pSnap.id, ...(pSnap.data() as any) };
           setPatient(patientData);
-
-          if (patientData.clinicId) {
-            try {
-              const clinicRef = doc(patientDb, 'clinics', patientData.clinicId);
-              const clinicSnap = await getDoc(clinicRef);
-              if (clinicSnap.exists()) {
-                const clinicData = clinicSnap.data();
-                setClinicName(clinicData.clinicName || '');
-              }
-            } catch (err) {
-              console.error('Error fetching clinic name:', err);
-            }
-          }
         }
 
         setLoading(false);
+
+        getDoc(doc(patientDb, 'clinics', storedClinicId))
+          .then((clinicSnap) => {
+            if (clinicSnap.exists()) {
+              const clinicData = clinicSnap.data() as any;
+              setClinicName(clinicData.clinicName || '');
+            }
+          })
+          .catch(() => {});
       } catch (err) {
         console.error('patient view error', err);
         setLoading(false);
