@@ -1387,7 +1387,6 @@ export default function ClinicConversationScreen() {
           )}
 
           {/* Body */}
-          <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
             <View style={{ flex: 1 }}>
               {loading ? (
                 <View style={styles.center}>
@@ -1465,6 +1464,7 @@ export default function ClinicConversationScreen() {
                   data={displayedMessages}
                   keyExtractor={(m) => m.id}
                   renderItem={renderItem}
+                  style={{ flex: 1 }}
                   contentContainerStyle={styles.listContent}
                   showsVerticalScrollIndicator={false}
                   keyboardDismissMode="on-drag"
@@ -1479,7 +1479,7 @@ export default function ClinicConversationScreen() {
                 />
               )}
             </View>
-          </TouchableWithoutFeedback>
+
 
           {/* Composer */}
           <View
@@ -2616,6 +2616,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     paddingBottom: 20,
     gap: 6,
+    flexGrow: 1,
   },
 
   bubbleRow: {
