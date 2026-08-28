@@ -86,6 +86,7 @@ export async function sendVideoMessage(params: {
   drawing?: DrawingDoc | null;
   texts?: TextsDoc | null;
   hd?: boolean;
+  onProgress?: (progress: number) => void;
 }, dbInstance: Firestore = db, storageInstance: FirebaseStorage = storage): Promise<void> {
   const {
     clinicId,
@@ -114,7 +115,15 @@ export async function sendVideoMessage(params: {
   let uploadUri = localUri;
   if (!params.hd) {
     try {
-      uploadUri = await VideoCompressor.compress(localUri, { compressionMethod: 'auto' });
+      uploadUri = await VideoCompressor.compress(
+        localUri,
+        {
+          compressionMethod: 'manual',
+          maxSize: 720,
+          bitrate: 1500000,
+        },
+        params.onProgress
+      );
     } catch (e) {
       console.warn('[sendVideoMessage] video compress failed, uploading raw', e);
       uploadUri = localUri;

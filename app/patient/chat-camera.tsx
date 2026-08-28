@@ -357,6 +357,7 @@ export default function PatientChatCameraScreen() {
   useEffect(() => { setReady(false); }, [previewUri]);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(true);
+  const [sendPct, setSendPct] = useState<number | null>(null);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1475,6 +1476,7 @@ export default function PatientChatCameraScreen() {
     if (!previewUri || sending) return;
     if (!clinicId || !patientId) { Alert.alert('Missing info', 'Cannot send right now.'); return; }
     setSending(true);
+    setSendPct(null);
     try {
       const builtTexts = buildTexts();
       const builtDrawing = buildDrawing();
@@ -1491,6 +1493,7 @@ export default function PatientChatCameraScreen() {
           drawing: builtDrawing,
           texts: builtTexts,
           hd: hdQuality === 'hd',
+          onProgress: (p) => setSendPct(Math.round(p * 100)),
         }, patientDb);
       } else {
         await sendImageMessage({
@@ -1513,6 +1516,7 @@ export default function PatientChatCameraScreen() {
       Alert.alert('Upload failed', 'Please try again.');
     } finally {
       setSending(false);
+      setSendPct(null);
     }
   };
 
@@ -2021,7 +2025,7 @@ export default function PatientChatCameraScreen() {
               </Pressable>
             </Pressable>
           </Modal>
-          {!textMode && !drawMode && !cropMode && (
+          {!textMode && !drawMode && !cropMode && !capturing && (
             <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={[styles.previewBottom, { bottom: insets.bottom + 24 }]}>
               <View style={styles.previewCaptionRow}>
                 <Ionicons name="camera-outline" size={20} color="rgba(255,255,255,0.7)" style={{ marginRight: 8 }} />
@@ -2167,6 +2171,12 @@ export default function PatientChatCameraScreen() {
                   <Ionicons name="pencil" size={20} color="#FFFFFF" />
                 </View>
               </View>
+            </View>
+          )}
+          {sending && (
+            <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+              <ActivityIndicator size="large" color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', marginTop: 12, fontSize: 15, fontWeight: '600' }}>{sendPct != null ? `Sending… ${sendPct}%` : 'Sending…'}</Text>
             </View>
           )}
         </View>
