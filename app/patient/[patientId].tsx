@@ -177,6 +177,14 @@ export default function PatientView() {
               <Ionicons name="log-out-outline" size={18} color={colors.textSecondary} />
               <Text style={[styles.logoutText, { color: colors.textSecondary }]}>{t('patient.logout')}</Text>
             </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <TouchableOpacity
+              onPress={() => router.push('/patient/device-permissions' as any)}
+              activeOpacity={0.85}
+              style={[styles.settingsBtn, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}
+            >
+              <Ionicons name="settings-outline" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => router.push('/patient/conversation' as any)} activeOpacity={0.85} style={{ position: 'relative' }}>
               <LinearGradient
                 colors={['#54ACFF', '#1E6FD9']}
@@ -193,6 +201,7 @@ export default function PatientView() {
                 </View>
               )}
             </TouchableOpacity>
+            </View>
           </View>
 
           <View style={[styles.idCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
@@ -263,6 +272,7 @@ const styles = StyleSheet.create({
   topbar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 14, paddingVertical: 11, paddingHorizontal: 16 },
   logoutText: { fontWeight: '700', fontSize: 15 },
+  settingsBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
   messagesBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 18 },
   unreadBadge: {
     position: 'absolute',
