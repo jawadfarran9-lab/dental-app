@@ -2789,6 +2789,7 @@ const styles = StyleSheet.create({
   imageBubble: {
     padding: 4,
     borderRadius: 18,
+    maxWidth: 228, // = media 220 + padding*2
   },
   imageBubbleSent: {
     backgroundColor: 'rgba(30,111,217,0.18)',
