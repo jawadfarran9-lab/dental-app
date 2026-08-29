@@ -457,6 +457,7 @@ export default function ClinicConversationScreen() {
   };
   const getActionsFor = (m: Message | null): ActionItem[] => {
     if (!m) return [];
+    const hasText = !!(m.text && m.text.trim());
     const isOwn = m.from === 'patient';
     const isImage = m.type === 'image';
     const isAudio = m.type === 'audio';
@@ -478,7 +479,9 @@ export default function ClinicConversationScreen() {
         { key: 'star', label: 'Star', icon: 'star-outline' },
         { key: 'remove', label: 'Remove', icon: 'trash-outline', danger: true },
       ];
-      return items.filter((a) => !(isAudio && (a.key === 'copy' || a.key === 'edit')));
+      return items
+        .filter((a) => !(isAudio && (a.key === 'copy' || a.key === 'edit')))
+        .filter((a) => !((a.key === 'copy' || a.key === 'edit') && !hasText));
     }
     if (isImage) {
       return [
@@ -487,12 +490,12 @@ export default function ClinicConversationScreen() {
         { key: 'star', label: 'Star', icon: 'star-outline' },
       ];
     }
-    return [
+    return ([
       { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
       { key: 'copy', label: 'Copy', icon: 'copy-outline' },
       { key: 'info', label: 'Info', icon: 'information-circle-outline' },
       { key: 'star', label: 'Star', icon: 'star-outline' },
-    ];
+    ] as ActionItem[]).filter((a) => !((a.key === 'copy' || a.key === 'edit') && !hasText));
   };
 
   const openActionMenu = (m: Message, rect: { x: number; y: number; w: number; h: number }) => {
