@@ -713,17 +713,19 @@ export default function ClinicConversationScreen() {
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images', 'videos'],
         allowsEditing: false,
         allowsMultipleSelection: true,
         quality: 1,
       });
       if (result.canceled) return;
-      const uris = (result.assets ?? []).map((a) => a.uri).filter(Boolean) as string[];
-      if (uris.length === 0) return;
+      const assets = (result.assets ?? [])
+        .filter((a) => a.uri)
+        .map((a) => ({ uri: a.uri, kind: (a.type === 'video' ? 'video' : 'image') }));
+      if (assets.length === 0) return;
       router.push({
         pathname: '/clinic/media-preview' as any,
-        params: { uris: JSON.stringify(uris), patientId, name: patientName, clinicId, senderName: 'Clinic' },
+        params: { assets: JSON.stringify(assets), patientId, name: patientName, clinicId, senderName: 'Clinic' },
       });
     } catch (err) {
       console.error('[conversation] pick/send image error', err);

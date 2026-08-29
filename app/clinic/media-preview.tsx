@@ -1,9 +1,11 @@
 import { db } from '@/firebaseConfig';
-import { sendAlbumMessage, sendImageMessage } from '@/src/services/chatImages';
+import { sendAlbumMessage, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
 import { Ionicons } from '@expo/vector-icons';
+import { ResizeMode, Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useMemo, useState } from 'react';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+import { useEffect, useMemo, useState } from 'react';
 import {
     ActivityIndicator,
     Alert,
@@ -24,7 +26,8 @@ export default function MediaPreviewScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{
-    uris: string;
+    assets?: string;
+    uris?: string;
     patientId: string;
     name: string;
     clinicId: string;
@@ -32,20 +35,58 @@ export default function MediaPreviewScreen() {
   }>();
   const { patientId, name, clinicId, senderName } = params;
 
-  const uris = useMemo<string[]>(() => {
+  type PickAsset = { uri: string; kind: 'image' | 'video' };
+  const assets = useMemo<PickAsset[]>(() => {
     try {
-      const parsed = JSON.parse(params.uris || '[]');
-      return Array.isArray(parsed) ? parsed.filter((u) => typeof u === 'string') : [];
-    } catch {
-      return [];
-    }
-  }, [params.uris]);
+      if (params.assets) {
+        const parsed = JSON.parse(params.assets);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((a) => a && typeof a.uri === 'string')
+            .map((a) => ({ uri: a.uri as string, kind: a.kind === 'video' ? 'video' as const : 'image' as const }));
+        }
+      }
+      if (params.uris) {
+        const parsed = JSON.parse(params.uris);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter((u) => typeof u === 'string')
+            .map((u) => ({ uri: u as string, kind: 'image' as const }));
+        }
+      }
+    } catch {}
+    return [];
+  }, [params.assets, params.uris]);
 
   const [activeIndex, setActiveIndex] = useState(0);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const [posters, setPosters] = useState<Record<string, string>>({});
 
-  const activeUri = uris[activeIndex];
+  const activeAsset = assets[activeIndex];
+  const isActiveVideo = activeAsset?.kind === 'video';
+
+  useEffect(() => {
+    setVideoPlaying(false);
+  }, [activeIndex]);
+
+  useEffect(() => {
+    let cancelled = false;
+    assets.forEach((a) => {
+      if (a.kind !== 'video') return;
+      if (posters[a.uri]) return;
+      VideoThumbnails.getThumbnailAsync(a.uri, { time: 0 })
+        .then(({ uri }) => {
+          if (cancelled) return;
+          setPosters((p) => (p[a.uri] ? p : { ...p, [a.uri]: uri }));
+        })
+        .catch(() => {});
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [assets, posters]);
 
   const handleClose = () => {
     if (router.canGoBack()) router.back();
@@ -53,40 +94,78 @@ export default function MediaPreviewScreen() {
 
   const handleSend = async () => {
     if (sending) return;
-    if (uris.length === 0 || !clinicId || !patientId) {
+    if (assets.length === 0 || !clinicId || !patientId) {
       Alert.alert('Missing info', 'Cannot send right now.');
       return;
     }
     try {
       setSending(true);
-      if (uris.length <= 1) {
-        await sendImageMessage(
-          {
-            clinicId: clinicId as string,
-            patientId: patientId as string,
-            patientName: (name as string) ?? '',
-            localUri: uris[0],
-            from: 'clinic',
-            senderName: (senderName as string) ?? 'Clinic',
-            senderType: 'clinic',
-            caption: caption.trim() || undefined,
-          },
-          db,
-        );
+      const hasVideo = assets.some((a) => a.kind === 'video');
+      if (!hasVideo) {
+        if (assets.length <= 1) {
+          await sendImageMessage(
+            {
+              clinicId: clinicId as string,
+              patientId: patientId as string,
+              patientName: (name as string) ?? '',
+              localUri: assets[0].uri,
+              from: 'clinic',
+              senderName: (senderName as string) ?? 'Clinic',
+              senderType: 'clinic',
+              caption: caption.trim() || undefined,
+            },
+            db,
+          );
+        } else {
+          await sendAlbumMessage(
+            {
+              clinicId: clinicId as string,
+              patientId: patientId as string,
+              patientName: (name as string) ?? '',
+              localUris: assets.map((a) => a.uri),
+              from: 'clinic',
+              senderName: (senderName as string) ?? 'Clinic',
+              senderType: 'clinic',
+              caption: caption.trim() || undefined,
+            },
+            db,
+          );
+        }
       } else {
-        await sendAlbumMessage(
-          {
-            clinicId: clinicId as string,
-            patientId: patientId as string,
-            patientName: (name as string) ?? '',
-            localUris: uris,
-            from: 'clinic',
-            senderName: (senderName as string) ?? 'Clinic',
-            senderType: 'clinic',
-            caption: caption.trim() || undefined,
-          },
-          db,
-        );
+        for (let i = 0; i < assets.length; i++) {
+          const a = assets[i];
+          const cap = i === 0 ? (caption.trim() || undefined) : undefined;
+          if (a.kind === 'video') {
+            await sendVideoMessage(
+              {
+                clinicId: clinicId as string,
+                patientId: patientId as string,
+                patientName: (name as string) ?? '',
+                localUri: a.uri,
+                from: 'clinic',
+                senderName: (senderName as string) ?? 'Clinic',
+                senderType: 'clinic',
+                caption: cap,
+                hd: false,
+              },
+              db,
+            );
+          } else {
+            await sendImageMessage(
+              {
+                clinicId: clinicId as string,
+                patientId: patientId as string,
+                patientName: (name as string) ?? '',
+                localUri: a.uri,
+                from: 'clinic',
+                senderName: (senderName as string) ?? 'Clinic',
+                senderType: 'clinic',
+                caption: cap,
+              },
+              db,
+            );
+          }
+        }
       }
       router.back();
     } catch (e) {
@@ -109,12 +188,36 @@ export default function MediaPreviewScreen() {
       </Pressable>
 
       <View style={styles.imageWrap}>
-        {activeUri ? (
-          <Image
-            source={{ uri: activeUri }}
-            style={styles.image}
-            resizeMode="contain"
-          />
+        {activeAsset ? (
+          isActiveVideo ? (
+            <>
+              <Video
+                source={{ uri: activeAsset.uri }}
+                style={styles.image}
+                resizeMode={ResizeMode.CONTAIN}
+                isLooping
+                shouldPlay={videoPlaying}
+                useNativeControls={false}
+              />
+              <Pressable
+                onPress={() => setVideoPlaying((p) => !p)}
+                style={StyleSheet.absoluteFill}
+                accessibilityRole="button"
+                accessibilityLabel={videoPlaying ? 'Pause video' : 'Play video'}
+              />
+              {!videoPlaying && (
+                <View pointerEvents="none" style={styles.playBadge}>
+                  <Ionicons name="play" size={34} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                </View>
+              )}
+            </>
+          ) : (
+            <Image
+              source={{ uri: activeAsset.uri }}
+              style={styles.image}
+              resizeMode="contain"
+            />
+          )
         ) : null}
       </View>
 
@@ -133,21 +236,29 @@ export default function MediaPreviewScreen() {
             </Text>
           </View>
 
-          {uris.length > 1 && (
+          {assets.length > 1 && (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.strip}
             >
-              {uris.map((u, i) => (
-                <Pressable key={`${u}-${i}`} onPress={() => setActiveIndex(i)} hitSlop={4}>
-                  <Image
-                    source={{ uri: u }}
-                    style={[styles.thumb, i === activeIndex && styles.thumbActive]}
-                    resizeMode="cover"
-                  />
-                </Pressable>
-              ))}
+              {assets.map((a, i) => {
+                const thumbUri = a.kind === 'video' ? (posters[a.uri] || a.uri) : a.uri;
+                return (
+                  <Pressable key={`${a.uri}-${i}`} onPress={() => setActiveIndex(i)} hitSlop={4} style={{ position: 'relative' }}>
+                    <Image
+                      source={{ uri: thumbUri }}
+                      style={[styles.thumb, i === activeIndex && styles.thumbActive]}
+                      resizeMode="cover"
+                    />
+                    {a.kind === 'video' && (
+                      <View pointerEvents="none" style={styles.playBadgeSmall}>
+                        <Ionicons name="play" size={12} color="#FFFFFF" style={{ marginLeft: 1 }} />
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           )}
 
@@ -289,5 +400,31 @@ const styles = StyleSheet.create({
   },
   thumbActive: {
     borderColor: '#4DA3FF',
+  },
+  playBadge: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '50%',
+    marginTop: -34,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  playBadgeSmall: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    marginTop: -8,
+    marginLeft: -8,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
