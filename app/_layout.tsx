@@ -90,6 +90,7 @@ function RootNavigator() {
       <Stack.Screen name="patient/conversation" options={{ headerShown: false }} />
       <Stack.Screen name="patient/your-info" options={{ headerShown: false }} />
       <Stack.Screen name="patient/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+      <Stack.Screen name="patient/media-preview" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
 
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />

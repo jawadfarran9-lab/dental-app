@@ -813,32 +813,27 @@ export default function ClinicConversationScreen() {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Please allow photo access to send an image.');
+        Alert.alert('Permission needed', 'Please allow photo access to send media.');
         return;
       }
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images', 'videos'] as ImagePicker.MediaType[],
         allowsEditing: false,
+        allowsMultipleSelection: true,
         quality: 1,
       });
       if (result.canceled) return;
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
-      setAttachBusy(true);
-      await sendImageMessage({
-        clinicId,
-        patientId,
-        patientName: patientName ?? '',
-        localUri: uri,
-        from: 'patient',
-        senderName: 'Patient',
-        senderType: 'patient',
-      }, patientDb);
+      const assets = (result.assets ?? [])
+        .filter((a) => a.uri)
+        .map((a) => ({ uri: a.uri, kind: (a.type === 'video' ? 'video' : 'image') }));
+      if (assets.length === 0) return;
+      router.push({
+        pathname: '/patient/media-preview' as any,
+        params: { assets: JSON.stringify(assets), patientId, name: patientName, clinicId, senderName: 'Patient' },
+      });
     } catch (err) {
-      console.error('[patient-conversation] pick/send image error', err);
+      console.error('[patient-conversation] pick media error', err);
       Alert.alert('Upload failed', 'Please try again.');
-    } finally {
-      setAttachBusy(false);
     }
   };
 
