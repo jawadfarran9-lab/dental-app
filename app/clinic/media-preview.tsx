@@ -1,5 +1,6 @@
 import { db } from '@/firebaseConfig';
 import { sendAlbumMessage, sendImageMessage, sendVideoMessage } from '@/src/services/chatImages';
+import { SendingOverlay } from '@/src/components/SendingOverlay';
 import { Ionicons } from '@expo/vector-icons';
 import { ResizeMode, Video } from 'expo-av';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -61,6 +62,8 @@ export default function MediaPreviewScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
+  const [sendPct, setSendPct] = useState<number | null>(null);
+  const [sendLabel, setSendLabel] = useState('');
   const [videoPlaying, setVideoPlaying] = useState(false);
   const [posters, setPosters] = useState<Record<string, string>>({});
 
@@ -132,10 +135,14 @@ export default function MediaPreviewScreen() {
           );
         }
       } else {
-        for (let i = 0; i < assets.length; i++) {
+        const n = assets.length;
+        for (let i = 0; i < n; i++) {
           const a = assets[i];
           const cap = i === 0 ? (caption.trim() || undefined) : undefined;
+          const base = n > 1 ? `Sending ${i + 1} of ${n}` : (a.kind === 'video' ? 'Sending video' : 'Sending photo');
           if (a.kind === 'video') {
+            setSendPct(0);
+            setSendLabel(base);
             await sendVideoMessage(
               {
                 clinicId: clinicId as string,
@@ -147,10 +154,20 @@ export default function MediaPreviewScreen() {
                 senderType: 'clinic',
                 caption: cap,
                 hd: false,
+                onProgress: (p) => {
+                  if (p >= 0.999) {
+                    setSendPct(null);
+                    setSendLabel(n > 1 ? `Uploading ${i + 1} of ${n}` : 'Uploading…');
+                  } else {
+                    setSendPct(p);
+                  }
+                },
               },
               db,
             );
           } else {
+            setSendPct(null);
+            setSendLabel(base);
             await sendImageMessage(
               {
                 clinicId: clinicId as string,
@@ -170,6 +187,8 @@ export default function MediaPreviewScreen() {
       router.back();
     } catch (e) {
       setSending(false);
+      setSendPct(null);
+      setSendLabel('');
       Alert.alert('Send failed', 'Could not send the image. Please try again.');
     }
   };
@@ -297,6 +316,8 @@ export default function MediaPreviewScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+
+      <SendingOverlay visible={sending} progress={sendPct} label={sendLabel} />
     </View>
   );
 }
