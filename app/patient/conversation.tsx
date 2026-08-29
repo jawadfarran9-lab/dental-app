@@ -130,13 +130,15 @@ type Message = {
   waveform?: number[];
   mimeType?: string;
   media?: {
-    kind: 'image' | 'video';
+    kind?: 'image' | 'video';
     url: string;
-    storagePath: string;
+    storagePath?: string;
     width?: number;
     height?: number;
     posterUrl?: string;
-    durationMs?: number;
+    posterPath?: string;
+    videoUrl?: string;
+    durationMs?: number | null;
     sticker?: string;
     stickerPatient?: string;
   }[];
@@ -149,6 +151,12 @@ type Message = {
 };
 
 type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null; texts?: TextsDoc | null };
+
+const VideoBadge = ({ big }: { big?: boolean }) => (
+  <View pointerEvents="none" style={big ? styles.albumPlayBadgeLg : styles.albumPlayBadge}>
+    <Ionicons name="play" size={big ? 26 : 16} color="#FFFFFF" style={{ marginLeft: big ? 3 : 2 }} />
+  </View>
+);
 
 const REACTIONS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 const RECENT_MAX = 6;
@@ -243,7 +251,12 @@ export default function ClinicConversationScreen() {
         out.push({ url: m.imageUrl, width: m.imageWidth, height: m.imageHeight, msgId: m.id, drawing: m.drawing ?? null, texts: m.texts ?? null });
       } else if (m.type === 'album' && Array.isArray(m.media)) {
         m.media.forEach((it, idx) => {
-          out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+          if (it.kind === 'video') {
+            out.push({ url: it.posterUrl ?? '', videoUrl: it.videoUrl, kind: 'video',
+                       width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+          } else {
+            out.push({ url: it.url, width: it.width, height: it.height, msgId: m.id, mediaIndex: idx });
+          }
         });
       } else if (m.type === 'video' && (m.videoUrl || m.posterUrl)) {
         out.push({
@@ -1020,10 +1033,11 @@ export default function ClinicConversationScreen() {
         grid = (
           <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
             <Image
-              source={{ uri: media[0].url }}
+              source={{ uri: media[0].kind === 'video' ? (media[0].posterUrl ?? media[0].url) : media[0].url }}
               style={{ width: ALBUM_W, height: ALBUM_W, borderRadius: 14 }}
               resizeMode="cover"
             />
+            {media[0].kind === 'video' && <VideoBadge />}
           </Pressable>
         );
       } else if (media.length === 2) {
@@ -1031,17 +1045,19 @@ export default function ClinicConversationScreen() {
           <View style={[styles.albumRow, { width: ALBUM_W }]}>
             <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
               <Image
-                source={{ uri: media[0].url }}
+                source={{ uri: media[0].kind === 'video' ? (media[0].posterUrl ?? media[0].url) : media[0].url }}
                 style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                 resizeMode="cover"
               />
+              {media[0].kind === 'video' && <VideoBadge />}
             </Pressable>
             <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
               <Image
-                source={{ uri: media[1].url }}
+                source={{ uri: media[1].kind === 'video' ? (media[1].posterUrl ?? media[1].url) : media[1].url }}
                 style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                 resizeMode="cover"
               />
+              {media[1].kind === 'video' && <VideoBadge />}
             </Pressable>
           </View>
         );
@@ -1051,25 +1067,28 @@ export default function ClinicConversationScreen() {
             <View style={[styles.albumRow, { marginBottom: GAP }]}>
               <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ marginRight: GAP }}>
                 <Image
-                  source={{ uri: media[0].url }}
+                  source={{ uri: media[0].kind === 'video' ? (media[0].posterUrl ?? media[0].url) : media[0].url }}
                   style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                   resizeMode="cover"
                 />
+                {media[0].kind === 'video' && <VideoBadge />}
               </Pressable>
               <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350}>
                 <Image
-                  source={{ uri: media[1].url }}
+                  source={{ uri: media[1].kind === 'video' ? (media[1].posterUrl ?? media[1].url) : media[1].url }}
                   style={[styles.albumCell, { width: cellSquare, height: cellSquare }]}
                   resizeMode="cover"
                 />
+                {media[1].kind === 'video' && <VideoBadge />}
               </Pressable>
             </View>
             <Pressable onPress={() => openAlbumGallery(item)} onLongPress={onLongPress} delayLongPress={350} style={{ position: 'relative' }}>
               <Image
-                source={{ uri: media[2].url }}
+                source={{ uri: media[2].kind === 'video' ? (media[2].posterUrl ?? media[2].url) : media[2].url }}
                 style={[styles.albumCellWide, { width: ALBUM_W, height: wideH }]}
                 resizeMode="cover"
               />
+              {media[2].kind === 'video' && <VideoBadge />}
               {extra > 0 && (
                 <View style={styles.albumMore}>
                   <Text style={styles.albumMoreText}>+{extra}</Text>
@@ -2410,7 +2429,8 @@ export default function ClinicConversationScreen() {
                       delayLongPress={350}
                       style={{ marginBottom: i === gMedia.length - 1 ? 0 : GAP, marginHorizontal: 8, position: 'relative' }}
                     >
-                      <Image source={{ uri: it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                      <Image source={{ uri: it.kind === 'video' ? (it.posterUrl ?? it.url) : it.url }} style={{ width: imgW, height: h, borderRadius: 14 }} resizeMode="cover" />
+                      {it.kind === 'video' && <VideoBadge big />}
                       {it.sticker ? (
                         <Pressable
                           style={styles.galStickerBadge}
@@ -3183,6 +3203,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: -0.3,
   },
+  albumPlayBadge: { position: 'absolute', top: '50%', left: '50%', width: 32, height: 32, borderRadius: 16, marginTop: -16, marginLeft: -16, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  albumPlayBadgeLg: { position: 'absolute', top: '50%', left: '50%', width: 56, height: 56, borderRadius: 28, marginTop: -28, marginLeft: -28, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   albumCaption: {
     marginTop: 6,
     marginHorizontal: 4,
