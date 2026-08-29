@@ -1152,6 +1152,16 @@ export default function ClinicConversationScreen() {
               ) : null}
               <BubbleTextsOverlay items={item.texts?.items} mediaW={item.imageWidth} mediaH={item.imageHeight} boxW={BUBBLE_MAX_W} boxH={imgH} radius={14} />
             </Pressable>
+            {!!item.text && (
+              <Text
+                style={[
+                  styles.albumCaption,
+                  sent ? styles.bubbleSentText : [styles.bubbleRecvText, { color: recvText }],
+                ]}
+              >
+                {item.text}
+              </Text>
+            )}
             {!!time && (
               <Text
                 style={[
@@ -1223,6 +1233,16 @@ export default function ClinicConversationScreen() {
                 </View>
               )}
             </Pressable>
+            {!!item.text && (
+              <Text
+                style={[
+                  styles.albumCaption,
+                  sent ? styles.bubbleSentText : [styles.bubbleRecvText, { color: recvText }],
+                ]}
+              >
+                {item.text}
+              </Text>
+            )}
             {!!time && (
               <Text
                 style={[
