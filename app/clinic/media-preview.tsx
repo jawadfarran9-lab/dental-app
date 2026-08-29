@@ -103,86 +103,71 @@ export default function MediaPreviewScreen() {
     }
     try {
       setSending(true);
-      const hasVideo = assets.some((a) => a.kind === 'video');
-      if (!hasVideo) {
-        if (assets.length <= 1) {
+      const cap = caption.trim() || undefined;
+      if (assets.length === 1) {
+        const a = assets[0];
+        if (a.kind === 'video') {
+          setSendPct(0);
+          setSendLabel('Sending video');
+          await sendVideoMessage(
+            {
+              clinicId: clinicId as string,
+              patientId: patientId as string,
+              patientName: (name as string) ?? '',
+              localUri: a.uri,
+              from: 'clinic',
+              senderName: (senderName as string) ?? 'Clinic',
+              senderType: 'clinic',
+              caption: cap,
+              hd: false,
+              onProgress: (p) => {
+                if (p >= 0.999) {
+                  setSendPct(null);
+                  setSendLabel('Uploading…');
+                } else {
+                  setSendPct(p);
+                }
+              },
+            },
+            db,
+          );
+        } else {
+          setSendPct(null);
+          setSendLabel('Sending photo');
           await sendImageMessage(
             {
               clinicId: clinicId as string,
               patientId: patientId as string,
               patientName: (name as string) ?? '',
-              localUri: assets[0].uri,
+              localUri: a.uri,
               from: 'clinic',
               senderName: (senderName as string) ?? 'Clinic',
               senderType: 'clinic',
-              caption: caption.trim() || undefined,
-            },
-            db,
-          );
-        } else {
-          await sendAlbumMessage(
-            {
-              clinicId: clinicId as string,
-              patientId: patientId as string,
-              patientName: (name as string) ?? '',
-              localUris: assets.map((a) => a.uri),
-              from: 'clinic',
-              senderName: (senderName as string) ?? 'Clinic',
-              senderType: 'clinic',
-              caption: caption.trim() || undefined,
+              caption: cap,
             },
             db,
           );
         }
       } else {
-        const n = assets.length;
-        for (let i = 0; i < n; i++) {
-          const a = assets[i];
-          const cap = i === 0 ? (caption.trim() || undefined) : undefined;
-          const base = n > 1 ? `Sending ${i + 1} of ${n}` : (a.kind === 'video' ? 'Sending video' : 'Sending photo');
-          if (a.kind === 'video') {
-            setSendPct(0);
-            setSendLabel(base);
-            await sendVideoMessage(
-              {
-                clinicId: clinicId as string,
-                patientId: patientId as string,
-                patientName: (name as string) ?? '',
-                localUri: a.uri,
-                from: 'clinic',
-                senderName: (senderName as string) ?? 'Clinic',
-                senderType: 'clinic',
-                caption: cap,
-                hd: false,
-                onProgress: (p) => {
-                  if (p >= 0.999) {
-                    setSendPct(null);
-                    setSendLabel(n > 1 ? `Uploading ${i + 1} of ${n}` : 'Uploading…');
-                  } else {
-                    setSendPct(p);
-                  }
-                },
-              },
-              db,
-            );
-          } else {
-            setSendPct(null);
-            setSendLabel(base);
-            await sendImageMessage(
-              {
-                clinicId: clinicId as string,
-                patientId: patientId as string,
-                patientName: (name as string) ?? '',
-                localUri: a.uri,
-                from: 'clinic',
-                senderName: (senderName as string) ?? 'Clinic',
-                senderType: 'clinic',
-                caption: cap,
-              },
-              db,
-            );
-          }
-        }
+        setSendPct(null);
+        setSendLabel(`Sending 1 of ${assets.length}`);
+        await sendAlbumMessage(
+          {
+            clinicId: clinicId as string,
+            patientId: patientId as string,
+            patientName: (name as string) ?? '',
+            assets,
+            from: 'clinic',
+            senderName: (senderName as string) ?? 'Clinic',
+            senderType: 'clinic',
+            caption: cap,
+            onProgress: (i, total, pct) => {
+              setSendLabel(total > 1 ? `Sending ${i + 1} of ${total}` : 'Sending');
+              setSendPct(pct);
+            },
+          },
+          db,
+        );
       }
       router.back();
     } catch (e) {
