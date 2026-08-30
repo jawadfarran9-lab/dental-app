@@ -1,5 +1,7 @@
 import { patientDb } from '@/firebaseConfig';
+import { DismissViewerPage } from '@/src/components/DismissViewerPage';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import { ZoomableImage } from '@/src/components/ZoomableImage';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
@@ -10,8 +12,10 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -48,8 +52,13 @@ export default function PatientYourInfoScreen() {
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [media, setMedia] = useState<{ id: string; imageUrl: string; createdAt?: number }[]>([]);
+  const [media, setMedia] = useState<{ id: string; imageUrl: string; width?: number; height?: number; createdAt?: number }[]>([]);
   const [starredCount, setStarredCount] = useState(0);
+  const [viewerOpen, setViewerOpen] = useState(false);
+  const [viewerIndex, setViewerIndex] = useState(0);
+  const [viewerZoomed, setViewerZoomed] = useState(false);
+  const closeInfoViewer = () => { setViewerOpen(false); setViewerZoomed(false); };
+  const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerZoomed(false); setViewerOpen(true); };
 
   useEffect(() => {
     if (!patientAuthReady) return;
@@ -67,6 +76,8 @@ export default function PatientYourInfoScreen() {
           .map((m) => ({
             id: m.id,
             imageUrl: m.imageUrl as string,
+            width: typeof m.imageWidth === 'number' ? m.imageWidth : undefined,
+            height: typeof m.imageHeight === 'number' ? m.imageHeight : undefined,
             createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
           }))
           .reverse();
@@ -352,10 +363,10 @@ export default function PatientYourInfoScreen() {
             </View>
           ) : (
             <View style={styles.mediaGrid}>
-              {media.slice(0, 12).map((m) => (
+              {media.slice(0, 12).map((m, index) => (
                 <Pressable
                   key={m.id}
-                  onPress={() => Linking.openURL(m.imageUrl)}
+                  onPress={() => openInfoViewer(index)}
                   style={({ pressed }) => [
                     styles.mediaCell,
                     { width: mediaCellSize, height: mediaCellSize },
@@ -373,6 +384,48 @@ export default function PatientYourInfoScreen() {
           )}
         </ScrollView>
       )}
+
+      <Modal
+        visible={viewerOpen}
+        transparent={false}
+        animationType="fade"
+        onRequestClose={closeInfoViewer}
+        statusBarTranslucent
+      >
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <FlatList
+            data={media.slice(0, 12)}
+            horizontal
+            pagingEnabled
+            initialScrollIndex={viewerIndex}
+            getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
+            keyExtractor={(it) => it.id}
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={!viewerZoomed}
+            renderItem={({ item }) => (
+              <View style={{ width: SCREEN_W, height: SCREEN_H }}>
+                <DismissViewerPage onDismiss={closeInfoViewer} disabled={viewerZoomed}>
+                  <ZoomableImage
+                    uri={item.imageUrl}
+                    width={SCREEN_W}
+                    height={SCREEN_H}
+                    imgW={item.width}
+                    imgH={item.height}
+                    onZoomChange={setViewerZoomed}
+                  />
+                </DismissViewerPage>
+              </View>
+            )}
+          />
+          <Pressable
+            onPress={closeInfoViewer}
+            style={{ position: 'absolute', top: insets.top + 8, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={24} color="#fff" />
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
