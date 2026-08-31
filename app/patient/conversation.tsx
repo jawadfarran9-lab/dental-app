@@ -5,6 +5,7 @@ import RecordingBar from '@/src/components/RecordingBar';
 import { ZoomableImage } from '@/src/components/ZoomableImage';
 import { ViewerVideo } from '@/src/components/ViewerVideo';
 import { DismissViewerPage } from '@/src/components/DismissViewerPage';
+import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerModal';
 import { BubbleTextsOverlay } from '@/src/components/BubbleTextsOverlay';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
@@ -150,8 +151,6 @@ type Message = {
   texts?: TextsDoc | null;
 };
 
-type ViewerPage = { url: string; width?: number; height?: number; msgId: string; mediaIndex?: number; videoUrl?: string; kind?: 'image' | 'video'; drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null; texts?: TextsDoc | null };
-
 const VideoBadge = ({ big }: { big?: boolean }) => (
   <View pointerEvents="none" style={big ? styles.albumPlayBadgeLg : styles.albumPlayBadge}>
     <Ionicons name="play" size={big ? 26 : 16} color="#FFFFFF" style={{ marginLeft: big ? 3 : 2 }} />
@@ -209,10 +208,6 @@ export default function ClinicConversationScreen() {
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerPages, setViewerPages] = useState<ViewerPage[]>([]);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const viewerListRef = useRef<FlatList<ViewerPage>>(null);
-  const stripRef = useRef<ScrollView>(null);
-  const [viewerZoomed, setViewerZoomed] = useState(false);
-  const [scrubbing, setScrubbing] = useState(false);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
   const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
   const [stickerSheetOpen, setStickerSheetOpen] = useState(false);
@@ -278,7 +273,6 @@ export default function ClinicConversationScreen() {
     const start = Math.max(0, pages.findIndex((p) => p.msgId === m.id));
     setViewerPages(pages);
     setViewerIndex(start);
-    setViewerZoomed(false);
     setViewerOpen(true);
   };
   const openViewerFromGallery = (albumMsg: Message, mediaIndex: number) => {
@@ -289,7 +283,6 @@ export default function ClinicConversationScreen() {
     setGalleryMessage(null);
     setViewerPages(pages);
     setViewerIndex(Math.max(0, start));
-    setViewerZoomed(false);
     setViewerOpen(true);
   };
   const closeViewer = () => { setViewerOpen(false); setViewerPages([]); setViewerIndex(0); };
@@ -315,18 +308,6 @@ export default function ClinicConversationScreen() {
       closeViewer();
     }
   }, [messages, viewerOpen, viewerPages, viewerIndex]);
-
-  useEffect(() => {
-    if (!viewerOpen || viewerPages.length <= 1) return;
-    const SCREEN_W = Dimensions.get('window').width;
-    const contentWidth = 32 + viewerPages.length * 40 + (viewerPages.length - 1) * 8;
-    const maxX = Math.max(0, contentWidth - SCREEN_W);
-    const targetX = Math.min(maxX, Math.max(0, 36 + viewerIndex * 48 - SCREEN_W / 2));
-    const t = setTimeout(() => {
-      stripRef.current?.scrollTo({ x: targetX, animated: true });
-    }, 60);
-    return () => clearTimeout(t);
-  }, [viewerOpen, viewerIndex, viewerPages.length]);
 
   useEffect(() => {
     if (!galleryOpen || !galleryMessage) return;
@@ -2162,244 +2143,113 @@ export default function ClinicConversationScreen() {
         </View>
       </Modal>
 
-      <Modal visible={viewerOpen} transparent={false} animationType="fade" onRequestClose={closeViewer} statusBarTranslucent>
-        {viewerOpen && viewerPages.length > 0 ? (() => {
-          const SCREEN_W = Dimensions.get('window').width;
-          const SCREEN_H = Dimensions.get('window').height;
-          const pages = viewerPages;
-          const current = pages[viewerIndex] ?? pages[0];
-          const curMsg = messages.find((m) => m.id === current?.msgId) ?? null;
-          const isOwn = curMsg?.from === 'patient';
-          const isStarred = !!curMsg?.starredPatient;
-          const curMediaIndex = current?.mediaIndex;
-          const isAlbumPageForCurrent = !!(curMsg && curMsg.type === 'album' && typeof curMediaIndex === 'number' && Array.isArray(curMsg.media));
-          const isImagePageForCurrent = curMsg?.type === 'image';
-          const isVideo = current?.kind === 'video';
-          const curSticker = curMsg
-            ? (curMsg.type === 'album' && typeof curMediaIndex === 'number'
-                ? curMsg.media?.[curMediaIndex]?.stickerPatient
-                : curMsg.reactionPatient)
+      <MediaViewerModal
+        visible={viewerOpen}
+        pages={viewerPages}
+        index={viewerIndex}
+        onIndexChange={setViewerIndex}
+        onClose={closeViewer}
+        title={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          return m?.from === 'patient' ? 'You' : (clinicName || 'Clinic');
+        }}
+        timeLabel={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          return formatInfoTime(m?.createdAt);
+        }}
+        ownSticker={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          if (!m) return undefined;
+          return (m.type === 'album' && typeof p.mediaIndex === 'number')
+            ? m.media?.[p.mediaIndex]?.stickerPatient
+            : m.reactionPatient;
+        }}
+        otherSticker={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          if (!m) return undefined;
+          return (m.type === 'album' && typeof p.mediaIndex === 'number')
+            ? m.media?.[p.mediaIndex]?.sticker
+            : m.reactionClinic;
+        }}
+        onEditSticker={openStickerForPage}
+        onShare={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          shareViewerCurrent(p.url, m?.text);
+        }}
+        starred={(p) => !!messages.find((x) => x.id === p.msgId)?.starredPatient}
+        onToggleStar={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          if (m) toggleStar(m);
+        }}
+        onDelete={(p) => {
+          const m = messages.find((x) => x.id === p.msgId);
+          if (m && m.from === 'patient') handleRemoveMessage(m);
+        }}
+        stickerSheet={stickerKbOpen ? (() => {
+          const tmsg = stickerTarget ? messages.find((m) => m.id === stickerTarget.msgId) : null;
+          const curSticker = tmsg
+            ? (tmsg.type === 'album' && typeof stickerTarget?.mediaIndex === 'number'
+                ? tmsg.media?.[stickerTarget.mediaIndex]?.stickerPatient
+                : tmsg.reactionPatient)
             : undefined;
           return (
-            <GestureHandlerRootView style={{ flex: 1 }}>
-            <View style={{ flex: 1, backgroundColor: '#000' }}>
-              <FlatList
-                ref={viewerListRef}
-                data={pages}
-                keyExtractor={(_, i) => `viewer_${i}`}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                initialScrollIndex={viewerIndex}
-                scrollEnabled={!(viewerZoomed || scrubbing)}
-                getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
-                onMomentumScrollEnd={(e) => {
-                  const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
-                  setViewerIndex(idx);
-                  setViewerZoomed(false);
-                }}
-                renderItem={({ item: page, index: i }) => {
-                  const pmsg = messages.find((m) => m.id === page.msgId) ?? null;
-                  const isAlbumPage = typeof page.mediaIndex === 'number' && pmsg?.type === 'album' && Array.isArray(pmsg.media);
-                  const isImagePage = typeof page.mediaIndex !== 'number' && pmsg?.type === 'image';
-                  const mItem = isAlbumPage ? pmsg!.media![page.mediaIndex!] : null;
-                  const own = isAlbumPage ? mItem?.stickerPatient : (isImagePage ? pmsg?.reactionPatient : undefined);
-                  const other = isAlbumPage ? mItem?.sticker : (isImagePage ? pmsg?.reactionClinic : undefined);
-                  const pAspect = page.width && page.height ? page.width / page.height : SCREEN_W / SCREEN_H;
-                  const cAspect = SCREEN_W / SCREEN_H;
-                  let baseW = SCREEN_W;
-                  let baseH = SCREEN_H;
-                  if (pAspect >= cAspect) { baseW = SCREEN_W; baseH = SCREEN_W / pAspect; }
-                  else { baseH = SCREEN_H; baseW = SCREEN_H * pAspect; }
-                  const offX = (SCREEN_W - baseW) / 2;
-                  const offY = (SCREEN_H - baseH) / 2;
-                  return (
-                    <View style={[styles.viewerPage, { width: SCREEN_W }]}>
-                      <DismissViewerPage onDismiss={closeViewer} disabled={viewerZoomed}>
-                        {page.kind === 'video' && page.videoUrl ? (
-                          <ViewerVideo uri={page.videoUrl} width={SCREEN_W} height={SCREEN_H} isActive={i === viewerIndex} topInset={insets.top} bottomInset={insets.bottom} videoW={page.width} videoH={page.height} drawing={page.drawing} texts={page.texts} onScrubbingChange={setScrubbing} onZoomChange={setViewerZoomed} />
-                        ) : (
-                          <ZoomableImage uri={page.url} width={SCREEN_W} height={SCREEN_H} imgW={page.width} imgH={page.height} drawing={page.drawing} texts={page.texts} onZoomChange={setViewerZoomed} />
-                        )}
-                      </DismissViewerPage>
-                      {(isAlbumPage || isImagePage) ? (
-                        <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}>
-                          {own ? (
-                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
-                              <Text style={styles.galStickerText}>{own}</Text>
-                            </Pressable>
-                          ) : (
-                            <Pressable onPress={() => openStickerForPage(page)} hitSlop={8} style={[styles.viewerStickerLeft, { top: undefined, bottom: insets.bottom + 200, left: 20 }]}>
-                              <Ionicons name="happy-outline" size={18} color="#1E6FD9" />
-                            </Pressable>
-                          )}
-                          {other ? (
-                            <View style={[styles.viewerStickerRight, { top: undefined, bottom: insets.bottom + 200, right: 20 }]}>
-                              <Text style={styles.galStickerText}>{other}</Text>
-                            </View>
-                          ) : null}
-                        </View>
-                      ) : null}
-                    </View>
-                  );
-                }}
+            <View style={StyleSheet.absoluteFill}>
+              <Pressable
+                style={StyleSheet.absoluteFill}
+                onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
               />
-              <View style={[styles.viewerHeader, { top: insets.top + 8 }]} pointerEvents="box-none">
-                <Pressable onPress={closeViewer} style={styles.viewerClose} hitSlop={8}>
-                  <Ionicons name="close" size={22} color="#FFFFFF" />
-                </Pressable>
-                <View style={styles.viewerWho}>
-                  <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '700' }}>
-                    {isOwn ? 'You' : (clinicName || 'Clinic')}
-                  </Text>
-                  <Text style={{ color: 'rgba(255,255,255,0.72)', fontSize: 12, marginTop: 2 }}>
-                    {formatInfoTime(curMsg?.createdAt)}
-                  </Text>
-                </View>
-                <View style={{ width: 40 }} />
-              </View>
-              {!isAlbumPageForCurrent && !isImagePageForCurrent && (
-                <View style={[styles.viewerBottomActions, { bottom: insets.bottom + (isVideo ? 228 : 200) }]} pointerEvents="box-none">
+              <View style={styles.stickerKbSheet}>
+                <View style={styles.stickerKbHeader}>
+                  {curSticker ? (
+                    <Pressable
+                      onPress={() => {
+                        if (!stickerTarget || !curSticker) return;
+                        const t = messages.find((m) => m.id === stickerTarget.msgId);
+                        if (t?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
+                          setImageSticker(stickerTarget, curSticker);
+                        } else if (t) {
+                          setMessageReaction(t, curSticker);
+                        }
+                      }}
+                      style={styles.stickerKbCurrent}
+                      hitSlop={8}
+                    >
+                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
+                    </Pressable>
+                  ) : (
+                    <View />
+                  )}
                   <Pressable
-                    onPress={() => {
-                      if (!current) return;
-                      setStickerTarget({ msgId: current.msgId });
-                      setStickerKbOpen(true);
-                    }}
-                    style={styles.viewerClose}
+                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                    style={styles.stickerKbClose}
                     hitSlop={8}
                   >
-                    {curSticker ? (
-                      <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                    ) : (
-                      <Ionicons name="happy-outline" size={22} color="#FFFFFF" />
-                    )}
+                    <Ionicons name="close" size={20} color="#111111" />
                   </Pressable>
                 </View>
-              )}
-              {pages.length > 1 && (
-                <View style={[styles.viewerStrip, { bottom: insets.bottom + (isVideo ? 162 : 132) }]}>
-                  <ScrollView
-                    ref={stripRef}
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.viewerStripContent}
-                  >
-                    {pages.map((thumb, i) => (
-                      <Pressable
-                        key={`thumb_${i}`}
-                        onPress={() => {
-                          setViewerIndex(i);
-                          viewerListRef.current?.scrollToIndex({ index: i, animated: true });
-                        }}
-                        style={[styles.viewerThumb, i === viewerIndex && styles.viewerThumbActive]}
-                      >
-                        <Image source={{ uri: thumb.url }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
-                        {thumb.drawing && thumb.drawing.strokes.length > 0 ? (
-                          <Svg pointerEvents="none" viewBox={`0 0 ${thumb.drawing.vb[0]} ${thumb.drawing.vb[1]}`} preserveAspectRatio="xMidYMid slice" style={StyleSheet.absoluteFill}>
-                            {thumb.drawing.strokes.map((s, si) => (
-                              <Path key={`td_${si}`} d={s.d} stroke={s.color} strokeWidth={s.width} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-                            ))}
-                          </Svg>
-                        ) : null}
-                        <BubbleTextsOverlay items={thumb.texts?.items} mediaW={thumb.width} mediaH={thumb.height} boxW={40} boxH={54} radius={6} />
-                      </Pressable>
-                    ))}
-                  </ScrollView>
-                </View>
-              )}
-              <View style={[styles.viewerBar, { paddingBottom: insets.bottom + (isVideo ? 72 : 14) }]} pointerEvents="box-none">
-                <LinearGradient
-                  colors={['transparent', 'rgba(0,0,0,0.92)']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={StyleSheet.absoluteFill}
-                  pointerEvents="none"
+                <EmojiKeyboard
+                  onEmojiSelected={(e) => {
+                    const picked = e?.emoji;
+                    if (picked && stickerTarget) {
+                      const t = messages.find((m) => m.id === stickerTarget.msgId);
+                      if (t?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
+                        setImageSticker(stickerTarget, picked);
+                      } else if (t) {
+                        setMessageReaction(t, picked);
+                      }
+                    }
+                    setStickerKbOpen(false);
+                    setStickerTarget(null);
+                  }}
+                  enableSearchBar
+                  enableRecentlyUsed
+                  defaultHeight={380}
                 />
-                <View style={styles.viewerBarRow}>
-                  <Pressable onPress={() => shareViewerCurrent(current?.url, curMsg?.text)} hitSlop={8} style={styles.viewerBarBtn}>
-                    <View style={styles.viewerBarIcon}>
-                      <Ionicons name="share-outline" size={24} color="#FFFFFF" />
-                    </View>
-                    <Text style={styles.viewerBarLabel}>Share</Text>
-                  </Pressable>
-                  <Pressable onPress={() => { if (curMsg) toggleStar(curMsg); }} hitSlop={8} style={styles.viewerBarBtn}>
-                    <View style={[styles.viewerBarIcon, isStarred && styles.viewerBarIconStar]}>
-                      <Ionicons name={isStarred ? 'star' : 'star-outline'} size={24} color={isStarred ? '#F5A623' : '#FFFFFF'} />
-                    </View>
-                    <Text style={styles.viewerBarLabel}>Star</Text>
-                  </Pressable>
-                  {isOwn && curMsg && (
-                    <Pressable onPress={() => handleRemoveMessage(curMsg)} hitSlop={8} style={styles.viewerBarBtn}>
-                      <View style={[styles.viewerBarIcon, styles.viewerBarIconDanger]}>
-                        <Ionicons name="trash-outline" size={24} color="#FF8A80" />
-                      </View>
-                      <Text style={[styles.viewerBarLabel, styles.viewerBarLabelDanger]}>Delete</Text>
-                    </Pressable>
-                  )}
-                </View>
               </View>
             </View>
-              {stickerKbOpen ? (
-                <View style={StyleSheet.absoluteFill}>
-                  <Pressable
-                    style={StyleSheet.absoluteFill}
-                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
-                  />
-                  <View style={styles.stickerKbSheet}>
-                    <View style={styles.stickerKbHeader}>
-                      {curSticker ? (
-                        <Pressable
-                          onPress={() => {
-                            if (!stickerTarget || !curSticker) return;
-                            const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                            if (tmsg?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
-                              setImageSticker(stickerTarget, curSticker);
-                            } else if (tmsg) {
-                              setMessageReaction(tmsg, curSticker);
-                            }
-                          }}
-                          style={styles.stickerKbCurrent}
-                          hitSlop={8}
-                        >
-                          <Text style={{ fontSize: 22 }}>{curSticker}</Text>
-                        </Pressable>
-                      ) : (
-                        <View />
-                      )}
-                      <Pressable
-                        onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
-                        style={styles.stickerKbClose}
-                        hitSlop={8}
-                      >
-                        <Ionicons name="close" size={20} color="#111111" />
-                      </Pressable>
-                    </View>
-                    <EmojiKeyboard
-                      onEmojiSelected={(e) => {
-                        const picked = e?.emoji;
-                        if (picked && stickerTarget) {
-                          const tmsg = messages.find((m) => m.id === stickerTarget.msgId);
-                          if (tmsg?.type === 'album' && typeof stickerTarget.mediaIndex === 'number') {
-                            setImageSticker(stickerTarget, picked);
-                          } else if (tmsg) {
-                            setMessageReaction(tmsg, picked);
-                          }
-                        }
-                        setStickerKbOpen(false);
-                        setStickerTarget(null);
-                      }}
-                      enableSearchBar
-                      enableRecentlyUsed
-                      defaultHeight={380}
-                    />
-                  </View>
-                </View>
-              ) : null}
-            </GestureHandlerRootView>
           );
         })() : null}
-      </Modal>
+      />
 
       <Modal visible={galleryOpen} transparent={false} animationType="slide" onRequestClose={closeGallery} statusBarTranslucent>
         {galleryOpen && galleryMessage ? (() => {
@@ -3092,51 +2942,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
   },
-  viewerPage: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  viewerStrip: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-  },
-  viewerStripContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-  },
-  viewerThumb: {
-    width: 40,
-    height: 54,
-    borderRadius: 6,
-    overflow: 'hidden',
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  viewerThumbActive: {
-    borderColor: '#4DA3FF',
-    backgroundColor: '#FFFFFF',
-    padding: 2,
-  },
-  viewerBar: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingTop: 18 },
-  viewerBarRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 40 },
-  viewerBarBtn: { alignItems: 'center', justifyContent: 'center' },
-  viewerBarIcon: { width: 54, height: 54, borderRadius: 27, backgroundColor: 'rgba(255,255,255,0.12)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },
-  viewerBarIconStar: { backgroundColor: 'rgba(245,166,35,0.18)', borderColor: 'rgba(245,166,35,0.55)' },
-  viewerBarIconDanger: { backgroundColor: 'rgba(239,68,68,0.16)', borderColor: 'rgba(239,68,68,0.5)' },
-  viewerBarLabel: { fontSize: 11, marginTop: 7, color: '#FFFFFF', fontWeight: '600' },
-  viewerBarLabelDanger: { color: '#FF8A80' },
-  viewerBottomActions: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-  },
   stickerKbSheet: {
     position: 'absolute',
     left: 0,
@@ -3252,37 +3057,4 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   galStickerText: { fontSize: 18 },
-  viewerStickerRight: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 3,
-    opacity: 0.9,
-  },
-  viewerStickerLeft: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    borderRadius: 999,
-    paddingHorizontal: 6,
-    paddingVertical: 3,
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(0,0,0,0.06)',
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 3,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 3,
-  },
 });
