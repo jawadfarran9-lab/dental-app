@@ -63,7 +63,9 @@ export default function PatientYourInfoScreen() {
   const [copied, setCopied] = useState(false);
   const [media, setMedia] = useState<{
     id: string;
-    imageUrl: string;
+    kind: 'image' | 'video';
+    url: string;
+    videoUrl?: string;
     width?: number;
     height?: number;
     createdAt?: number;
@@ -107,21 +109,42 @@ export default function PatientYourInfoScreen() {
       (snap) => {
         const imgs = snap.docs
           .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((m) => m.type === 'image' && m.imageUrl)
-          .map((m) => ({
-            id: m.id,
-            imageUrl: m.imageUrl as string,
-            width: typeof m.imageWidth === 'number' ? m.imageWidth : undefined,
-            height: typeof m.imageHeight === 'number' ? m.imageHeight : undefined,
-            createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
-            drawing: m.drawing ?? null,
-            texts: m.texts ?? null,
-            from: m.from,
-            text: m.text,
-            reactionPatient: m.reactionPatient,
-            reactionClinic: m.reactionClinic,
-            starredPatient: m.starredPatient,
-          }))
+          .filter((m) => (m.type === 'image' && m.imageUrl) || (m.type === 'video' && m.videoUrl))
+          .map((m) => {
+            if (m.type === 'video') {
+              return {
+                id: m.id,
+                kind: 'video' as const,
+                url: (m.posterUrl as string | null) ?? '',
+                videoUrl: m.videoUrl as string,
+                width: typeof m.videoWidth === 'number' ? m.videoWidth : undefined,
+                height: typeof m.videoHeight === 'number' ? m.videoHeight : undefined,
+                createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+                drawing: m.drawing ?? null,
+                texts: m.texts ?? null,
+                from: m.from,
+                text: m.text,
+                reactionPatient: m.reactionPatient,
+                reactionClinic: m.reactionClinic,
+                starredPatient: m.starredPatient,
+              };
+            }
+            return {
+              id: m.id,
+              kind: 'image' as const,
+              url: m.imageUrl as string,
+              width: typeof m.imageWidth === 'number' ? m.imageWidth : undefined,
+              height: typeof m.imageHeight === 'number' ? m.imageHeight : undefined,
+              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+              drawing: m.drawing ?? null,
+              texts: m.texts ?? null,
+              from: m.from,
+              text: m.text,
+              reactionPatient: m.reactionPatient,
+              reactionClinic: m.reactionClinic,
+              starredPatient: m.starredPatient,
+            };
+          })
           .reverse();
         setMedia(imgs);
         setStarredCount(snap.docs.filter((d) => (d.data() as any).starredPatient === true).length);
@@ -198,7 +221,9 @@ export default function PatientYourInfoScreen() {
   const gridItems = media.slice(0, 12);
   const pages: ViewerPage[] = useMemo(
     () => gridItems.map((m) => ({
-      url: m.imageUrl,
+      url: m.url,
+      videoUrl: m.kind === 'video' ? m.videoUrl : undefined,
+      kind: m.kind,
       width: m.width,
       height: m.height,
       msgId: m.id,
@@ -429,10 +454,15 @@ export default function PatientYourInfoScreen() {
                   ]}
                 >
                   <Image
-                    source={{ uri: m.imageUrl }}
+                    source={{ uri: m.url }}
                     style={styles.mediaImage}
                     resizeMode="cover"
                   />
+                  {m.kind === 'video' && (
+                    <View pointerEvents="none" style={styles.mediaPlayBadge}>
+                      <Ionicons name="play" size={18} color="#FFFFFF" style={{ marginLeft: 2 }} />
+                    </View>
+                  )}
                 </Pressable>
               ))}
             </View>
@@ -458,7 +488,8 @@ export default function PatientYourInfoScreen() {
         otherSticker={(p) => media.find((it) => it.id === p.msgId)?.reactionClinic}
         onShare={(p) => {
           const m = media.find((it) => it.id === p.msgId);
-          Share.share({ message: m?.text ? `${m.text}\n${p.url}` : p.url }).catch(() => {});
+          const shareUrl = p.videoUrl ?? p.url;
+          Share.share({ message: m?.text ? `${m.text}\n${shareUrl}` : shareUrl }).catch(() => {});
         }}
         starred={(p) => !!media.find((it) => it.id === p.msgId)?.starredPatient}
         onToggleStar={async (p) => {
@@ -702,6 +733,7 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  mediaPlayBadge: { position: 'absolute', top: '50%', left: '50%', width: 32, height: 32, borderRadius: 16, marginTop: -16, marginLeft: -16, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
   stickerKbSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 420, backgroundColor: '#FFFFFF', overflow: 'hidden' },
   stickerKbHeader: { height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12 },
   stickerKbClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
