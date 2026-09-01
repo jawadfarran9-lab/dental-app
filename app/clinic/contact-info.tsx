@@ -14,6 +14,7 @@ import { collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, orderBy, q
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Dimensions, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { EmojiKeyboard } from 'rn-emoji-keyboard';
 
 function formatInfoTime(ts?: number): string {
   if (!ts) return '';
@@ -80,7 +81,22 @@ export default function ClinicContactInfoScreen() {
   const [clearing, setClearing] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
+  const [stickerKbOpen, setStickerKbOpen] = useState(false);
+  const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
   const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerOpen(true); };
+  const openStickerForPage = (page: ViewerPage) => {
+    setStickerTarget({ msgId: page.msgId });
+    setStickerKbOpen(true);
+  };
+  const setMyReaction = async (msgId: string, emoji: string, cur?: string) => {
+    if (!patientId) return;
+    const isClearing = cur === emoji;
+    try {
+      await updateDoc(doc(db, `patients/${patientId}/messages/${msgId}`), {
+        reactionClinic: isClearing ? deleteField() : emoji,
+      });
+    } catch (e) { console.error('[contact-info] set reaction', e); }
+  };
 
   useEffect(() => {
     if (!patientId) return;
@@ -589,6 +605,47 @@ export default function ClinicContactInfoScreen() {
             ],
           );
         }}
+        onEditSticker={openStickerForPage}
+        stickerSheet={stickerKbOpen ? (() => {
+          const target = stickerTarget;
+          const cur = target ? shownMedia.find((it) => it.id === target.msgId)?.reactionClinic : undefined;
+          return (
+            <View style={StyleSheet.absoluteFill}>
+              <Pressable style={StyleSheet.absoluteFill} onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }} />
+              <View style={styles.stickerKbSheet}>
+                <View style={styles.stickerKbHeader}>
+                  {cur ? (
+                    <Pressable
+                      onPress={() => { if (target) setMyReaction(target.msgId, cur, cur); setStickerKbOpen(false); setStickerTarget(null); }}
+                      style={styles.stickerKbCurrent}
+                      hitSlop={8}
+                    >
+                      <Text style={{ fontSize: 22 }}>{cur}</Text>
+                    </Pressable>
+                  ) : (<View />)}
+                  <Pressable
+                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
+                    style={styles.stickerKbClose}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close" size={20} color="#111111" />
+                  </Pressable>
+                </View>
+                <EmojiKeyboard
+                  onEmojiSelected={(e) => {
+                    const picked = e?.emoji;
+                    if (picked && target) setMyReaction(target.msgId, picked, cur);
+                    setStickerKbOpen(false);
+                    setStickerTarget(null);
+                  }}
+                  enableSearchBar
+                  enableRecentlyUsed
+                  defaultHeight={380}
+                />
+              </View>
+            </View>
+          );
+        })() : null}
       />
     </View>
   );
@@ -766,4 +823,8 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
+  stickerKbSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 420, backgroundColor: '#FFFFFF', overflow: 'hidden' },
+  stickerKbHeader: { height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12 },
+  stickerKbClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
+  stickerKbCurrent: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 6, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
 });
