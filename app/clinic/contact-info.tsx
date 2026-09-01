@@ -64,6 +64,7 @@ export default function ClinicContactInfoScreen() {
   const [copied, setCopied] = useState(false);
   const [media, setMedia] = useState<{
     id: string;
+    mediaIndex?: number;
     kind: 'image' | 'video';
     url: string;
     videoUrl?: string;
@@ -76,18 +77,21 @@ export default function ClinicContactInfoScreen() {
     text?: string;
     reactionPatient?: string;
     reactionClinic?: string;
+    stickerPatient?: string;
+    sticker?: string;
     starredClinic?: boolean;
   }[]>([]);
+  const [rawAlbums, setRawAlbums] = useState<Record<string, any[]>>({});
   const [starredCount, setStarredCount] = useState(0);
   const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
   const [clearing, setClearing] = useState(false);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
   const [stickerKbOpen, setStickerKbOpen] = useState(false);
-  const [stickerTarget, setStickerTarget] = useState<{ msgId: string } | null>(null);
+  const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
   const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerOpen(true); };
   const openStickerForPage = (page: ViewerPage) => {
-    setStickerTarget({ msgId: page.msgId });
+    setStickerTarget({ msgId: page.msgId, mediaIndex: page.mediaIndex });
     setStickerKbOpen(true);
   };
   const setMyReaction = async (msgId: string, emoji: string, cur?: string) => {
@@ -109,29 +113,10 @@ export default function ClinicContactInfoScreen() {
     const unsub = onSnapshot(
       qy,
       (snap) => {
-        const imgs = snap.docs
-          .map((d) => ({ id: d.id, ...(d.data() as any) }))
-          .filter((m) => (m.type === 'image' && m.imageUrl) || (m.type === 'video' && m.videoUrl))
-          .map((m) => {
-            if (m.type === 'video') {
-              return {
-                id: m.id,
-                kind: 'video' as const,
-                url: (m.posterUrl as string | null) ?? '',
-                videoUrl: m.videoUrl as string,
-                width: typeof m.videoWidth === 'number' ? m.videoWidth : undefined,
-                height: typeof m.videoHeight === 'number' ? m.videoHeight : undefined,
-                createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
-                drawing: m.drawing ?? null,
-                texts: m.texts ?? null,
-                from: m.from,
-                text: m.text,
-                reactionPatient: m.reactionPatient,
-                reactionClinic: m.reactionClinic,
-                starredClinic: m.starredClinic,
-              };
-            }
-            return {
+        const items = snap.docs.flatMap((d) => {
+          const m: any = { id: d.id, ...(d.data() as any) };
+          if (m.type === 'image' && m.imageUrl) {
+            return [{
               id: m.id,
               kind: 'image' as const,
               url: m.imageUrl as string,
@@ -145,10 +130,54 @@ export default function ClinicContactInfoScreen() {
               reactionPatient: m.reactionPatient,
               reactionClinic: m.reactionClinic,
               starredClinic: m.starredClinic,
-            };
-          })
-          .reverse();
-        setMedia(imgs);
+            }];
+          }
+          if (m.type === 'video' && m.videoUrl) {
+            return [{
+              id: m.id,
+              kind: 'video' as const,
+              url: (m.posterUrl as string | null) ?? '',
+              videoUrl: m.videoUrl as string,
+              width: typeof m.videoWidth === 'number' ? m.videoWidth : undefined,
+              height: typeof m.videoHeight === 'number' ? m.videoHeight : undefined,
+              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+              drawing: m.drawing ?? null,
+              texts: m.texts ?? null,
+              from: m.from,
+              text: m.text,
+              reactionPatient: m.reactionPatient,
+              reactionClinic: m.reactionClinic,
+              starredClinic: m.starredClinic,
+            }];
+          }
+          if (m.type === 'album' && Array.isArray(m.media)) {
+            return m.media.map((it: any, i: number) => ({
+              id: m.id,
+              mediaIndex: i,
+              kind: (it.kind === 'video' ? 'video' : 'image') as 'image' | 'video',
+              url: it.kind === 'video' ? ((it.posterUrl as string | null) ?? it.url ?? '') : (it.url as string),
+              videoUrl: it.kind === 'video' ? (it.videoUrl as string) : undefined,
+              width: typeof it.width === 'number' ? it.width : undefined,
+              height: typeof it.height === 'number' ? it.height : undefined,
+              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+              drawing: null,
+              texts: null,
+              from: m.from,
+              text: m.text,
+              stickerPatient: it.stickerPatient,
+              sticker: it.sticker,
+              starredClinic: m.starredClinic,
+            }));
+          }
+          return [];
+        }).reverse();
+        setMedia(items);
+        const raws: Record<string, any[]> = {};
+        snap.docs.forEach((d) => {
+          const m: any = d.data();
+          if (m.type === 'album' && Array.isArray(m.media)) raws[d.id] = m.media;
+        });
+        setRawAlbums(raws);
         setStarredCount(snap.docs.filter((d) => (d.data() as any).starredClinic === true).length);
       },
       (e) => console.error('[contact-info] media sub error', e),
@@ -182,11 +211,30 @@ export default function ClinicContactInfoScreen() {
       width: m.width,
       height: m.height,
       msgId: m.id,
+      mediaIndex: m.mediaIndex,
       drawing: m.drawing ?? null,
       texts: m.texts ?? null,
     })),
     [gridItems],
   );
+  const findItem = (p: ViewerPage) =>
+    shownMedia.find((it) => it.id === p.msgId && (it.mediaIndex ?? null) === (p.mediaIndex ?? null));
+  const setStickerOnItem = async (msgId: string, mediaIndex: number, emoji: string) => {
+    if (!patientId) return;
+    const cur = rawAlbums[msgId];
+    if (!cur) return;
+    const newMedia = cur.map((it: any, idx: number) => {
+      if (idx !== mediaIndex) return it;
+      if (it.sticker === emoji) {
+        const { sticker, ...rest } = it;
+        return rest;
+      }
+      return { ...it, sticker: emoji };
+    });
+    try {
+      await updateDoc(doc(db, `patients/${patientId}/messages/${msgId}`), { media: newMedia });
+    } catch (e) { console.error('[contact-info] set album sticker', e); }
+  };
 
   useEffect(() => {
     if (!clinicId || !patientId) {
@@ -523,7 +571,7 @@ export default function ClinicContactInfoScreen() {
             <View style={styles.mediaGrid}>
               {gridItems.map((m, index) => (
                 <Pressable
-                  key={m.id}
+                  key={`${m.id}_${m.mediaIndex ?? 'x'}`}
                   onPress={() => openInfoViewer(index)}
                   style={({ pressed }) => [
                     styles.mediaCell,
@@ -598,31 +646,39 @@ export default function ClinicContactInfoScreen() {
         onIndexChange={setViewerIndex}
         onClose={() => setViewerOpen(false)}
         title={(p) => {
-          const m = shownMedia.find((it) => it.id === p.msgId);
+          const m = findItem(p);
           return m?.from === 'clinic' ? 'You' : (patient?.name || 'Patient');
         }}
         timeLabel={(p) => {
-          const m = shownMedia.find((it) => it.id === p.msgId);
+          const m = findItem(p);
           return formatInfoTime(m?.createdAt);
         }}
-        ownSticker={(p) => shownMedia.find((it) => it.id === p.msgId)?.reactionClinic}
-        otherSticker={(p) => shownMedia.find((it) => it.id === p.msgId)?.reactionPatient}
+        ownSticker={(p) => {
+          const m = findItem(p);
+          if (!m) return undefined;
+          return p.mediaIndex != null ? m.sticker : m.reactionClinic;
+        }}
+        otherSticker={(p) => {
+          const m = findItem(p);
+          if (!m) return undefined;
+          return p.mediaIndex != null ? m.stickerPatient : m.reactionPatient;
+        }}
         onShare={(p) => {
-          const m = shownMedia.find((it) => it.id === p.msgId);
+          const m = findItem(p);
           const shareUrl = p.videoUrl ?? p.url;
           Share.share({ message: m?.text ? `${m.text}\n${shareUrl}` : shareUrl }).catch(() => {});
         }}
-        starred={(p) => !!shownMedia.find((it) => it.id === p.msgId)?.starredClinic}
+        starred={(p) => !!findItem(p)?.starredClinic}
         onToggleStar={async (p) => {
-          const m = shownMedia.find((it) => it.id === p.msgId);
+          const m = findItem(p);
           if (!m || !patientId) return;
           await updateDoc(doc(db, `patients/${patientId}/messages/${m.id}`), {
             starredClinic: m.starredClinic ? deleteField() : true,
           });
         }}
-        canDelete={(p) => shownMedia.find((it) => it.id === p.msgId)?.from === 'clinic'}
+        canDelete={(p) => p.mediaIndex == null && findItem(p)?.from === 'clinic'}
         onDelete={(p) => {
-          const m = shownMedia.find((it) => it.id === p.msgId);
+          const m = findItem(p);
           if (!m || m.from !== 'clinic' || !patientId) return;
           Alert.alert(
             'Delete this message?',
@@ -639,7 +695,12 @@ export default function ClinicContactInfoScreen() {
         onEditSticker={openStickerForPage}
         stickerSheet={stickerKbOpen ? (() => {
           const target = stickerTarget;
-          const cur = target ? shownMedia.find((it) => it.id === target.msgId)?.reactionClinic : undefined;
+          const curItem = target
+            ? shownMedia.find((it) => it.id === target.msgId && (it.mediaIndex ?? null) === (target.mediaIndex ?? null))
+            : undefined;
+          const cur = target
+            ? (target.mediaIndex != null ? curItem?.sticker : curItem?.reactionClinic)
+            : undefined;
           return (
             <View style={StyleSheet.absoluteFill}>
               <Pressable style={StyleSheet.absoluteFill} onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }} />
@@ -647,7 +708,14 @@ export default function ClinicContactInfoScreen() {
                 <View style={styles.stickerKbHeader}>
                   {cur ? (
                     <Pressable
-                      onPress={() => { if (target) setMyReaction(target.msgId, cur, cur); setStickerKbOpen(false); setStickerTarget(null); }}
+                      onPress={() => {
+                        if (target) {
+                          if (target.mediaIndex != null) setStickerOnItem(target.msgId, target.mediaIndex, cur);
+                          else setMyReaction(target.msgId, cur, cur);
+                        }
+                        setStickerKbOpen(false);
+                        setStickerTarget(null);
+                      }}
                       style={styles.stickerKbCurrent}
                       hitSlop={8}
                     >
@@ -665,7 +733,10 @@ export default function ClinicContactInfoScreen() {
                 <EmojiKeyboard
                   onEmojiSelected={(e) => {
                     const picked = e?.emoji;
-                    if (picked && target) setMyReaction(target.msgId, picked, cur);
+                    if (picked && target) {
+                      if (target.mediaIndex != null) setStickerOnItem(target.msgId, target.mediaIndex, picked);
+                      else setMyReaction(target.msgId, picked, cur);
+                    }
                     setStickerKbOpen(false);
                     setStickerTarget(null);
                   }}
