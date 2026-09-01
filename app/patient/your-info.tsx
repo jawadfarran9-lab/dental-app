@@ -1,5 +1,4 @@
 import { patientDb } from '@/firebaseConfig';
-import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerModal';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
@@ -9,22 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
-import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Dimensions, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
+import { ActivityIndicator, Image, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { EmojiKeyboard } from 'rn-emoji-keyboard';
-
-function formatInfoTime(ts?: number): string {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  let h = d.getHours();
-  const m = d.getMinutes().toString().padStart(2, '0');
-  const ampm = h >= 12 ? 'PM' : 'AM';
-  h = h % 12; if (h === 0) h = 12;
-  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
-}
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -61,45 +48,8 @@ export default function PatientYourInfoScreen() {
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [media, setMedia] = useState<{
-    id: string;
-    mediaIndex?: number;
-    kind: 'image' | 'video';
-    url: string;
-    videoUrl?: string;
-    width?: number;
-    height?: number;
-    createdAt?: number;
-    drawing?: any;
-    texts?: any;
-    from?: 'patient' | 'clinic';
-    text?: string;
-    reactionPatient?: string;
-    reactionClinic?: string;
-    stickerPatient?: string;
-    sticker?: string;
-    starredPatient?: boolean;
-  }[]>([]);
-  const [rawAlbums, setRawAlbums] = useState<Record<string, any[]>>({});
+  const [mediaCount, setMediaCount] = useState(0);
   const [starredCount, setStarredCount] = useState(0);
-  const [viewerOpen, setViewerOpen] = useState(false);
-  const [viewerIndex, setViewerIndex] = useState(0);
-  const [stickerKbOpen, setStickerKbOpen] = useState(false);
-  const [stickerTarget, setStickerTarget] = useState<{ msgId: string; mediaIndex?: number } | null>(null);
-  const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerOpen(true); };
-  const openStickerForPage = (page: ViewerPage) => {
-    setStickerTarget({ msgId: page.msgId, mediaIndex: page.mediaIndex });
-    setStickerKbOpen(true);
-  };
-  const setMyReaction = async (msgId: string, emoji: string, cur?: string) => {
-    if (!patientId) return;
-    const isClearing = cur === emoji;
-    try {
-      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${msgId}`), {
-        reactionPatient: isClearing ? deleteField() : emoji,
-      });
-    } catch (e) { console.error('[your-info] set reaction', e); }
-  };
 
   useEffect(() => {
     if (!patientAuthReady) return;
@@ -111,74 +61,17 @@ export default function PatientYourInfoScreen() {
     const unsub = onSnapshot(
       qy,
       (snap) => {
-        const items = snap.docs.flatMap((d) => {
-          const m: any = { id: d.id, ...(d.data() as any) };
-          if (m.type === 'image' && m.imageUrl) {
-            return [{
-              id: m.id,
-              kind: 'image' as const,
-              url: m.imageUrl as string,
-              width: typeof m.imageWidth === 'number' ? m.imageWidth : undefined,
-              height: typeof m.imageHeight === 'number' ? m.imageHeight : undefined,
-              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
-              drawing: m.drawing ?? null,
-              texts: m.texts ?? null,
-              from: m.from,
-              text: m.text,
-              reactionPatient: m.reactionPatient,
-              reactionClinic: m.reactionClinic,
-              starredPatient: m.starredPatient,
-            }];
-          }
-          if (m.type === 'video' && m.videoUrl) {
-            return [{
-              id: m.id,
-              kind: 'video' as const,
-              url: (m.posterUrl as string | null) ?? '',
-              videoUrl: m.videoUrl as string,
-              width: typeof m.videoWidth === 'number' ? m.videoWidth : undefined,
-              height: typeof m.videoHeight === 'number' ? m.videoHeight : undefined,
-              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
-              drawing: m.drawing ?? null,
-              texts: m.texts ?? null,
-              from: m.from,
-              text: m.text,
-              reactionPatient: m.reactionPatient,
-              reactionClinic: m.reactionClinic,
-              starredPatient: m.starredPatient,
-            }];
-          }
-          if (m.type === 'album' && Array.isArray(m.media)) {
-            return m.media.map((it: any, i: number) => ({
-              id: m.id,
-              mediaIndex: i,
-              kind: (it.kind === 'video' ? 'video' : 'image') as 'image' | 'video',
-              url: it.kind === 'video' ? ((it.posterUrl as string | null) ?? it.url ?? '') : (it.url as string),
-              videoUrl: it.kind === 'video' ? (it.videoUrl as string) : undefined,
-              width: typeof it.width === 'number' ? it.width : undefined,
-              height: typeof it.height === 'number' ? it.height : undefined,
-              createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
-              drawing: null,
-              texts: null,
-              from: m.from,
-              text: m.text,
-              stickerPatient: it.stickerPatient,
-              sticker: it.sticker,
-              starredPatient: m.starredPatient,
-            }));
-          }
-          return [];
-        }).reverse();
-        setMedia(items);
-        const raws: Record<string, any[]> = {};
-        snap.docs.forEach((d) => {
+        let count = 0;
+        snap.forEach((d) => {
           const m: any = d.data();
-          if (m.type === 'album' && Array.isArray(m.media)) raws[d.id] = m.media;
+          if (m.type === 'image' && m.imageUrl) count += 1;
+          else if (m.type === 'video' && m.videoUrl) count += 1;
+          else if (m.type === 'album' && Array.isArray(m.media)) count += m.media.length;
         });
-        setRawAlbums(raws);
+        setMediaCount(count);
         setStarredCount(snap.docs.filter((d) => (d.data() as any).starredPatient === true).length);
       },
-      (e) => console.error('[your-info] media sub error', e),
+      (e) => console.error('[your-info] media count sub error', e),
     );
     return () => unsub();
   }, [patientId, patientAuthReady]);
@@ -241,45 +134,6 @@ export default function PatientYourInfoScreen() {
 
   const hasContact = !!(phone || email);
   const hasDetails = !!(dob || genderDisplay || address);
-
-  const MEDIA_H_PADDING = 16;
-  const MEDIA_GAP = 6;
-  const mediaCellSize =
-    (Dimensions.get('window').width - MEDIA_H_PADDING * 2 - MEDIA_GAP * 2) / 3;
-
-  const gridItems = media.slice(0, 12);
-  const pages: ViewerPage[] = useMemo(
-    () => gridItems.map((m) => ({
-      url: m.url,
-      videoUrl: m.kind === 'video' ? m.videoUrl : undefined,
-      kind: m.kind,
-      width: m.width,
-      height: m.height,
-      msgId: m.id,
-      mediaIndex: m.mediaIndex,
-      drawing: m.drawing ?? null,
-      texts: m.texts ?? null,
-    })),
-    [gridItems],
-  );
-  const findItem = (p: ViewerPage) =>
-    media.find((it) => it.id === p.msgId && (it.mediaIndex ?? null) === (p.mediaIndex ?? null));
-  const setStickerOnItem = async (msgId: string, mediaIndex: number, emoji: string) => {
-    if (!patientId) return;
-    const cur = rawAlbums[msgId];
-    if (!cur) return;
-    const newMedia = cur.map((it: any, idx: number) => {
-      if (idx !== mediaIndex) return it;
-      if (it.stickerPatient === emoji) {
-        const { stickerPatient, ...rest } = it;
-        return rest;
-      }
-      return { ...it, stickerPatient: emoji };
-    });
-    try {
-      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${msgId}`), { media: newMedia });
-    } catch (e) { console.error('[your-info] set album sticker', e); }
-  };
 
   const renderRow = (opts: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -469,176 +323,23 @@ export default function PatientYourInfoScreen() {
             })}
           </View>
 
-          <View style={styles.mediaHeaderRow}>
-            <Text style={[styles.eyebrow, styles.mediaEyebrow, { color: textSecondary }]}>
-              MEDIA
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Pressable
-                onPress={() => router.push({
-                  pathname: '/patient/media-all' as any,
-                  params: { patientId: patientId ?? '', clinicId: clinicId ?? '' },
-                })}
-                hitSlop={8}
-              >
-                <Text style={[styles.mediaCount, { color: '#3D9EFF' }]}>See all ›</Text>
-              </Pressable>
-              <Text style={[styles.mediaCount, { color: textSecondary }]}>
-                {media.length}
-              </Text>
-            </View>
+          <Text style={[styles.eyebrow, { color: textSecondary }]}>MEDIA</Text>
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            {renderRow({
+              icon: 'images-outline',
+              label: 'Media',
+              value: mediaCount > 0 ? `${mediaCount} item${mediaCount === 1 ? '' : 's'}` : 'None yet',
+              onPress: () => router.push({
+                pathname: '/patient/media-all' as any,
+                params: { patientId: patientId ?? '', clinicId: clinicId ?? '' },
+              }),
+              showChevron: true,
+              isLast: true,
+            })}
           </View>
-          {media.length === 0 ? (
-            <View
-              style={[
-                styles.mediaEmpty,
-                { backgroundColor: cardBg, borderColor: cardBorder },
-              ]}
-            >
-              <Ionicons name="images-outline" size={22} color={chevronColor} />
-              <Text style={[styles.mediaEmptyText, { color: textSecondary }]}>
-                No media shared yet
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.mediaGrid}>
-              {gridItems.map((m, index) => (
-                <Pressable
-                  key={`${m.id}_${m.mediaIndex ?? 'x'}`}
-                  onPress={() => openInfoViewer(index)}
-                  style={({ pressed }) => [
-                    styles.mediaCell,
-                    { width: mediaCellSize, height: mediaCellSize },
-                    pressed && { opacity: 0.8 },
-                  ]}
-                >
-                  <Image
-                    source={{ uri: m.url }}
-                    style={styles.mediaImage}
-                    resizeMode="cover"
-                  />
-                  {m.kind === 'video' && (
-                    <View pointerEvents="none" style={styles.mediaPlayBadge}>
-                      <Ionicons name="play" size={18} color="#FFFFFF" style={{ marginLeft: 2 }} />
-                    </View>
-                  )}
-                </Pressable>
-              ))}
-            </View>
-          )}
         </ScrollView>
       )}
 
-      <MediaViewerModal
-        visible={viewerOpen}
-        pages={pages}
-        index={viewerIndex}
-        onIndexChange={setViewerIndex}
-        onClose={() => setViewerOpen(false)}
-        title={(p) => {
-          const m = findItem(p);
-          return m?.from === 'patient' ? 'You' : 'Clinic';
-        }}
-        timeLabel={(p) => {
-          const m = findItem(p);
-          return formatInfoTime(m?.createdAt);
-        }}
-        ownSticker={(p) => {
-          const m = findItem(p);
-          if (!m) return undefined;
-          return p.mediaIndex != null ? m.stickerPatient : m.reactionPatient;
-        }}
-        otherSticker={(p) => {
-          const m = findItem(p);
-          if (!m) return undefined;
-          return p.mediaIndex != null ? m.sticker : m.reactionClinic;
-        }}
-        onShare={(p) => {
-          const m = findItem(p);
-          const shareUrl = p.videoUrl ?? p.url;
-          Share.share({ message: m?.text ? `${m.text}\n${shareUrl}` : shareUrl }).catch(() => {});
-        }}
-        starred={(p) => !!findItem(p)?.starredPatient}
-        onToggleStar={async (p) => {
-          const m = findItem(p);
-          if (!m || !patientId) return;
-          await updateDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`), {
-            starredPatient: m.starredPatient ? deleteField() : true,
-          });
-        }}
-        canDelete={(p) => p.mediaIndex == null && findItem(p)?.from === 'patient'}
-        onDelete={(p) => {
-          const m = findItem(p);
-          if (!m || m.from !== 'patient' || !patientId) return;
-          Alert.alert(
-            'Delete this message?',
-            'This permanently deletes the message for both you and the clinic. This cannot be undone.',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              { text: 'Delete', style: 'destructive', onPress: async () => {
-                try { await deleteDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`)); setViewerOpen(false); }
-                catch (e) { console.error('[your-info] delete error', e); }
-              } },
-            ],
-          );
-        }}
-        onEditSticker={openStickerForPage}
-        stickerSheet={stickerKbOpen ? (() => {
-          const target = stickerTarget;
-          const curItem = target
-            ? media.find((it) => it.id === target.msgId && (it.mediaIndex ?? null) === (target.mediaIndex ?? null))
-            : undefined;
-          const cur = target
-            ? (target.mediaIndex != null ? curItem?.stickerPatient : curItem?.reactionPatient)
-            : undefined;
-          return (
-            <View style={StyleSheet.absoluteFill}>
-              <Pressable style={StyleSheet.absoluteFill} onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }} />
-              <View style={styles.stickerKbSheet}>
-                <View style={styles.stickerKbHeader}>
-                  {cur ? (
-                    <Pressable
-                      onPress={() => {
-                        if (target) {
-                          if (target.mediaIndex != null) setStickerOnItem(target.msgId, target.mediaIndex, cur);
-                          else setMyReaction(target.msgId, cur, cur);
-                        }
-                        setStickerKbOpen(false);
-                        setStickerTarget(null);
-                      }}
-                      style={styles.stickerKbCurrent}
-                      hitSlop={8}
-                    >
-                      <Text style={{ fontSize: 22 }}>{cur}</Text>
-                    </Pressable>
-                  ) : (<View />)}
-                  <Pressable
-                    onPress={() => { setStickerKbOpen(false); setStickerTarget(null); }}
-                    style={styles.stickerKbClose}
-                    hitSlop={8}
-                  >
-                    <Ionicons name="close" size={20} color="#111111" />
-                  </Pressable>
-                </View>
-                <EmojiKeyboard
-                  onEmojiSelected={(e) => {
-                    const picked = e?.emoji;
-                    if (picked && target) {
-                      if (target.mediaIndex != null) setStickerOnItem(target.msgId, target.mediaIndex, picked);
-                      else setMyReaction(target.msgId, picked, cur);
-                    }
-                    setStickerKbOpen(false);
-                    setStickerTarget(null);
-                  }}
-                  enableSearchBar
-                  enableRecentlyUsed
-                  defaultHeight={380}
-                />
-              </View>
-            </View>
-          );
-        })() : null}
-      />
     </View>
   );
 }
@@ -772,52 +473,4 @@ const styles = StyleSheet.create({
     marginLeft: 62,
   },
 
-  mediaHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 14,
-    marginBottom: 6,
-    paddingHorizontal: 4,
-  },
-  mediaEyebrow: {
-    marginTop: 0,
-    marginBottom: 0,
-    paddingHorizontal: 0,
-  },
-  mediaCount: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  mediaEmpty: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  mediaEmptyText: {
-    fontSize: 13.5,
-    fontWeight: '600',
-  },
-  mediaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  mediaCell: {
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  mediaImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mediaPlayBadge: { position: 'absolute', top: '50%', left: '50%', width: 32, height: 32, borderRadius: 16, marginTop: -16, marginLeft: -16, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-  stickerKbSheet: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 420, backgroundColor: '#FFFFFF', overflow: 'hidden' },
-  stickerKbHeader: { height: 40, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12 },
-  stickerKbClose: { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
-  stickerKbCurrent: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 6, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
 });
