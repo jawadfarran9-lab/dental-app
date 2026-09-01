@@ -319,6 +319,8 @@ export default function PatientYourInfoScreen() {
               icon: 'star',
               label: 'Starred messages',
               value: starredCount > 0 ? `${starredCount} message${starredCount === 1 ? '' : 's'}` : 'None yet',
+              onPress: () => router.push({ pathname: '/patient/starred' as any, params: { patientId: patientId ?? '', clinicId: clinicId ?? '' } }),
+              showChevron: true,
               isLast: true,
             })}
           </View>
