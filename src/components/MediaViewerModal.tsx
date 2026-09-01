@@ -48,6 +48,7 @@ export type MediaViewerModalProps = {
   starred?: (p: ViewerPage) => boolean;
   onToggleStar?: (p: ViewerPage) => void;
   onDelete?: (p: ViewerPage) => void;
+  canDelete?: (p: ViewerPage) => boolean;
   stickerSheet?: React.ReactNode;
 };
 
@@ -67,6 +68,7 @@ export default function MediaViewerModal(props: MediaViewerModalProps) {
     starred,
     onToggleStar,
     onDelete,
+    canDelete,
     stickerSheet,
   } = props;
 
@@ -250,7 +252,7 @@ export default function MediaViewerModal(props: MediaViewerModalProps) {
                       <Text style={styles.viewerBarLabel}>Star</Text>
                     </Pressable>
                   )}
-                  {onDelete && current && (
+                  {onDelete && current && (!canDelete || canDelete(current)) && (
                     <Pressable onPress={() => onDelete(current)} hitSlop={8} style={styles.viewerBarBtn}>
                       <View style={[styles.viewerBarIcon, styles.viewerBarIconDanger]}>
                         <Ionicons name="trash-outline" size={24} color="#FF8A80" />

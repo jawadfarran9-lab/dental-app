@@ -2185,6 +2185,7 @@ export default function ClinicConversationScreen() {
           const m = messages.find((x) => x.id === p.msgId);
           if (m && m.from === 'patient') handleRemoveMessage(m);
         }}
+        canDelete={(p) => messages.find((x) => x.id === p.msgId)?.from === 'patient'}
         stickerSheet={stickerKbOpen ? (() => {
           const tmsg = stickerTarget ? messages.find((m) => m.id === stickerTarget.msgId) : null;
           const curSticker = tmsg

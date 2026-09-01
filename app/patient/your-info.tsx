@@ -1,7 +1,6 @@
 import { patientDb } from '@/firebaseConfig';
-import { DismissViewerPage } from '@/src/components/DismissViewerPage';
+import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerModal';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
-import { ZoomableImage } from '@/src/components/ZoomableImage';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
@@ -10,12 +9,21 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Image, Linking, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, orderBy, query, updateDoc } from 'firebase/firestore';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Dimensions, Image, Linking, Pressable, ScrollView, Share, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+function formatInfoTime(ts?: number): string {
+  if (!ts) return '';
+  const d = new Date(ts);
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let h = d.getHours();
+  const m = d.getMinutes().toString().padStart(2, '0');
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12; if (h === 0) h = 12;
+  return `${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${h}:${m} ${ampm}`;
+}
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
   ['#4D9DFF', '#1E6BE6'],
@@ -52,13 +60,24 @@ export default function PatientYourInfoScreen() {
   const [patient, setPatient] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
-  const [media, setMedia] = useState<{ id: string; imageUrl: string; width?: number; height?: number; createdAt?: number }[]>([]);
+  const [media, setMedia] = useState<{
+    id: string;
+    imageUrl: string;
+    width?: number;
+    height?: number;
+    createdAt?: number;
+    drawing?: any;
+    texts?: any;
+    from?: 'patient' | 'clinic';
+    text?: string;
+    reactionPatient?: string;
+    reactionClinic?: string;
+    starredPatient?: boolean;
+  }[]>([]);
   const [starredCount, setStarredCount] = useState(0);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [viewerIndex, setViewerIndex] = useState(0);
-  const [viewerZoomed, setViewerZoomed] = useState(false);
-  const closeInfoViewer = () => { setViewerOpen(false); setViewerZoomed(false); };
-  const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerZoomed(false); setViewerOpen(true); };
+  const openInfoViewer = (index: number) => { setViewerIndex(index); setViewerOpen(true); };
 
   useEffect(() => {
     if (!patientAuthReady) return;
@@ -79,6 +98,13 @@ export default function PatientYourInfoScreen() {
             width: typeof m.imageWidth === 'number' ? m.imageWidth : undefined,
             height: typeof m.imageHeight === 'number' ? m.imageHeight : undefined,
             createdAt: typeof m.createdAt === 'number' ? m.createdAt : undefined,
+            drawing: m.drawing ?? null,
+            texts: m.texts ?? null,
+            from: m.from,
+            text: m.text,
+            reactionPatient: m.reactionPatient,
+            reactionClinic: m.reactionClinic,
+            starredPatient: m.starredPatient,
           }))
           .reverse();
         setMedia(imgs);
@@ -152,6 +178,19 @@ export default function PatientYourInfoScreen() {
   const MEDIA_GAP = 6;
   const mediaCellSize =
     (Dimensions.get('window').width - MEDIA_H_PADDING * 2 - MEDIA_GAP * 2) / 3;
+
+  const gridItems = media.slice(0, 12);
+  const pages: ViewerPage[] = useMemo(
+    () => gridItems.map((m) => ({
+      url: m.imageUrl,
+      width: m.width,
+      height: m.height,
+      msgId: m.id,
+      drawing: m.drawing ?? null,
+      texts: m.texts ?? null,
+    })),
+    [gridItems],
+  );
 
   const renderRow = (opts: {
     icon: React.ComponentProps<typeof Ionicons>['name'];
@@ -363,7 +402,7 @@ export default function PatientYourInfoScreen() {
             </View>
           ) : (
             <View style={styles.mediaGrid}>
-              {media.slice(0, 12).map((m, index) => (
+              {gridItems.map((m, index) => (
                 <Pressable
                   key={m.id}
                   onPress={() => openInfoViewer(index)}
@@ -385,47 +424,51 @@ export default function PatientYourInfoScreen() {
         </ScrollView>
       )}
 
-      <Modal
+      <MediaViewerModal
         visible={viewerOpen}
-        transparent={false}
-        animationType="fade"
-        onRequestClose={closeInfoViewer}
-        statusBarTranslucent
-      >
-        <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <FlatList
-            data={media.slice(0, 12)}
-            horizontal
-            pagingEnabled
-            initialScrollIndex={viewerIndex}
-            getItemLayout={(_, i) => ({ length: SCREEN_W, offset: SCREEN_W * i, index: i })}
-            keyExtractor={(it) => it.id}
-            showsHorizontalScrollIndicator={false}
-            scrollEnabled={!viewerZoomed}
-            renderItem={({ item }) => (
-              <View style={{ width: SCREEN_W, height: SCREEN_H }}>
-                <DismissViewerPage onDismiss={closeInfoViewer} disabled={viewerZoomed}>
-                  <ZoomableImage
-                    uri={item.imageUrl}
-                    width={SCREEN_W}
-                    height={SCREEN_H}
-                    imgW={item.width}
-                    imgH={item.height}
-                    onZoomChange={setViewerZoomed}
-                  />
-                </DismissViewerPage>
-              </View>
-            )}
-          />
-          <Pressable
-            onPress={closeInfoViewer}
-            style={{ position: 'absolute', top: insets.top + 8, left: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.4)', alignItems: 'center', justifyContent: 'center' }}
-            hitSlop={8}
-          >
-            <Ionicons name="close" size={24} color="#fff" />
-          </Pressable>
-        </View>
-      </Modal>
+        pages={pages}
+        index={viewerIndex}
+        onIndexChange={setViewerIndex}
+        onClose={() => setViewerOpen(false)}
+        title={(p) => {
+          const m = media.find((it) => it.id === p.msgId);
+          return m?.from === 'patient' ? 'You' : 'Clinic';
+        }}
+        timeLabel={(p) => {
+          const m = media.find((it) => it.id === p.msgId);
+          return formatInfoTime(m?.createdAt);
+        }}
+        ownSticker={(p) => media.find((it) => it.id === p.msgId)?.reactionPatient}
+        otherSticker={(p) => media.find((it) => it.id === p.msgId)?.reactionClinic}
+        onShare={(p) => {
+          const m = media.find((it) => it.id === p.msgId);
+          Share.share({ message: m?.text ? `${m.text}\n${p.url}` : p.url }).catch(() => {});
+        }}
+        starred={(p) => !!media.find((it) => it.id === p.msgId)?.starredPatient}
+        onToggleStar={async (p) => {
+          const m = media.find((it) => it.id === p.msgId);
+          if (!m || !patientId) return;
+          await updateDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`), {
+            starredPatient: m.starredPatient ? deleteField() : true,
+          });
+        }}
+        canDelete={(p) => media.find((it) => it.id === p.msgId)?.from === 'patient'}
+        onDelete={(p) => {
+          const m = media.find((it) => it.id === p.msgId);
+          if (!m || m.from !== 'patient' || !patientId) return;
+          Alert.alert(
+            'Delete this message?',
+            'This permanently deletes the message for both you and the clinic. This cannot be undone.',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Delete', style: 'destructive', onPress: async () => {
+                try { await deleteDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`)); setViewerOpen(false); }
+                catch (e) { console.error('[your-info] delete error', e); }
+              } },
+            ],
+          );
+        }}
+      />
     </View>
   );
 }
