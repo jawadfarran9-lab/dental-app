@@ -55,6 +55,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/messages" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/conversation" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/contact-info" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/media-all" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/starred" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="clinic/media-preview" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
@@ -89,6 +90,7 @@ function RootNavigator() {
       <Stack.Screen name="patient/[patientId]" options={{ title: 'Your Treatment', headerShown: false }} />
       <Stack.Screen name="patient/conversation" options={{ headerShown: false }} />
       <Stack.Screen name="patient/your-info" options={{ headerShown: false }} />
+      <Stack.Screen name="patient/media-all" options={{ headerShown: false }} />
       <Stack.Screen name="patient/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="patient/media-preview" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="patient/device-permissions" options={{ headerShown: false }} />

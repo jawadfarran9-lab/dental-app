@@ -551,9 +551,20 @@ export default function ClinicContactInfoScreen() {
             <Text style={[styles.eyebrow, styles.mediaEyebrow, { color: textSecondary }]}>
               MEDIA
             </Text>
-            <Text style={[styles.mediaCount, { color: textSecondary }]}>
-              {shownMedia.length}
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Pressable
+                onPress={() => router.push({
+                  pathname: '/clinic/media-all' as any,
+                  params: { patientId: patientId ?? '', name: name ?? '' },
+                })}
+                hitSlop={8}
+              >
+                <Text style={[styles.mediaCount, { color: '#3D9EFF' }]}>See all ›</Text>
+              </Pressable>
+              <Text style={[styles.mediaCount, { color: textSecondary }]}>
+                {shownMedia.length}
+              </Text>
+            </View>
           </View>
           {shownMedia.length === 0 ? (
             <View
