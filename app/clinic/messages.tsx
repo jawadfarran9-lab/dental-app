@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Animated,
+    Image,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -73,6 +74,13 @@ function compactPreviewLabel(m: any): string {
     return hasVideo ? `📷 ${n} media` : `📷 ${n} photos`;
   }
   return m?.text ?? '';
+}
+
+function formatAudioDuration(ms?: number | null): string {
+  const s = Math.max(0, Math.round((ms ?? 0) / 1000));
+  const mm = Math.floor(s / 60);
+  const ss = String(s % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
 }
 
 type ThreadRow = {
@@ -656,14 +664,101 @@ export default function ClinicMessagesScreen() {
                   </Text>
                 </View>
                 <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
-                <View style={styles.miniPreview}>
+                <ScrollView
+                  style={styles.miniPreview}
+                  contentContainerStyle={styles.miniPreviewContent}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
                   {menuMessagesLoading ? (
                     <View style={styles.miniLoading}><ActivityIndicator color={textSecondary} /></View>
                   ) : (menuMessages && menuMessages.length > 0) ? (
                     menuMessages.map((m) => {
                       const isClinic = m.from === 'clinic';
-                      return (
-                        <View key={m.id} style={[styles.miniRow, { justifyContent: isClinic ? 'flex-end' : 'flex-start' }]}>
+                      let content: any;
+                      if (m.type === 'album' && Array.isArray(m.media) && m.media.length > 0) {
+                        const first = m.media[0];
+                        const isVid = first?.kind === 'video';
+                        const uri = isVid ? (first?.posterUrl ?? first?.url) : first?.url;
+                        const hasUri = typeof uri === 'string' && uri.length > 0;
+                        const extra = m.media.length - 1;
+                        content = (
+                          <View style={styles.miniMediaTile}>
+                            {hasUri ? (
+                              <Image source={{ uri: uri as string }} style={styles.miniMediaImage} resizeMode="cover" />
+                            ) : (
+                              <View style={styles.miniMediaPlaceholder}>
+                                <Ionicons name="videocam" size={26} color="#fff" />
+                              </View>
+                            )}
+                            {isVid ? (
+                              <View style={styles.miniPlayBadgeSm} pointerEvents="none">
+                                <Ionicons name="play" size={14} color="#fff" />
+                              </View>
+                            ) : null}
+                            {extra > 0 ? (
+                              <View style={styles.miniMoreChip} pointerEvents="none">
+                                <Text style={styles.miniMoreChipText}>{`+${extra}`}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        );
+                      } else if (m.type === 'video') {
+                        content = (
+                          <View style={styles.miniMediaTile}>
+                            {m.posterUrl ? (
+                              <Image source={{ uri: m.posterUrl }} style={styles.miniMediaImage} resizeMode="cover" />
+                            ) : (
+                              <View style={styles.miniMediaPlaceholder}>
+                                <Ionicons name="videocam" size={26} color="#fff" />
+                              </View>
+                            )}
+                            <View style={styles.miniPlayBadgeLg} pointerEvents="none">
+                              <Ionicons name="play" size={16} color="#fff" />
+                            </View>
+                          </View>
+                        );
+                      } else if (m.type === 'image' && m.imageUrl) {
+                        content = (
+                          <View style={styles.miniMediaTile}>
+                            <Image source={{ uri: m.imageUrl }} style={styles.miniMediaImage} resizeMode="cover" />
+                          </View>
+                        );
+                      } else if (m.type === 'audio' && m.audioUrl) {
+                        const fg = isClinic ? '#FFFFFF' : textPrimary;
+                        const barColor = isClinic ? 'rgba(255,255,255,0.65)' : textSecondary;
+                        content = (
+                          <View style={[
+                            styles.miniAudioPill,
+                            isClinic
+                              ? styles.miniBubbleSent
+                              : [styles.miniBubbleRecv, { backgroundColor: recvMiniBg, borderColor: recvMiniBorder }],
+                          ]}>
+                            <View style={[styles.miniAudioPlay, { borderColor: fg }]}>
+                              <Ionicons name="play" size={14} color={fg} />
+                            </View>
+                            <View style={styles.miniAudioWave}>
+                              {(Array.isArray(m.waveform) && m.waveform.length > 0
+                                ? (() => {
+                                    const src = m.waveform as number[];
+                                    const N = 14;
+                                    const step = Math.max(1, Math.floor(src.length / N));
+                                    const bars: number[] = [];
+                                    for (let i = 0; i < src.length && bars.length < N; i += step) bars.push(src[i]);
+                                    const max = Math.max(1, ...bars);
+                                    return bars.map((v, i) => (
+                                      <View key={i} style={[styles.miniAudioBar, { height: Math.max(3, Math.round((v / max) * 14)), backgroundColor: barColor }]} />
+                                    ));
+                                  })()
+                                : Array.from({ length: 14 }).map((_, i) => (
+                                    <View key={i} style={[styles.miniAudioBar, { height: 4, backgroundColor: barColor }]} />
+                                  )))}
+                            </View>
+                            <Text style={[styles.miniAudioTime, { color: fg }]}>{formatAudioDuration(m.durationMs)}</Text>
+                          </View>
+                        );
+                      } else {
+                        content = (
                           <View style={[
                             styles.miniBubbleBase,
                             isClinic
@@ -674,13 +769,18 @@ export default function ClinicMessagesScreen() {
                               {compactPreviewLabel(m)}
                             </Text>
                           </View>
+                        );
+                      }
+                      return (
+                        <View key={m.id} style={[styles.miniRow, { justifyContent: isClinic ? 'flex-end' : 'flex-start' }]}>
+                          {content}
                         </View>
                       );
                     })
                   ) : (
                     <View style={styles.miniEmpty}><Text style={[styles.miniEmptyText, { color: textMuted }]}>No messages yet</Text></View>
                   )}
-                </View>
+                </ScrollView>
                 <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
                 <Pressable
                   onPress={closeMenu}
@@ -1039,7 +1139,8 @@ const styles = StyleSheet.create({
   menuDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 12, marginBottom: 4 },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 14 },
   menuRowText: { fontSize: 15.5, fontWeight: '600' },
-  miniPreview: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10, gap: 6, maxHeight: 190 },
+  miniPreview: { maxHeight: 320 },
+  miniPreviewContent: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10, gap: 6 },
   miniLoading: { height: 90, alignItems: 'center', justifyContent: 'center' },
   miniEmpty: { height: 64, alignItems: 'center', justifyContent: 'center' },
   miniEmptyText: { fontSize: 13, fontWeight: '500' },
@@ -1048,4 +1149,16 @@ const styles = StyleSheet.create({
   miniBubbleSent: { backgroundColor: '#1E6FD9' },
   miniBubbleRecv: { borderWidth: 1 },
   miniBubbleText: { fontSize: 13.5, lineHeight: 18, fontWeight: '500' },
+  miniMediaTile: { width: 130, height: 130, borderRadius: 12, overflow: 'hidden', backgroundColor: '#111', position: 'relative' },
+  miniMediaImage: { width: '100%', height: '100%' },
+  miniMediaPlaceholder: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: '#111' },
+  miniPlayBadgeLg: { position: 'absolute', top: '50%', left: '50%', width: 28, height: 28, marginTop: -14, marginLeft: -14, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  miniPlayBadgeSm: { position: 'absolute', top: '50%', left: '50%', width: 24, height: 24, marginTop: -12, marginLeft: -12, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
+  miniMoreChip: { position: 'absolute', right: 6, bottom: 6, paddingHorizontal: 6, paddingVertical: 3, borderRadius: 8, backgroundColor: 'rgba(0,0,0,0.55)' },
+  miniMoreChipText: { color: '#FFFFFF', fontSize: 12, fontWeight: '700' },
+  miniAudioPill: { width: 180, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 },
+  miniAudioPlay: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  miniAudioWave: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2, height: 18 },
+  miniAudioBar: { width: 2, borderRadius: 1 },
+  miniAudioTime: { fontSize: 11, fontWeight: '600' },
 });
