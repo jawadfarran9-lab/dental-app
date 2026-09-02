@@ -16,7 +16,7 @@ const GAP = 1.5;
 // Shared across all VoiceBubble instances: only one plays at a time.
 let activePause: (() => void) | null = null;
 
-export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, timeLabel }: { audioUrl: string; durationMs: number; waveform?: number[]; sent: boolean; timeLabel?: string }) {
+export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, timeLabel, onLongPress }: { audioUrl: string; durationMs: number; waveform?: number[]; sent: boolean; timeLabel?: string; onLongPress?: () => void }) {
   const soundRef = useRef<Audio.Sound | null>(null);
   const seekingRef = useRef(false);
   const wasPlayingRef = useRef(false);
@@ -129,12 +129,12 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
   const knobLeft = Math.max(0, Math.min(barsW - 12, frac * barsW - 6));
 
   return (
-    <View style={{ width: 236 }}>
+    <Pressable onLongPress={onLongPress} delayLongPress={350} style={{ width: 236 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <Pressable onPress={cycleRate} hitSlop={6} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 11, backgroundColor: pillBg, marginRight: 8 }}>
+        <Pressable onPress={cycleRate} onLongPress={onLongPress} delayLongPress={350} hitSlop={6} style={{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 11, backgroundColor: pillBg, marginRight: 8 }}>
           <Text style={{ fontSize: 11, fontWeight: '800', color: fg }}>{RATE_LABEL[rate] ?? '1×'}</Text>
         </Pressable>
-        <Pressable onPress={toggle} hitSlop={8} style={{ marginRight: 10 }}>
+        <Pressable onPress={toggle} onLongPress={onLongPress} delayLongPress={350} hitSlop={8} style={{ marginRight: 10 }}>
           <Ionicons name={playing ? 'pause' : 'play'} size={26} color={fg} />
         </Pressable>
         <View
@@ -167,6 +167,6 @@ export default function VoiceBubble({ audioUrl, durationMs, waveform, sent, time
         <Text style={{ fontSize: 11.5, fontWeight: '600', color: labelColor, fontVariant: ['tabular-nums'] }}>{label}</Text>
         {timeLabel ? <Text style={{ fontSize: 10.5, fontWeight: '600', color: timeColor, fontVariant: ['tabular-nums'] }}>{timeLabel}</Text> : null}
       </View>
-    </View>
+    </Pressable>
   );
 }

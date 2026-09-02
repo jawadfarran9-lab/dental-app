@@ -1303,7 +1303,7 @@ export default function ClinicConversationScreen() {
         return (
           <View style={{ position: 'relative' }}>
             <LinearGradient colors={['#4DA3FF', '#1E6FD9']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[styles.bubble, styles.bubbleSent]}>
-              <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent />
+              <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent onLongPress={onLongPress} />
             </LinearGradient>
             {reactionBadge}
             {starBadge}
@@ -1313,7 +1313,7 @@ export default function ClinicConversationScreen() {
       return (
         <View style={{ position: 'relative' }}>
           <View style={[styles.bubble, styles.bubbleRecv, { backgroundColor: recvBubbleBg, borderColor: recvBubbleBorder }]}>
-            <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent={false} />
+            <VoiceBubble audioUrl={item.audioUrl} durationMs={item.durationMs ?? 0} waveform={item.waveform} timeLabel={time} sent={false} onLongPress={onLongPress} />
           </View>
           {reactionBadge}
           {starBadge}
