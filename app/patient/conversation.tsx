@@ -335,6 +335,7 @@ export default function ClinicConversationScreen() {
   const [showScrollDown, setShowScrollDown] = useState(false);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
+  const focusShake = useRef(new Animated.Value(0)).current;
 
   const baseMessages = useMemo(
     () => messages.filter((m) => (m.createdAt ?? 0) > (clearedForPatientAt ?? 0)),
@@ -389,6 +390,21 @@ export default function ClinicConversationScreen() {
     const inRaw = messages.findIndex((m) => m.id === pendingFocusId) >= 0;
     if (inRaw) { setPendingFocusId(null); return; }
   }, [pendingFocusId, displayedMessages, messages]);
+
+  useEffect(() => {
+    if (!highlightedId) return;
+    focusShake.setValue(0);
+    const t = setTimeout(() => {
+      Animated.sequence([
+        Animated.timing(focusShake, { toValue: 1, duration: 60, useNativeDriver: true }),
+        Animated.timing(focusShake, { toValue: -1, duration: 60, useNativeDriver: true }),
+        Animated.timing(focusShake, { toValue: 0.6, duration: 55, useNativeDriver: true }),
+        Animated.timing(focusShake, { toValue: -0.6, duration: 55, useNativeDriver: true }),
+        Animated.timing(focusShake, { toValue: 0, duration: 55, useNativeDriver: true }),
+      ]).start();
+    }, 220);
+    return () => clearTimeout(t);
+  }, [highlightedId]);
 
   const goOlderMatch = () => {
     if (searchMatches.length === 0) return;
@@ -1341,6 +1357,8 @@ export default function ClinicConversationScreen() {
     );
   };
 
+  const focusTranslateX = focusShake.interpolate({ inputRange: [-1, 0, 1], outputRange: [-6, 0, 6] });
+
   const renderItem = ({ item, index }: { item: Message; index: number }) => {
     const sent = item.from === 'patient';
     const time = formatBubbleTime(item.createdAt);
@@ -1358,11 +1376,11 @@ export default function ClinicConversationScreen() {
     return (
       <>
         {daySeparator}
-        <View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow, item.id === highlightedId && styles.focusHighlightRow]}>
+        <Animated.View style={[styles.bubbleRow, align, hasReaction && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow, item.id === highlightedId && styles.focusHighlightRow, item.id === highlightedId && { transform: [{ translateX: focusTranslateX }] }]}>
           <MessageBubble item={item} onOpen={openActionMenu}>
             <BubbleBody item={item} sent={sent} time={time} />
           </MessageBubble>
-        </View>
+        </Animated.View>
       </>
     );
   };
