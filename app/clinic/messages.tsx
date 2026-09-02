@@ -7,7 +7,7 @@ import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
+import { collection, deleteField, doc, getDocs, limit, orderBy, query, setDoc, where } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -183,6 +183,23 @@ export default function ClinicMessagesScreen() {
     setMenuOpen(false);
     setMenuMessages(null);
     setMenuMessagesLoading(false);
+  };
+
+  const toggleFavorite = async (t: ThreadRow) => {
+    const next = !t.favoriteClinic;
+    setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, favoriteClinic: next } : row)));
+    setMenuThread((cur) => (cur && cur.id === t.id ? { ...cur, favoriteClinic: next } : cur));
+    try {
+      await setDoc(
+        doc(db, 'threads', t.id),
+        { favoriteClinic: next ? true : deleteField() },
+        { merge: true },
+      );
+    } catch (e) {
+      console.error('[messages] toggleFavorite', e);
+      setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, favoriteClinic: !next } : row)));
+      setMenuThread((cur) => (cur && cur.id === t.id ? { ...cur, favoriteClinic: !next } : cur));
+    }
   };
 
   useEffect(() => {
@@ -790,11 +807,17 @@ export default function ClinicMessagesScreen() {
                   <Text style={[styles.menuRowText, { color: textPrimary }]}>Archive</Text>
                 </Pressable>
                 <Pressable
-                  onPress={closeMenu}
+                  onPress={() => menuThread && toggleFavorite(menuThread)}
                   style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
                 >
-                  <Ionicons name="heart-outline" size={22} color={textPrimary} />
-                  <Text style={[styles.menuRowText, { color: textPrimary }]}>Add to Favourites</Text>
+                  <Ionicons
+                    name={menuThread?.favoriteClinic ? 'heart' : 'heart-outline'}
+                    size={22}
+                    color={menuThread?.favoriteClinic ? '#EF4444' : textPrimary}
+                  />
+                  <Text style={[styles.menuRowText, { color: textPrimary }]}>
+                    {menuThread?.favoriteClinic ? 'Remove from Favourites' : 'Add to Favourites'}
+                  </Text>
                 </Pressable>
                 <View style={[styles.menuRow, { opacity: 0.4 }]}>
                   <Ionicons name="close-circle-outline" size={22} color={textPrimary} />
