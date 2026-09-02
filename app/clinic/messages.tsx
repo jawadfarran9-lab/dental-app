@@ -70,6 +70,7 @@ type ThreadRow = {
   lastAt: any;
   unread: number;
   messageCount: number;
+  favoriteClinic?: boolean;
 };
 
 export default function ClinicMessagesScreen() {
@@ -83,6 +84,7 @@ export default function ClinicMessagesScreen() {
   const SHEET_HEIGHT = Math.round(windowHeight * 0.75);
 
   const [tab, setTab] = useState<'patients' | 'people'>('patients');
+  const [chip, setChip] = useState<'all' | 'unread' | 'favourites'>('all');
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -116,6 +118,7 @@ export default function ClinicMessagesScreen() {
           lastAt: data.lastMessageAt,
           unread: data.unreadForClinic ?? 0,
           messageCount: data.messageCount ?? 0,
+          favoriteClinic: (data.favoriteClinic === true),
         };
       });
       setThreads(list);
@@ -192,6 +195,50 @@ export default function ClinicMessagesScreen() {
   const filteredPatients = search.trim()
     ? allPatients.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
     : allPatients;
+
+  const patientThreads = threads;
+  const unreadCount = patientThreads.filter((t) => (t.unread ?? 0) > 0).length;
+  const favCount = patientThreads.filter((t) => t.favoriteClinic === true).length;
+  const filteredThreads =
+    chip === 'unread' ? patientThreads.filter((t) => (t.unread ?? 0) > 0)
+    : chip === 'favourites' ? patientThreads.filter((t) => t.favoriteClinic === true)
+    : patientThreads;
+
+  const renderChip = (key: 'all' | 'unread' | 'favourites', label: string, count?: number) => {
+    const active = chip === key;
+    const inner = (
+      <View style={styles.chipInner}>
+        <Text style={[styles.chipText, { color: active ? '#FFFFFF' : segInactiveText }]}>
+          {label}
+        </Text>
+        {typeof count === 'number' && count > 0 ? (
+          <View style={[styles.chipCount, { backgroundColor: active ? 'rgba(255,255,255,0.22)' : segCountBg }]}>
+            <Text style={[styles.chipCountText, { color: active ? '#FFFFFF' : segInactiveText }]}>
+              {localizeNumber(String(count))}
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+    return (
+      <Pressable key={key} onPress={() => setChip(key)} style={styles.chip}>
+        {active ? (
+          <LinearGradient
+            colors={['#4DA3FF', '#1E6FD9']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.chipPill}
+          >
+            {inner}
+          </LinearGradient>
+        ) : (
+          <View style={[styles.chipPill, { backgroundColor: segBg, borderColor: segBorder, borderWidth: 1 }]}>
+            {inner}
+          </View>
+        )}
+      </Pressable>
+    );
+  };
 
   const renderTab = (key: 'patients' | 'people', label: string, count: number) => {
     const active = tab === key;
@@ -290,6 +337,15 @@ export default function ClinicMessagesScreen() {
           </View>
         </View>
 
+        {/* Filter chips (Patients only) */}
+        {tab === 'patients' ? (
+          <View style={styles.chipRow}>
+            {renderChip('all', 'All')}
+            {renderChip('unread', 'Unread', unreadCount)}
+            {renderChip('favourites', 'Favourites', favCount)}
+          </View>
+        ) : null}
+
         {/* Body */}
         {tab === 'patients' ? (
           loading ? (
@@ -318,6 +374,12 @@ export default function ClinicMessagesScreen() {
                 </Text>
               </View>
             </View>
+          ) : filteredThreads.length === 0 ? (
+            <View style={styles.filteredEmpty}>
+              <Text style={[styles.filteredEmptyText, { color: textSecondary }]}>
+                {chip === 'unread' ? 'No unread chats' : 'No favourites yet'}
+              </Text>
+            </View>
           ) : (
             <ScrollView
               style={styles.scroll}
@@ -327,7 +389,7 @@ export default function ClinicMessagesScreen() {
               ]}
               showsVerticalScrollIndicator={false}
             >
-              {threads.map((t) => {
+              {filteredThreads.map((t) => {
                 const palette =
                   AVATAR_PALETTE[hashName(t.name || '?') % AVATAR_PALETTE.length];
                 const timeLabel = formatLastAt(t.lastAt);
@@ -764,5 +826,53 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 24,
     fontSize: 14,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 2,
+  },
+  chip: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  chipPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  chipText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  chipCount: {
+    minWidth: 20,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  chipCountText: {
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  filteredEmpty: {
+    alignItems: 'center',
+    marginTop: 40,
+    paddingHorizontal: 24,
+  },
+  filteredEmptyText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
