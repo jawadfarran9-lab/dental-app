@@ -7,7 +7,7 @@ import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
-import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, orderBy, query, where } from 'firebase/firestore';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
@@ -63,6 +63,18 @@ function formatLastAt(ts: any): string {
   return date.toLocaleDateString();
 }
 
+function compactPreviewLabel(m: any): string {
+  if (m?.type === 'image') return 'Photo';
+  if (m?.type === 'video') return '🎬 Video';
+  if (m?.type === 'audio') return '🎤 Voice message';
+  if (m?.type === 'album') {
+    const n = Array.isArray(m.media) ? m.media.length : 0;
+    const hasVideo = Array.isArray(m.media) && m.media.some((it: any) => it?.kind === 'video');
+    return hasVideo ? `📷 ${n} media` : `📷 ${n} photos`;
+  }
+  return m?.text ?? '';
+}
+
 type ThreadRow = {
   id: string;
   patientId: string;
@@ -88,6 +100,8 @@ export default function ClinicMessagesScreen() {
   const [chip, setChip] = useState<'all' | 'unread' | 'favourites'>('all');
   const [menuThread, setMenuThread] = useState<ThreadRow | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuMessages, setMenuMessages] = useState<any[] | null>(null);
+  const [menuMessagesLoading, setMenuMessagesLoading] = useState(false);
   const menuScale = useRef(new Animated.Value(0.9)).current;
   const menuFade = useRef(new Animated.Value(0)).current;
   const [threads, setThreads] = useState<ThreadRow[]>([]);
@@ -142,9 +156,26 @@ export default function ClinicMessagesScreen() {
 
   const openThreadMenu = (t: ThreadRow) => {
     setMenuThread(t);
+    setMenuMessages(null);
+    setMenuMessagesLoading(true);
     setMenuOpen(true);
+    getDocs(query(
+      collection(db, `patients/${t.patientId}/messages`),
+      orderBy('createdAt', 'desc'),
+      limit(6),
+    ))
+      .then((snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })).reverse();
+        setMenuMessages(list);
+      })
+      .catch((e) => { console.error('[messages] mini preview', e); setMenuMessages([]); })
+      .finally(() => setMenuMessagesLoading(false));
   };
-  const closeMenu = () => setMenuOpen(false);
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setMenuMessages(null);
+    setMenuMessagesLoading(false);
+  };
 
   useEffect(() => {
     if (menuOpen) {
@@ -197,6 +228,8 @@ export default function ClinicMessagesScreen() {
   const cardBg = isDark ? 'rgba(255,255,255,0.015)' : 'rgba(255,255,255,0.18)';
   const cardBorder = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.45)';
   const rowPressedBg = isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.32)';
+  const recvMiniBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
+  const recvMiniBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.08)';
 
   const backBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)';
   const backBgPressed = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(27, 37, 66, 0.1)';
@@ -615,17 +648,38 @@ export default function ClinicMessagesScreen() {
                   >
                     <Text style={styles.avatarInitials}>{initialsOf(menuThread.name)}</Text>
                   </LinearGradient>
-                  <View style={{ flex: 1, minWidth: 0 }}>
-                    <Text style={[styles.rowName, { color: textPrimary }]} numberOfLines={1}>
-                      {menuThread.name}
-                    </Text>
-                    <Text style={[styles.rowPreview, { color: textSecondary }]} numberOfLines={1}>
-                      {menuThread.lastMessage || ' '}
-                    </Text>
-                  </View>
+                  <Text style={[styles.rowName, { color: textPrimary, flex: 1, minWidth: 0 }]} numberOfLines={1}>
+                    {menuThread.name}
+                  </Text>
                   <Text style={[styles.rowTime, { color: textMuted }]}>
                     {formatLastAt(menuThread.lastAt)}
                   </Text>
+                </View>
+                <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
+                <View style={styles.miniPreview}>
+                  {menuMessagesLoading ? (
+                    <View style={styles.miniLoading}><ActivityIndicator color={textSecondary} /></View>
+                  ) : (menuMessages && menuMessages.length > 0) ? (
+                    menuMessages.map((m) => {
+                      const isClinic = m.from === 'clinic';
+                      return (
+                        <View key={m.id} style={[styles.miniRow, { justifyContent: isClinic ? 'flex-end' : 'flex-start' }]}>
+                          <View style={[
+                            styles.miniBubbleBase,
+                            isClinic
+                              ? styles.miniBubbleSent
+                              : [styles.miniBubbleRecv, { backgroundColor: recvMiniBg, borderColor: recvMiniBorder }],
+                          ]}>
+                            <Text numberOfLines={2} style={[styles.miniBubbleText, { color: isClinic ? '#FFFFFF' : textPrimary }]}>
+                              {compactPreviewLabel(m)}
+                            </Text>
+                          </View>
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <View style={styles.miniEmpty}><Text style={[styles.miniEmptyText, { color: textMuted }]}>No messages yet</Text></View>
+                  )}
                 </View>
                 <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
                 <Pressable
@@ -985,4 +1039,13 @@ const styles = StyleSheet.create({
   menuDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 12, marginBottom: 4 },
   menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 14 },
   menuRowText: { fontSize: 15.5, fontWeight: '600' },
+  miniPreview: { paddingHorizontal: 14, paddingTop: 8, paddingBottom: 10, gap: 6, maxHeight: 190 },
+  miniLoading: { height: 90, alignItems: 'center', justifyContent: 'center' },
+  miniEmpty: { height: 64, alignItems: 'center', justifyContent: 'center' },
+  miniEmptyText: { fontSize: 13, fontWeight: '500' },
+  miniRow: { flexDirection: 'row', width: '100%' },
+  miniBubbleBase: { maxWidth: '78%', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 12 },
+  miniBubbleSent: { backgroundColor: '#1E6FD9' },
+  miniBubbleRecv: { borderWidth: 1 },
+  miniBubbleText: { fontSize: 13.5, lineHeight: 18, fontWeight: '500' },
 });
