@@ -92,6 +92,7 @@ type ThreadRow = {
   unread: number;
   messageCount: number;
   favoriteClinic?: boolean;
+  archivedForClinic?: boolean;
 };
 
 export default function ClinicMessagesScreen() {
@@ -146,6 +147,7 @@ export default function ClinicMessagesScreen() {
           unread: data.unreadForClinic ?? 0,
           messageCount: data.messageCount ?? 0,
           favoriteClinic: (data.favoriteClinic === true),
+          archivedForClinic: (data.archivedForClinic === true),
         };
       });
       setThreads(list);
@@ -199,6 +201,19 @@ export default function ClinicMessagesScreen() {
       console.error('[messages] toggleFavorite', e);
       setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, favoriteClinic: !next } : row)));
       setMenuThread((cur) => (cur && cur.id === t.id ? { ...cur, favoriteClinic: !next } : cur));
+    }
+  };
+
+  const toggleArchive = async (t: ThreadRow) => {
+    const next = !t.archivedForClinic;
+    setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, archivedForClinic: next } : row)));
+    setMenuThread((cur) => (cur && cur.id === t.id ? { ...cur, archivedForClinic: next } : cur));
+    closeMenu();
+    try {
+      await setDoc(doc(db, 'threads', t.id), { archivedForClinic: next ? true : deleteField() }, { merge: true });
+    } catch (e) {
+      console.error('[messages] toggleArchive', e);
+      setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, archivedForClinic: !next } : row)));
     }
   };
 
@@ -276,13 +291,14 @@ export default function ClinicMessagesScreen() {
     ? allPatients.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
     : allPatients;
 
-  const patientThreads = threads;
-  const unreadCount = patientThreads.filter((t) => (t.unread ?? 0) > 0).length;
-  const favCount = patientThreads.filter((t) => t.favoriteClinic === true).length;
+  const visibleThreads = threads.filter((t) => t.archivedForClinic !== true);
+  const unreadCount = visibleThreads.filter((t) => (t.unread ?? 0) > 0).length;
+  const favCount = visibleThreads.filter((t) => t.favoriteClinic === true).length;
+  const archivedCount = threads.filter((t) => t.archivedForClinic === true).length;
   const filteredThreads =
-    chip === 'unread' ? patientThreads.filter((t) => (t.unread ?? 0) > 0)
-    : chip === 'favourites' ? patientThreads.filter((t) => t.favoriteClinic === true)
-    : patientThreads;
+    chip === 'unread' ? visibleThreads.filter((t) => (t.unread ?? 0) > 0)
+    : chip === 'favourites' ? visibleThreads.filter((t) => t.favoriteClinic === true)
+    : visibleThreads;
 
   const renderChip = (key: 'all' | 'unread' | 'favourites', label: string, count?: number) => {
     const active = chip === key;
@@ -412,7 +428,7 @@ export default function ClinicMessagesScreen() {
               { backgroundColor: segBg, borderColor: segBorder },
             ]}
           >
-            {renderTab('patients', 'Patients', threads.length)}
+            {renderTab('patients', 'Patients', visibleThreads.length)}
             {renderTab('people', 'People', 0)}
           </View>
         </View>
@@ -424,6 +440,21 @@ export default function ClinicMessagesScreen() {
             {renderChip('unread', 'Unread', unreadCount)}
             {renderChip('favourites', 'Favourites', favCount)}
           </View>
+        ) : null}
+
+        {/* Archived entry (Patients only, when non-empty) */}
+        {tab === 'patients' && archivedCount > 0 ? (
+          <Pressable
+            onPress={() => router.push('/clinic/messages-archive' as any)}
+            style={({ pressed }) => [styles.archivedRow, { backgroundColor: pressed ? rowPressedBg : cardBg, borderColor: cardBorder }]}
+          >
+            <View style={styles.archivedIconWrap}>
+              <Ionicons name="archive-outline" size={20} color={textSecondary} />
+            </View>
+            <Text style={[styles.archivedLabel, { color: textPrimary }]}>Archived</Text>
+            <Text style={[styles.archivedCount, { color: textSecondary }]}>{localizeNumber(String(archivedCount))}</Text>
+            <Ionicons name="chevron-forward" size={18} color={textSecondary} />
+          </Pressable>
         ) : null}
 
         {/* Body */}
@@ -800,11 +831,17 @@ export default function ClinicMessagesScreen() {
                 </ScrollView>
                 <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
                 <Pressable
-                  onPress={closeMenu}
+                  onPress={() => menuThread && toggleArchive(menuThread)}
                   style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
                 >
-                  <Ionicons name="archive-outline" size={22} color={textPrimary} />
-                  <Text style={[styles.menuRowText, { color: textPrimary }]}>Archive</Text>
+                  <Ionicons
+                    name={menuThread?.archivedForClinic ? 'archive' : 'archive-outline'}
+                    size={22}
+                    color={textPrimary}
+                  />
+                  <Text style={[styles.menuRowText, { color: textPrimary }]}>
+                    {menuThread?.archivedForClinic ? 'Unarchive' : 'Archive'}
+                  </Text>
                 </Pressable>
                 <Pressable
                   onPress={() => menuThread && toggleFavorite(menuThread)}
@@ -1184,4 +1221,8 @@ const styles = StyleSheet.create({
   miniAudioWave: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2, height: 18 },
   miniAudioBar: { width: 2, borderRadius: 1 },
   miniAudioTime: { fontSize: 11, fontWeight: '600' },
+  archivedRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, marginHorizontal: 16, marginTop: 4, marginBottom: 6, borderRadius: 14, borderWidth: 1 },
+  archivedIconWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(120,120,120,0.10)' },
+  archivedLabel: { flex: 1, fontSize: 15, fontWeight: '700' },
+  archivedCount: { fontSize: 13, fontWeight: '700' },
 });
