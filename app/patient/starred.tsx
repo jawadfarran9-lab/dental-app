@@ -2,6 +2,7 @@ import { patientDb } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
+import { requestFocusMessage } from '@/src/state/chatFocusSignal';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -110,10 +111,21 @@ export default function PatientStarredScreen() {
             keyExtractor={(m) => m.id}
             contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 24 }}
             renderItem={({ item }) => (
-              <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Pressable
+                style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}
+                onPress={() => {
+                  requestFocusMessage(item.id);
+                  const r = router as any;
+                  if (typeof r.dismiss === 'function') {
+                    try { r.dismiss(2); return; } catch {}
+                  }
+                  router.back();
+                  requestAnimationFrame(() => router.back());
+                }}
+              >
                 <View style={styles.cardHead}>
                   <Text style={[styles.sender, { color: textPrimary }]}>{item.from === 'patient' ? 'You' : 'Clinic'}</Text>
-                  <Pressable onPress={() => unstar(item.id)} hitSlop={8}>
+                  <Pressable onPress={(e) => { (e as any)?.stopPropagation?.(); unstar(item.id); }} hitSlop={8}>
                     <Ionicons name="star" size={18} color="#F5A623" />
                   </Pressable>
                 </View>
@@ -207,7 +219,7 @@ export default function PatientStarredScreen() {
                   <Text style={[styles.body, { color: textPrimary }]}>{item.text}</Text>
                 )}
                 <Text style={[styles.time, { color: textSecondary }]}>{formatStarredTime(item.createdAt)}</Text>
-              </View>
+              </Pressable>
             )}
           />
         )}

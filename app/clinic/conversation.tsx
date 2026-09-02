@@ -10,6 +10,7 @@ import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerM
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
+import { consumeFocusMessage } from '@/src/state/chatFocusSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { ensureThread, markThreadReadForClinic, updateThreadOnMessage } from '@/src/utils/threadsHelper';
 import { TextsDoc, sendAudioMessage } from '@/src/services/chatImages';
@@ -239,6 +240,11 @@ export default function ClinicConversationScreen() {
   useFocusEffect(
     useCallback(() => {
       if (consumeOpenSearch()) setSearchOpen(true);
+      const fid = consumeFocusMessage();
+      if (fid) {
+        setPendingFocusId(fid);
+        setTimeout(() => setPendingFocusId((cur) => (cur === fid ? null : cur)), 2500);
+      }
     }, []),
   );
   const [clearedForClinicAt, setClearedForClinicAt] = useState<number>(0);
@@ -287,6 +293,8 @@ export default function ClinicConversationScreen() {
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
   const listRef = useRef<FlatList<Message>>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
+  const [pendingFocusId, setPendingFocusId] = useState<string | null>(null);
 
   const patientName = (name as string) || 'Patient';
 
@@ -326,6 +334,23 @@ export default function ClinicConversationScreen() {
       setTimeout(() => scrollToMatch(searchMatches[last]), 50);
     }
   }, [searchMatches]);
+
+  useEffect(() => {
+    if (!pendingFocusId) return;
+    const idx = displayedMessages.findIndex((m) => m.id === pendingFocusId);
+    if (idx >= 0) {
+      const fid = pendingFocusId;
+      requestAnimationFrame(() => {
+        try { listRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.4 }); } catch {}
+      });
+      setHighlightedId(fid);
+      setTimeout(() => setHighlightedId((cur) => (cur === fid ? null : cur)), 1400);
+      setPendingFocusId(null);
+      return;
+    }
+    const inRaw = messages.findIndex((m) => m.id === pendingFocusId) >= 0;
+    if (inRaw) { setPendingFocusId(null); return; }
+  }, [pendingFocusId, displayedMessages, messages]);
 
   const goOlderMatch = () => {
     if (searchMatches.length === 0) return;
@@ -1308,7 +1333,7 @@ export default function ClinicConversationScreen() {
     return (
       <>
         {daySeparator}
-        <View style={[styles.bubbleRow, align, (hasReaction || hasAlbumSticker) && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow]}>
+        <View style={[styles.bubbleRow, align, (hasReaction || hasAlbumSticker) && styles.bubbleRowReacted, item.id === currentMatchId && styles.searchMatchRow, item.id === highlightedId && styles.focusHighlightRow]}>
           <MessageBubble item={item} onOpen={openActionMenu}>
             <BubbleBody item={item} sent={sent} time={time} onOpenViewer={(idx) => (item.type === 'album' ? openAlbumGallery(item) : openViewerSingle(item))} />
           </MessageBubble>
@@ -2546,6 +2571,7 @@ const styles = StyleSheet.create({
   searchNavBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   searchCount: { fontSize: 13, fontWeight: '700', minWidth: 30, textAlign: 'center' },
   searchMatchRow: { backgroundColor: 'rgba(61,158,255,0.10)', borderRadius: 14 },
+  focusHighlightRow: { backgroundColor: 'rgba(245,166,35,0.16)', borderRadius: 14 },
   searchCalBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', marginLeft: 4 },
   datePicker: { alignSelf: 'center', marginVertical: 8 },
   jumpBtn: { marginTop: 8, borderRadius: 16, overflow: 'hidden' },
