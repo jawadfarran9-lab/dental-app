@@ -2,7 +2,7 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { clearChatForClinic } from '@/src/services/chatClear';
+import { clearChatForClinic, deleteChatForClinic } from '@/src/services/chatClear';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
@@ -259,7 +259,7 @@ export default function ClinicMessagesScreen() {
             setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, deletedForClinic: true } : row)));
             closeMenu();
             try {
-              await setDoc(doc(db, 'threads', t.id), { deletedForClinic: true, clearedForClinicAt: Date.now() }, { merge: true });
+              await deleteChatForClinic({ clinicId: clinicId as string, patientId: t.patientId });
             } catch (e) {
               console.error('[messages] delete chat error', e);
               setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, deletedForClinic: false } : row)));

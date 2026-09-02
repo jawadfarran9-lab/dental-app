@@ -2,7 +2,7 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { clearChatForClinic } from '@/src/services/chatClear';
+import { deleteChatForClinic } from '@/src/services/chatClear';
 import { requestOpenSearch } from '@/src/state/chatSearchSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
@@ -122,27 +122,33 @@ export default function ClinicContactInfoScreen() {
     setTimeout(() => setCopied(false), 1500);
   };
 
-  const handleClearChat = () => {
+  const handleDeleteChat = () => {
     if (!clinicId || !patientId || clearing) return;
     Alert.alert(
-      'Clear chat?',
-      'This hides all current messages in this conversation on your side. The patient still sees their copy. New messages after this will show normally.',
+      'Delete chat?',
+      'This removes the chat from your list and clears it on your side. The patient keeps their copy. The chat returns (starting fresh) if either side sends a new message.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear',
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
               setClearing(true);
-              await clearChatForClinic({
+              await deleteChatForClinic({
                 clinicId: clinicId as string,
                 patientId: patientId as string,
               });
-              if (router.canGoBack()) router.back();
+              const r = router as any;
+              if (typeof r.dismiss === 'function') {
+                try { r.dismiss(2); } catch { r.back(); requestAnimationFrame(() => r.back()); }
+              } else {
+                r.back();
+                requestAnimationFrame(() => r.back());
+              }
             } catch (e) {
-              console.error('[contact-info] clear chat error', e);
-              Alert.alert('Could not clear', 'Please try again.');
+              console.error('[contact-info] delete chat error', e);
+              Alert.alert('Could not delete', 'Please try again.');
             } finally {
               setClearing(false);
             }
@@ -422,7 +428,7 @@ export default function ClinicContactInfoScreen() {
             ]}
           >
             <Pressable
-              onPress={handleClearChat}
+              onPress={handleDeleteChat}
               disabled={clearing}
               style={({ pressed }) => [
                 styles.row,
@@ -441,13 +447,13 @@ export default function ClinicContactInfoScreen() {
                 </View>
                 <View style={styles.rowBody}>
                   <Text style={[styles.rowLabel, { color: textSecondary }]}>
-                    CLEAR CHAT
+                    DELETE CHAT
                   </Text>
                   <Text
                     style={[styles.rowValue, { color: '#EF4444' }]}
                     numberOfLines={2}
                   >
-                    Only hides messages on your side. The patient keeps their copy.
+                    Removes this chat from your list and clears it on your side. The patient keeps their copy.
                   </Text>
                 </View>
                 {clearing ? (

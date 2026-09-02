@@ -9,3 +9,12 @@ export async function clearChatForClinic(params: {
   const threadRef = doc(db, 'threads', `${clinicId}_${patientId}`);
   await setDoc(threadRef, { clearedForClinicAt: Date.now() }, { merge: true });
 }
+
+export async function deleteChatForClinic(params: {
+  clinicId: string;
+  patientId: string;
+}): Promise<void> {
+  const { clinicId, patientId } = params;
+  const threadRef = doc(db, 'threads', `${clinicId}_${patientId}`);
+  await setDoc(threadRef, { deletedForClinic: true, clearedForClinicAt: Date.now() }, { merge: true });
+}
