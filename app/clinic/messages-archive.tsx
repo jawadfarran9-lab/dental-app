@@ -124,10 +124,11 @@ export default function ClinicMessagesArchiveScreen() {
             lastAt: data.lastMessageAt,
             unread: data.unreadForClinic ?? 0,
             archivedForClinic: data.archivedForClinic === true,
+            deletedForClinic: data.deletedForClinic === true,
           };
         })
-        .filter((t: any) => t.archivedForClinic === true)
-        .map(({ archivedForClinic: _a, ...rest }: any) => rest);
+        .filter((t: any) => t.archivedForClinic === true && t.deletedForClinic !== true)
+        .map(({ archivedForClinic: _a, deletedForClinic: _d, ...rest }: any) => rest);
       setArchivedThreads(list);
     } catch (err) {
       console.error('[messages-archive] fetch error', err);

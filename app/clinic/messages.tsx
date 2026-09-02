@@ -95,6 +95,7 @@ type ThreadRow = {
   messageCount: number;
   favoriteClinic?: boolean;
   archivedForClinic?: boolean;
+  deletedForClinic?: boolean;
 };
 
 export default function ClinicMessagesScreen() {
@@ -150,6 +151,7 @@ export default function ClinicMessagesScreen() {
           messageCount: data.messageCount ?? 0,
           favoriteClinic: (data.favoriteClinic === true),
           archivedForClinic: (data.archivedForClinic === true),
+          deletedForClinic: (data.deletedForClinic === true),
         };
       });
       setThreads(list);
@@ -244,6 +246,31 @@ export default function ClinicMessagesScreen() {
     );
   };
 
+  const handleDeleteChat = (t: ThreadRow) => {
+    Alert.alert(
+      'Delete chat?',
+      'This removes the chat from your list and clears it on your side. The patient keeps their copy. The chat returns (starting fresh) if either side sends a new message.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, deletedForClinic: true } : row)));
+            closeMenu();
+            try {
+              await setDoc(doc(db, 'threads', t.id), { deletedForClinic: true, clearedForClinicAt: Date.now() }, { merge: true });
+            } catch (e) {
+              console.error('[messages] delete chat error', e);
+              setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, deletedForClinic: false } : row)));
+              Alert.alert('Could not delete', 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   useEffect(() => {
     if (menuOpen) {
       menuScale.setValue(0.92);
@@ -318,10 +345,11 @@ export default function ClinicMessagesScreen() {
     ? allPatients.filter((p) => p.name.toLowerCase().includes(search.trim().toLowerCase()))
     : allPatients;
 
-  const visibleThreads = threads.filter((t) => t.archivedForClinic !== true);
+  const liveThreads = threads.filter((t) => t.deletedForClinic !== true);
+  const visibleThreads = liveThreads.filter((t) => t.archivedForClinic !== true);
   const unreadCount = visibleThreads.filter((t) => (t.unread ?? 0) > 0).length;
   const favCount = visibleThreads.filter((t) => t.favoriteClinic === true).length;
-  const archivedCount = threads.filter((t) => t.archivedForClinic === true).length;
+  const archivedCount = liveThreads.filter((t) => t.archivedForClinic === true).length;
   const filteredThreads =
     chip === 'unread' ? visibleThreads.filter((t) => (t.unread ?? 0) > 0)
     : chip === 'favourites' ? visibleThreads.filter((t) => t.favoriteClinic === true)
@@ -890,12 +918,15 @@ export default function ClinicMessagesScreen() {
                   <Ionicons name="close-circle-outline" size={22} color={textPrimary} />
                   <Text style={[styles.menuRowText, { color: textPrimary }]}>Clear chat</Text>
                 </Pressable>
-                <View style={[styles.menuRow, { opacity: 0.4 }]}>
+                <Pressable
+                  onPress={() => menuThread && handleDeleteChat(menuThread)}
+                  style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
+                >
                   <Ionicons name="trash-outline" size={22} color="#EF4444" />
                   <Text style={[styles.menuRowText, { color: '#EF4444', fontWeight: '700' }]}>
                     Delete chat
                   </Text>
-                </View>
+                </Pressable>
               </>
             )}
           </Animated.View>

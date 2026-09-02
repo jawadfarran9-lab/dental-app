@@ -1,6 +1,6 @@
 import { db } from '@/firebaseConfig';
 import type { Firestore } from 'firebase/firestore';
-import { collection, doc, getCountFromServer, getDoc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, deleteField, doc, getCountFromServer, getDoc, increment, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 
 async function countThreadMessages(patientId: string, dbInstance: Firestore = db): Promise<number> {
   try {
@@ -38,6 +38,7 @@ export async function updateThreadOnMessage(
         lastMessageAt: serverTimestamp(),
         messageCount: increment(1),
         [senderType === 'clinic' ? 'unreadForPatient' : 'unreadForClinic']: increment(1),
+        deletedForClinic: deleteField(),
       });
     } else {
       // Create new thread
