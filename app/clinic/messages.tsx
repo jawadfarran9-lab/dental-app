@@ -8,9 +8,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
 import { collection, getDocs, orderBy, query, where } from 'firebase/firestore';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Animated,
     KeyboardAvoidingView,
     Modal,
     Platform,
@@ -85,6 +86,10 @@ export default function ClinicMessagesScreen() {
 
   const [tab, setTab] = useState<'patients' | 'people'>('patients');
   const [chip, setChip] = useState<'all' | 'unread' | 'favourites'>('all');
+  const [menuThread, setMenuThread] = useState<ThreadRow | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuScale = useRef(new Animated.Value(0.9)).current;
+  const menuFade = useRef(new Animated.Value(0)).current;
   const [threads, setThreads] = useState<ThreadRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pickerVisible, setPickerVisible] = useState(false);
@@ -134,6 +139,23 @@ export default function ClinicMessagesScreen() {
       loadThreads();
     }, [loadThreads])
   );
+
+  const openThreadMenu = (t: ThreadRow) => {
+    setMenuThread(t);
+    setMenuOpen(true);
+  };
+  const closeMenu = () => setMenuOpen(false);
+
+  useEffect(() => {
+    if (menuOpen) {
+      menuScale.setValue(0.92);
+      menuFade.setValue(0);
+      Animated.parallel([
+        Animated.spring(menuScale, { toValue: 1, useNativeDriver: true, friction: 7, tension: 80 }),
+        Animated.timing(menuFade, { toValue: 1, duration: 150, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [menuOpen]);
 
   const handleBack = () => {
     if (router.canGoBack()) router.back();
@@ -401,6 +423,8 @@ export default function ClinicMessagesScreen() {
                         `/clinic/conversation?patientId=${t.patientId}&name=${encodeURIComponent(t.name)}` as any
                       )
                     }
+                    onLongPress={() => openThreadMenu(t)}
+                    delayLongPress={350}
                     style={({ pressed }) => [
                       styles.row,
                       {
@@ -563,6 +587,75 @@ export default function ClinicMessagesScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Long-press context menu (Phase 2 shell — actions inert) */}
+      <Modal
+        visible={menuOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={closeMenu}
+      >
+        <Pressable style={styles.sheetBackdrop} onPress={closeMenu} />
+        <View style={styles.menuCenterWrap} pointerEvents="box-none">
+          <Animated.View
+            style={[
+              styles.menuCard,
+              { backgroundColor: sheetBg, opacity: menuFade, transform: [{ scale: menuScale }] },
+            ]}
+          >
+            {menuThread && (
+              <>
+                <View style={styles.menuHeader}>
+                  <LinearGradient
+                    colors={AVATAR_PALETTE[hashName(menuThread.name) % AVATAR_PALETTE.length] as any}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.avatar}
+                  >
+                    <Text style={styles.avatarInitials}>{initialsOf(menuThread.name)}</Text>
+                  </LinearGradient>
+                  <View style={{ flex: 1, minWidth: 0 }}>
+                    <Text style={[styles.rowName, { color: textPrimary }]} numberOfLines={1}>
+                      {menuThread.name}
+                    </Text>
+                    <Text style={[styles.rowPreview, { color: textSecondary }]} numberOfLines={1}>
+                      {menuThread.lastMessage || ' '}
+                    </Text>
+                  </View>
+                  <Text style={[styles.rowTime, { color: textMuted }]}>
+                    {formatLastAt(menuThread.lastAt)}
+                  </Text>
+                </View>
+                <View style={[styles.menuDivider, { backgroundColor: sheetDivider }]} />
+                <Pressable
+                  onPress={closeMenu}
+                  style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
+                >
+                  <Ionicons name="archive-outline" size={22} color={textPrimary} />
+                  <Text style={[styles.menuRowText, { color: textPrimary }]}>Archive</Text>
+                </Pressable>
+                <Pressable
+                  onPress={closeMenu}
+                  style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
+                >
+                  <Ionicons name="heart-outline" size={22} color={textPrimary} />
+                  <Text style={[styles.menuRowText, { color: textPrimary }]}>Add to Favourites</Text>
+                </Pressable>
+                <View style={[styles.menuRow, { opacity: 0.4 }]}>
+                  <Ionicons name="close-circle-outline" size={22} color={textPrimary} />
+                  <Text style={[styles.menuRowText, { color: textPrimary }]}>Clear chat</Text>
+                </View>
+                <View style={[styles.menuRow, { opacity: 0.4 }]}>
+                  <Ionicons name="trash-outline" size={22} color="#EF4444" />
+                  <Text style={[styles.menuRowText, { color: '#EF4444', fontWeight: '700' }]}>
+                    Delete chat
+                  </Text>
+                </View>
+              </>
+            )}
+          </Animated.View>
+        </View>
       </Modal>
     </View>
   );
@@ -875,4 +968,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  menuCenterWrap: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 },
+  menuCard: {
+    width: '100%',
+    maxWidth: 360,
+    borderRadius: 20,
+    paddingVertical: 8,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.18,
+    shadowRadius: 20,
+    elevation: 16,
+  },
+  menuHeader: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, paddingVertical: 14 },
+  menuDivider: { height: StyleSheet.hairlineWidth, marginHorizontal: 12, marginBottom: 4 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 16, paddingVertical: 14 },
+  menuRowText: { fontSize: 15.5, fontWeight: '600' },
 });
