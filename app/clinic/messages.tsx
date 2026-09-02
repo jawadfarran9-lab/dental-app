@@ -2,6 +2,7 @@ import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import { clearChatForClinic } from '@/src/services/chatClear';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { localizeNumber } from '@/utils/localization';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +12,7 @@ import { collection, deleteField, doc, getDocs, limit, orderBy, query, setDoc, w
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     Animated,
     Image,
     KeyboardAvoidingView,
@@ -215,6 +217,31 @@ export default function ClinicMessagesScreen() {
       console.error('[messages] toggleArchive', e);
       setThreads((prev) => prev.map((row) => (row.id === t.id ? { ...row, archivedForClinic: !next } : row)));
     }
+  };
+
+  const handleClearChat = (t: ThreadRow) => {
+    if (!clinicId) return;
+    Alert.alert(
+      'Clear chat?',
+      'This hides all current messages in this conversation on your side. The patient still sees their copy. New messages after this will show normally.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await clearChatForClinic({ clinicId: clinicId as string, patientId: t.patientId });
+            } catch (e) {
+              console.error('[messages] clear chat error', e);
+              Alert.alert('Could not clear', 'Please try again.');
+            } finally {
+              closeMenu();
+            }
+          },
+        },
+      ],
+    );
   };
 
   useEffect(() => {
@@ -856,10 +883,13 @@ export default function ClinicMessagesScreen() {
                     {menuThread?.favoriteClinic ? 'Remove from Favourites' : 'Add to Favourites'}
                   </Text>
                 </Pressable>
-                <View style={[styles.menuRow, { opacity: 0.4 }]}>
+                <Pressable
+                  onPress={() => menuThread && handleClearChat(menuThread)}
+                  style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
+                >
                   <Ionicons name="close-circle-outline" size={22} color={textPrimary} />
                   <Text style={[styles.menuRowText, { color: textPrimary }]}>Clear chat</Text>
-                </View>
+                </Pressable>
                 <View style={[styles.menuRow, { opacity: 0.4 }]}>
                   <Ionicons name="trash-outline" size={22} color="#EF4444" />
                   <Text style={[styles.menuRowText, { color: '#EF4444', fontWeight: '700' }]}>
