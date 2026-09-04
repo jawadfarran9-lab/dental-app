@@ -109,7 +109,7 @@ export default function ClinicSettingsScreen() {
         {
           id: 'chat-archive-settings',
           title: 'Chat archive',
-          subtitle: 'Keep chats archived or auto-restore on new messages',
+          subtitle: 'Archive chats per patient',
           icon: 'archive-outline',
           iconColor: '#3D9EFF',
         },
@@ -260,7 +260,7 @@ export default function ClinicSettingsScreen() {
                       else if (row.id === 'clinic-profile-photo') router.push('/clinic/clinic-profile-photo');
                       else if (row.id === 'patient-form-fields') router.push('/clinic/patients-list' as any);
                       else if (row.id === 'archived-patients') router.push('/clinic/archived-patients' as any);
-                      else if (row.id === 'chat-archive-settings') router.push('/clinic/messages-archive-settings' as any);
+                      else if (row.id === 'chat-archive-settings') router.push('/clinic/chat-archive-patient-picker' as any);
                       else if (row.id === 'doctor-email') router.push('/clinic/team');
                       else if (row.id === 'logout') {
                         Alert.alert(

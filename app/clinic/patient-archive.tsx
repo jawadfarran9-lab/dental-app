@@ -1,37 +1,52 @@
+import { db } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { subscribeToClinicPreferences, updateClinicPreferences } from '@/src/services/clinicPreferencesService';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
+import { ensureThread } from '@/src/utils/threadsHelper';
 import { Ionicons } from '@expo/vector-icons';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { deleteField, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-export default function ClinicMessagesArchiveSettingsScreen() {
+export default function PatientArchiveScreen() {
   useClinicGuard();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
   const { clinicId } = useAuth();
+  const { patientId, name } = useLocalSearchParams<{ patientId: string; name?: string }>();
 
-  const [keepArchived, setKeepArchived] = useState(true);
+  const [archived, setArchived] = useState(false);
 
   useEffect(() => {
-    if (!clinicId) return;
-    const unsub = subscribeToClinicPreferences(clinicId, (prefs) => {
-      setKeepArchived(prefs.keepChatsArchived !== false);
-    });
+    if (!clinicId || !patientId) return;
+    const unsub = onSnapshot(
+      doc(db, 'threads', `${clinicId}_${patientId}`),
+      (snap) => {
+        setArchived(snap.exists() && (snap.data() as any).archivedForClinic === true);
+      },
+      (e) => console.error('[patient-archive] snapshot', e),
+    );
     return () => unsub();
-  }, [clinicId]);
+  }, [clinicId, patientId]);
 
-  const onToggle = (v: boolean) => {
-    setKeepArchived(v);
-    if (clinicId) {
-      updateClinicPreferences(clinicId, { keepChatsArchived: v }).catch((e) =>
-        console.error('[archive-settings] update error', e),
-      );
+  const onToggle = async (next: boolean) => {
+    if (!clinicId || !patientId) return;
+    setArchived(next);
+    const ref = doc(db, 'threads', `${clinicId}_${patientId}`);
+    try {
+      if (next) {
+        await ensureThread(clinicId as string, patientId as string, (name as string) || 'Patient');
+        await setDoc(ref, { archivedForClinic: true }, { merge: true });
+      } else {
+        await setDoc(ref, { archivedForClinic: deleteField() }, { merge: true });
+      }
+    } catch (e) {
+      console.error('[patient-archive] toggle', e);
+      setArchived(!next);
     }
   };
 
@@ -43,6 +58,8 @@ export default function ClinicMessagesArchiveSettingsScreen() {
   const backBg = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.92)';
   const backBgPressed = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(27, 37, 66, 0.1)';
   const backIconColor = isDark ? '#FFFFFF' : '#1B2542';
+
+  const patientName = (name as string) || 'Patient';
 
   return (
     <View style={{ flex: 1 }}>
@@ -62,7 +79,10 @@ export default function ClinicMessagesArchiveSettingsScreen() {
             <Ionicons name="chevron-back" size={22} color={backIconColor} />
           </Pressable>
           <View style={styles.headerText}>
-            <Text style={[styles.headerTitle, { color: textPrimary }]}>Archive settings</Text>
+            <Text style={[styles.headerTitle, { color: textPrimary }]}>Archive chat</Text>
+            <Text style={[styles.headerSubtitle, { color: textSecondary }]} numberOfLines={1}>
+              {patientName}
+            </Text>
           </View>
           <View style={{ width: 40 }} />
         </View>
@@ -74,13 +94,13 @@ export default function ClinicMessagesArchiveSettingsScreen() {
                 <Ionicons name="archive-outline" size={20} color={textSecondary} />
               </View>
               <View style={styles.rowBody}>
-                <Text style={[styles.rowLabel, { color: textPrimary }]}>Keep chats archived</Text>
+                <Text style={[styles.rowLabel, { color: textPrimary }]}>Archive this chat</Text>
                 <Text style={[styles.rowSub, { color: textMuted }]}>
-                  Archived chats stay archived when new messages arrive. Turn off to auto-restore them to your list.
+                  Archived chats move to the Archived folder. Turn off to bring this chat back to your list.
                 </Text>
               </View>
               <Switch
-                value={keepArchived}
+                value={archived}
                 onValueChange={onToggle}
                 trackColor={{ false: isDark ? '#3A3F47' : '#D1D5DB', true: '#3D9EFF' }}
                 thumbColor="#FFFFFF"
@@ -115,6 +135,7 @@ const styles = StyleSheet.create({
   },
   headerText: { flex: 1 },
   headerTitle: { fontSize: 22, fontWeight: '800' },
+  headerSubtitle: { fontSize: 13, fontWeight: '600', marginTop: 1 },
   content: { paddingHorizontal: 16, paddingTop: 8 },
   card: {
     borderRadius: 18,

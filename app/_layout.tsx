@@ -54,7 +54,8 @@ function RootNavigator() {
       <Stack.Screen name="clinic/create" options={{ title: 'New Patient', headerShown: true }} />
       <Stack.Screen name="clinic/messages" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/messages-archive" options={{ headerShown: false }} />
-      <Stack.Screen name="clinic/messages-archive-settings" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/chat-archive-patient-picker" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/patient-archive" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/conversation" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/contact-info" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/media-all" options={{ headerShown: false }} />

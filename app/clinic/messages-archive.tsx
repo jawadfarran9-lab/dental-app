@@ -466,7 +466,7 @@ export default function ClinicMessagesArchiveScreen() {
           <Pressable
             onPress={() => {
               setEditMenuOpen(false);
-              router.push('/clinic/messages-archive-settings' as any);
+              router.push('/clinic/chat-archive-patient-picker' as any);
             }}
             style={({ pressed }) => [styles.menuRow, pressed && { backgroundColor: rowPressedBg }]}
           >

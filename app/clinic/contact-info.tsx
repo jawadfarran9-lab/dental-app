@@ -393,9 +393,12 @@ export default function ClinicContactInfoScreen() {
             })}
             {renderRow({
               icon: 'archive-outline',
-              label: 'Archive settings',
-              value: 'Keep chats archived or auto-restore on new messages',
-              onPress: () => router.push('/clinic/messages-archive-settings' as any),
+              label: 'Archive this chat',
+              value: 'Move this chat to the Archived folder',
+              onPress: () => router.push({
+                pathname: '/clinic/patient-archive' as any,
+                params: { patientId: patientId ?? '', name: (name as string) ?? '' },
+              }),
               showChevron: true,
               isLast: true,
             })}
