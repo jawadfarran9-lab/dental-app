@@ -51,6 +51,9 @@ export interface ClinicPreferences {
   sleepEndTime: string;
   sleepDays: string[];
 
+  // Messages / archive
+  keepChatsArchived: boolean;
+
   updatedAt: any; // Firestore Timestamp
 }
 
@@ -84,6 +87,8 @@ export const DEFAULT_PREFERENCES: Omit<ClinicPreferences, 'updatedAt'> = {
   sleepStartTime: '23:00',
   sleepEndTime: '07:00',
   sleepDays: [],
+
+  keepChatsArchived: true,
 };
 
 /** Firestore doc ref helper */
