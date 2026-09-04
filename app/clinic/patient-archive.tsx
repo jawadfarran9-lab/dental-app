@@ -107,6 +107,23 @@ export default function PatientArchiveScreen() {
               />
             </View>
           </View>
+
+          <View style={[styles.card, styles.cardSpacer, { backgroundColor: cardBg, borderColor: cardBorder, opacity: 0.5 }]}>
+            <View style={styles.row}>
+              <View style={styles.iconWrap}>
+                <Ionicons name="download-outline" size={20} color={textSecondary} />
+              </View>
+              <View style={styles.rowBody}>
+                <Text style={[styles.rowLabel, { color: textPrimary }]}>Export chat</Text>
+                <Text style={[styles.rowSub, { color: textMuted }]}>
+                  Download this chat — messages and media. Coming soon.
+                </Text>
+              </View>
+              <View style={styles.soonBadge}>
+                <Text style={[styles.soonBadgeText, { color: textSecondary }]}>SOON</Text>
+              </View>
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -165,4 +182,16 @@ const styles = StyleSheet.create({
   rowBody: { flex: 1, gap: 2 },
   rowLabel: { fontSize: 15, fontWeight: '700' },
   rowSub: { fontSize: 12.5, lineHeight: 17 },
+  cardSpacer: { marginTop: 12 },
+  soonBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    backgroundColor: 'rgba(120,120,120,0.15)',
+  },
+  soonBadgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
 });
