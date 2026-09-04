@@ -389,6 +389,14 @@ export default function ClinicContactInfoScreen() {
                 if (router.canGoBack()) router.back();
               },
               showChevron: true,
+              isLast: false,
+            })}
+            {renderRow({
+              icon: 'archive-outline',
+              label: 'Archive settings',
+              value: 'Keep chats archived or auto-restore on new messages',
+              onPress: () => router.push('/clinic/messages-archive-settings' as any),
+              showChevron: true,
               isLast: true,
             })}
           </View>
