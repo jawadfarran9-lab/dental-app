@@ -1,6 +1,7 @@
 import { db } from '@/firebaseConfig';
 import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import { DENTAL_SESSIONS } from '@/src/constants/sessions/dentalSessions';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -12,7 +13,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -40,6 +41,24 @@ function initialsOf(name: string): string {
 }
 
 type SessionDoc = { id: string; [k: string]: any };
+
+function formatSessionDate(ms: number): string {
+  const d = new Date(ms);
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === y.toDateString();
+  let day: string;
+  if (sameDay) day = 'Today';
+  else if (isYesterday) day = 'Yesterday';
+  else day = d.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${day} · ${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
 
 export default function PatientDetails() {
   useClinicGuard();
@@ -232,18 +251,94 @@ export default function PatientDetails() {
             ) : null}
           </View>
 
-          {/* SESSIONS — placeholder for 7b */}
+          {/* SESSIONS */}
           <View style={styles.eyebrowRow}>
             <Text style={[styles.eyebrow, { color: textSecondary }]}>SESSIONS</Text>
             <Text style={[styles.eyebrowCount, { color: textMuted }]}>
               {localizeNumber(String(sessions.length))}
             </Text>
           </View>
-          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
-            <Text style={[styles.muted, { color: textMuted }]}>
-              {t('patients.noSessionsYet', { defaultValue: 'No sessions yet' })}
-            </Text>
-          </View>
+          {sessions.length === 0 ? (
+            <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+              <Text style={[styles.muted, { color: textMuted }]}>
+                {t('patients.noSessionsYet', { defaultValue: 'No sessions yet' })}
+              </Text>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {sessions.map((s) => {
+                const catalog = DENTAL_SESSIONS.find((d) => d.slug === s.templateSlug);
+                const dateMs = typeof s.date === 'number' ? s.date : Number(s.date) || 0;
+                const dateStr = dateMs ? formatSessionDate(dateMs) : '';
+                const pill =
+                  s.status === 'COMPLETED'
+                    ? { label: 'Done', bg: 'rgba(16,185,129,0.12)', fg: '#0EA37A' }
+                    : s.status === 'IN_PROGRESS'
+                      ? { label: 'In progress', bg: 'rgba(245,158,11,0.14)', fg: '#B7791F' }
+                      : { label: 'Planned', bg: 'rgba(27,37,66,0.08)', fg: textSecondary };
+                return (
+                  <Pressable
+                    key={s.id}
+                    onPress={() =>
+                      router.push(
+                        `/clinic/session-detail?sessionId=${encodeURIComponent(s.id)}&patientId=${encodeURIComponent(String(patientId))}&name=${encodeURIComponent(patientName)}` as any
+                      )
+                    }
+                    style={({ pressed }) => [
+                      styles.sessionRow,
+                      { backgroundColor: cardBg, borderColor: cardBorder },
+                      pressed && { opacity: 0.9 },
+                    ]}
+                  >
+                    {catalog ? (
+                      <Image
+                        source={catalog.image}
+                        style={{ width: 48, height: 48, borderRadius: 12 }}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View
+                        style={{
+                          width: 48,
+                          height: 48,
+                          borderRadius: 12,
+                          backgroundColor: 'rgba(27,37,66,0.08)',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <Ionicons name="medkit-outline" size={20} color={textMuted} />
+                      </View>
+                    )}
+                    <View style={{ flex: 1, minWidth: 0 }}>
+                      <Text
+                        style={[styles.sessionTitle, { color: textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {s.title || 'Session'}
+                      </Text>
+                      {dateStr ? (
+                        <Text
+                          style={[styles.sessionDate, { color: textMuted }]}
+                          numberOfLines={1}
+                        >
+                          {dateStr}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View style={styles.sessionRight}>
+                      <Ionicons name="chevron-forward" size={18} color={textMuted} />
+                      <View style={[styles.sessionPill, { backgroundColor: pill.bg }]}>
+                        <Text style={[styles.sessionPillText, { color: pill.fg }]}>
+                          {pill.label}
+                        </Text>
+                      </View>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
         </ScrollView>
       )}
 
@@ -384,6 +479,46 @@ const styles = StyleSheet.create({
   muted: {
     fontSize: 13.5,
     textAlign: 'center',
+  },
+
+  sessionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 12,
+    borderRadius: 18,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  sessionTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  sessionDate: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  sessionRight: {
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  sessionPill: {
+    paddingHorizontal: 8,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sessionPillText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 
   sessFabWrap: {

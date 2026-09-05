@@ -74,6 +74,7 @@ function RootNavigator() {
       <Stack.Screen name="clinic/archive" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/sessions-dental" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/session-setup" options={{ headerShown: false }} />
+      <Stack.Screen name="clinic/session-detail" options={{ headerShown: false }} />
       <Stack.Screen
         name="clinic/archive-settings"
         options={{
