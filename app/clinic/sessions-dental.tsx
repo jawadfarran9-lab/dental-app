@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback } from 'react';
 import { FlatList, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -13,15 +14,18 @@ function SessionTile({
   item,
   tileW,
   tileH,
+  onPress,
 }: {
   item: DentalSession;
   tileW: number;
   tileH: number;
+  onPress: (item: DentalSession) => void;
 }) {
   return (
     <Pressable
       onPress={() => {
         Haptics.selectionAsync().catch(() => {});
+        onPress(item);
       }}
       style={({ pressed }) => [
         {
@@ -54,7 +58,10 @@ export default function SessionsDentalScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  useLocalSearchParams<{ patientId?: string; name?: string }>();
+  const { patientId, name: patientName } = useLocalSearchParams<{
+    patientId?: string;
+    name?: string;
+  }>();
   const { width: WIN_W } = useWindowDimensions();
 
   const GRID_PADDING = 16;
@@ -74,8 +81,17 @@ export default function SessionsDentalScreen() {
     else router.replace('/clinic/dashboard' as any);
   };
 
+  const openSession = useCallback((s: DentalSession) => {
+    const qs = new URLSearchParams();
+    if (patientId) qs.set('patientId', patientId);
+    if (patientName) qs.set('name', patientName);
+    qs.set('slug', s.slug);
+    qs.set('sessionName', s.name);
+    router.push(`/clinic/session-setup?${qs.toString()}` as any);
+  }, [router, patientId, patientName]);
+
   const renderTile = ({ item }: { item: DentalSession; index: number }) => {
-    return <SessionTile item={item} tileW={TILE_W} tileH={TILE_H} />;
+    return <SessionTile item={item} tileW={TILE_W} tileH={TILE_H} onPress={openSession} />;
   };
 
   return (
