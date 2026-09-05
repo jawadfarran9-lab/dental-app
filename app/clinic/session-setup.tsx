@@ -3,6 +3,8 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
@@ -22,6 +24,33 @@ const SAVE_GREEN = '#10B981';
 const RENAME_RED = '#C2463F';
 const RENAME_BG = '#FDEFF0';
 
+type SessionStatus = 'planned' | 'in_progress' | 'done';
+
+function formatDateTime(d: Date): string {
+  const now = new Date();
+  const sameDay = d.toDateString() === now.toDateString();
+  const y = new Date(now);
+  y.setDate(now.getDate() - 1);
+  const isYesterday = d.toDateString() === y.toDateString();
+  const t = new Date(now);
+  t.setDate(now.getDate() + 1);
+  const isTomorrow = d.toDateString() === t.toDateString();
+
+  let day: string;
+  if (sameDay) day = 'Today';
+  else if (isYesterday) day = 'Yesterday';
+  else if (isTomorrow) day = 'Tomorrow';
+  else day = d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+
+  const h = d.getHours();
+  const m = d.getMinutes();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  const time = `${h12}:${m.toString().padStart(2, '0')} ${ampm}`;
+
+  return `${day} · ${time}`;
+}
+
 export default function SessionSetupScreen() {
   useClinicGuard();
   const router = useRouter();
@@ -40,6 +69,17 @@ export default function SessionSetupScreen() {
   const [name, setName] = useState<string>(sessionName ?? initial.name);
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [switcherOpen, setSwitcherOpen] = useState(false);
+
+  // Stage 1a — session details form (local state only)
+  const [dateTime] = useState<Date>(() => new Date());
+  const [status, setStatus] = useState<SessionStatus>('planned');
+  const [toothAreas, setToothAreas] = useState<string[]>([]);
+  const [toothInputOpen, setToothInputOpen] = useState(false);
+  const [toothDraft, setToothDraft] = useState('');
+  const [whatDone, setWhatDone] = useState('');
+  const [materials, setMaterials] = useState('');
+  const [aftercare, setAftercare] = useState('');
+  const [nextAppt] = useState<Date | null>(null);
 
   useEffect(() => {
     const s = DENTAL_SESSIONS.find((x) => x.slug === slug);
@@ -91,6 +131,22 @@ export default function SessionSetupScreen() {
     setName(selected.name);
   };
 
+  const addToothArea = () => {
+    const v = toothDraft.trim();
+    if (!v) return;
+    setToothAreas((prev) => (prev.includes(v) ? prev : [...prev, v]));
+    setToothDraft('');
+    setToothInputOpen(false);
+  };
+  const removeToothArea = (v: string) => {
+    setToothAreas((prev) => prev.filter((x) => x !== v));
+  };
+
+  const handleSave = () => {
+    Haptics.selectionAsync().catch(() => {});
+    // TODO: persist to Firebase (Stage 1b)
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <Stack.Screen options={{ headerShown: false }} />
@@ -121,10 +177,11 @@ export default function SessionSetupScreen() {
         contentContainerStyle={{
           paddingHorizontal: 16,
           paddingTop: 6,
-          paddingBottom: insets.bottom + 24,
+          paddingBottom: insets.bottom + 120,
           gap: 18,
         }}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Name card */}
         <View
@@ -238,29 +295,232 @@ export default function SessionSetupScreen() {
           </View>
         </View>
 
-        {/* Placeholder section */}
+        {/* SESSION DETAILS */}
         <View>
-          <Text style={[styles.sectionEyebrow, { color: muted }]}>HOW IT'S PERFORMED</Text>
-          <View
-            style={[
-              styles.placeholder,
-              { borderColor: dashedBorder, backgroundColor: 'transparent' },
+          <Text style={[styles.sectionEyebrow, { color: muted }]}>SESSION DETAILS</Text>
+
+          {/* Date & time */}
+          <Pressable
+            onPress={() => {
+              /* real picker in Stage 1b */
+            }}
+            style={({ pressed }) => [
+              styles.fieldRow,
+              { backgroundColor: cardBg, borderColor: cardBorder },
+              pressed && { opacity: 0.9 },
             ]}
           >
-            <View style={[styles.placeholderIcon, { backgroundColor: indicatorBg }]}>
-              <Ionicons name="construct-outline" size={18} color={muted} />
+            <View style={[styles.fieldIcon, { backgroundColor: indicatorBg }]}>
+              <Ionicons name="calendar-outline" size={18} color={ACCENT} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.placeholderTitle, { color: textPrimary }]}>
-                Coming next
+              <Text style={[styles.fieldLabel, { color: muted }]}>Date &amp; time</Text>
+              <Text style={[styles.fieldValue, { color: textPrimary }]} numberOfLines={1}>
+                {formatDateTime(dateTime)}
               </Text>
-              <Text style={[styles.placeholderSub, { color: muted }]}>
-                We'll design this section together in Stage 2.
-              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={muted} />
+          </Pressable>
+
+          {/* Status */}
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 }]}>
+            <Text style={[styles.fieldLabel, { color: muted, marginBottom: 10 }]}>Status</Text>
+            <View style={styles.segmentBar}>
+              {([
+                { key: 'planned', label: 'Planned' },
+                { key: 'in_progress', label: 'In progress' },
+                { key: 'done', label: 'Done' },
+              ] as { key: SessionStatus; label: string }[]).map((seg) => {
+                const isActive = status === seg.key;
+                const activeBg =
+                  seg.key === 'done' ? SAVE_GREEN : ACCENT;
+                return (
+                  <Pressable
+                    key={seg.key}
+                    onPress={() => setStatus(seg.key)}
+                    style={({ pressed }) => [
+                      styles.segment,
+                      isActive
+                        ? { backgroundColor: activeBg }
+                        : { backgroundColor: indicatorBg },
+                      pressed && { opacity: 0.85 },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        { color: isActive ? '#FFFFFF' : textSecondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {seg.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          {/* Tooth / area */}
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 }]}>
+            <Text style={[styles.fieldLabel, { color: muted, marginBottom: 10 }]}>Tooth / area</Text>
+            <View style={styles.chipsWrap}>
+              {toothAreas.map((v) => (
+                <View key={v} style={[styles.chip, { backgroundColor: 'rgba(22, 104, 227, 0.10)' }]}>
+                  <Text style={[styles.chipText, { color: ACCENT }]}>{v}</Text>
+                  <Pressable onPress={() => removeToothArea(v)} hitSlop={6}>
+                    <Ionicons name="close" size={13} color={ACCENT} />
+                  </Pressable>
+                </View>
+              ))}
+              {toothInputOpen ? (
+                <View style={[styles.chipInput, { borderColor: ACCENT }]}>
+                  <TextInput
+                    autoFocus
+                    value={toothDraft}
+                    onChangeText={setToothDraft}
+                    onSubmitEditing={addToothArea}
+                    onBlur={addToothArea}
+                    placeholder="e.g. 36"
+                    placeholderTextColor={muted}
+                    style={[styles.chipInputText, { color: textPrimary }]}
+                    returnKeyType="done"
+                  />
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => setToothInputOpen(true)}
+                  style={({ pressed }) => [
+                    styles.chipAdd,
+                    { borderColor: dashedBorder },
+                    pressed && { opacity: 0.85 },
+                  ]}
+                >
+                  <Ionicons name="add" size={14} color={muted} />
+                  <Text style={[styles.chipAddText, { color: muted }]}>Tooth / area</Text>
+                </Pressable>
+              )}
             </View>
           </View>
         </View>
+
+        {/* TREATMENT */}
+        <View>
+          <Text style={[styles.sectionEyebrow, { color: muted }]}>TREATMENT</Text>
+
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <Text style={[styles.fieldLabel, { color: muted, marginBottom: 8 }]}>What was done</Text>
+            <TextInput
+              value={whatDone}
+              onChangeText={setWhatDone}
+              placeholder="What was done in this session…"
+              placeholderTextColor={muted}
+              multiline
+              textAlignVertical="top"
+              style={[styles.multiline, { color: textPrimary }]}
+            />
+          </View>
+
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 }]}>
+            <Text style={[styles.fieldLabel, { color: muted, marginBottom: 8 }]}>
+              Materials / anaesthesia (optional)
+            </Text>
+            <TextInput
+              value={materials}
+              onChangeText={setMaterials}
+              placeholder="Add if used (optional)"
+              placeholderTextColor={muted}
+              multiline
+              textAlignVertical="top"
+              style={[styles.multiline, { color: textPrimary }]}
+            />
+          </View>
+        </View>
+
+        {/* FOR THE PATIENT */}
+        <View>
+          <View style={styles.forPatientHead}>
+            <Text style={[styles.sectionEyebrow, { color: muted, marginBottom: 0 }]}>
+              FOR THE PATIENT
+            </Text>
+            <View style={[styles.badge, { backgroundColor: 'rgba(22, 104, 227, 0.10)' }]}>
+              <Ionicons name="chatbubble-ellipses-outline" size={11} color={ACCENT} />
+              <Text style={[styles.badgeText, { color: ACCENT }]}>sent to chat</Text>
+            </View>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <Text style={[styles.fieldLabel, { color: muted, marginBottom: 8 }]}>Aftercare</Text>
+            <TextInput
+              value={aftercare}
+              onChangeText={setAftercare}
+              placeholder="Aftercare instructions for the patient…"
+              placeholderTextColor={muted}
+              multiline
+              textAlignVertical="top"
+              style={[styles.multiline, { color: textPrimary }]}
+            />
+          </View>
+
+          <Pressable
+            onPress={() => {
+              /* real picker in Stage 1b */
+            }}
+            style={({ pressed }) => [
+              styles.fieldRow,
+              { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <View style={[styles.fieldIcon, { backgroundColor: indicatorBg }]}>
+              <Ionicons name="calendar-outline" size={18} color={ACCENT} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.fieldLabel, { color: muted }]}>Next appointment</Text>
+              <Text
+                style={[
+                  styles.fieldValue,
+                  { color: nextAppt ? textPrimary : muted },
+                ]}
+                numberOfLines={1}
+              >
+                {nextAppt ? formatDateTime(nextAppt) : 'Set a date'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={muted} />
+          </Pressable>
+        </View>
       </ScrollView>
+
+      {/* Fixed Save bar */}
+      <View
+        pointerEvents="box-none"
+        style={[styles.saveBarWrap, { paddingBottom: insets.bottom + 12 }]}
+      >
+        <LinearGradient
+          colors={
+            isDark
+              ? ['rgba(15, 23, 42, 0)', 'rgba(15, 23, 42, 0.9)']
+              : ['rgba(255, 255, 255, 0)', 'rgba(255, 255, 255, 0.95)']
+          }
+          style={styles.saveBarFade}
+          pointerEvents="none"
+        />
+        <Pressable
+          onPress={handleSave}
+          style={({ pressed }) => [styles.saveBtnOuter, pressed && { opacity: 0.92 }]}
+        >
+          <LinearGradient
+            colors={['#3D9DFF', '#1668E3']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.saveBtn}
+          >
+            <Ionicons name="save-outline" size={18} color="#FFFFFF" />
+            <Text style={styles.saveBtnText}>Save session</Text>
+          </LinearGradient>
+        </Pressable>
+      </View>
 
       {/* Switcher modal */}
       <Modal
@@ -491,5 +751,164 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: ACCENT,
+  },
+
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  fieldIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fieldLabel: {
+    fontSize: 11.5,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  fieldValue: {
+    fontSize: 15.5,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+
+  segmentBar: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  segment: {
+    flex: 1,
+    height: 36,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 8,
+  },
+  segmentText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+
+  chipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 12,
+    paddingRight: 8,
+    height: 30,
+    borderRadius: 15,
+  },
+  chipText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+  },
+  chipAdd: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  chipAddText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  chipInput: {
+    height: 30,
+    minWidth: 90,
+    borderRadius: 15,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+  },
+  chipInputText: {
+    fontSize: 13,
+    fontWeight: '700',
+    paddingVertical: 0,
+  },
+
+  multiline: {
+    minHeight: 80,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+
+  forPatientHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    height: 22,
+    borderRadius: 11,
+  },
+  badgeText: {
+    fontSize: 10.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  saveBarWrap: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+  },
+  saveBarFade: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: -24,
+    bottom: 0,
+  },
+  saveBtnOuter: {
+    borderRadius: 16,
+    shadowColor: '#1668E3',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 6,
+  },
+  saveBtn: {
+    height: 52,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  saveBtnText: {
+    color: '#FFFFFF',
+    fontSize: 15.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
   },
 });
