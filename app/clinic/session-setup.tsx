@@ -3,6 +3,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { Ionicons } from '@expo/vector-icons';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
@@ -10,6 +11,7 @@ import { useEffect, useState } from 'react';
 import {
   Image,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -71,7 +73,7 @@ export default function SessionSetupScreen() {
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
   // Stage 1a — session details form (local state only)
-  const [dateTime] = useState<Date>(() => new Date());
+  const [dateTime, setDateTime] = useState<Date>(() => new Date());
   const [status, setStatus] = useState<SessionStatus>('planned');
   const [toothAreas, setToothAreas] = useState<string[]>([]);
   const [toothInputOpen, setToothInputOpen] = useState(false);
@@ -79,7 +81,9 @@ export default function SessionSetupScreen() {
   const [whatDone, setWhatDone] = useState('');
   const [materials, setMaterials] = useState('');
   const [aftercare, setAftercare] = useState('');
-  const [nextAppt] = useState<Date | null>(null);
+  const [nextAppt, setNextAppt] = useState<Date | null>(null);
+  const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
+  const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
 
   useEffect(() => {
     const s = DENTAL_SESSIONS.find((x) => x.slug === slug);
@@ -145,6 +149,42 @@ export default function SessionSetupScreen() {
   const handleSave = () => {
     Haptics.selectionAsync().catch(() => {});
     // TODO: persist to Firebase (Stage 1b)
+  };
+
+  const onDtChange = (_: unknown, picked?: Date) => {
+    if (Platform.OS === 'android') setDtPicker(null);
+    if (!picked) return;
+    if (dtPicker === 'date') {
+      const next = new Date(picked);
+      next.setHours(dateTime.getHours(), dateTime.getMinutes(), 0, 0);
+      setDateTime(next);
+      if (Platform.OS === 'android') setTimeout(() => setDtPicker('time'), 0);
+      else setDtPicker('time');
+    } else {
+      const next = new Date(dateTime);
+      next.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+      setDateTime(next);
+      if (Platform.OS === 'ios') setDtPicker(null);
+    }
+  };
+
+  const apptBase = () => nextAppt ?? new Date(Date.now() + 7 * 24 * 3600 * 1000);
+  const onApptChange = (_: unknown, picked?: Date) => {
+    if (Platform.OS === 'android') setApptPicker(null);
+    if (!picked) return;
+    const base = apptBase();
+    if (apptPicker === 'date') {
+      const next = new Date(picked);
+      next.setHours(base.getHours(), base.getMinutes(), 0, 0);
+      setNextAppt(next);
+      if (Platform.OS === 'android') setTimeout(() => setApptPicker('time'), 0);
+      else setApptPicker('time');
+    } else {
+      const next = new Date(base);
+      next.setHours(picked.getHours(), picked.getMinutes(), 0, 0);
+      setNextAppt(next);
+      if (Platform.OS === 'ios') setApptPicker(null);
+    }
   };
 
   return (
@@ -301,9 +341,7 @@ export default function SessionSetupScreen() {
 
           {/* Date & time */}
           <Pressable
-            onPress={() => {
-              /* real picker in Stage 1b */
-            }}
+            onPress={() => setDtPicker('date')}
             style={({ pressed }) => [
               styles.fieldRow,
               { backgroundColor: cardBg, borderColor: cardBorder },
@@ -319,8 +357,62 @@ export default function SessionSetupScreen() {
                 {formatDateTime(dateTime)}
               </Text>
             </View>
+            <Pressable
+              onPress={() => setDateTime(new Date())}
+              hitSlop={6}
+              style={({ pressed }) => [
+                styles.fieldMiniBtn,
+                { backgroundColor: indicatorBg },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Ionicons name="refresh" size={14} color={textSecondary} />
+            </Pressable>
             <Ionicons name="chevron-forward" size={18} color={muted} />
           </Pressable>
+          {Platform.OS === 'ios' ? (
+            <Modal
+              transparent
+              animationType="slide"
+              visible={dtPicker !== null}
+              onRequestClose={() => setDtPicker(null)}
+            >
+              <Pressable style={styles.dim} onPress={() => setDtPicker(null)}>
+                <Pressable
+                  style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
+                  onPress={(e) => e.stopPropagation()}
+                >
+                  <View style={styles.sheetHeader}>
+                    <Text style={styles.sheetTitle}>Date &amp; time</Text>
+                    <Pressable
+                      onPress={() => setDtPicker(null)}
+                      hitSlop={8}
+                      style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.doneText}>Done</Text>
+                    </Pressable>
+                  </View>
+                  <DateTimePicker
+                    value={dateTime}
+                    mode="datetime"
+                    display="spinner"
+                    onChange={(_, picked) => {
+                      if (picked) setDateTime(picked);
+                    }}
+                  />
+                </Pressable>
+              </Pressable>
+            </Modal>
+          ) : (
+            dtPicker && (
+              <DateTimePicker
+                value={dateTime}
+                mode={dtPicker}
+                display="default"
+                onChange={onDtChange}
+              />
+            )
+          )}
 
           {/* Status */}
           <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 }]}>
@@ -463,9 +555,7 @@ export default function SessionSetupScreen() {
           </View>
 
           <Pressable
-            onPress={() => {
-              /* real picker in Stage 1b */
-            }}
+            onPress={() => setApptPicker('date')}
             style={({ pressed }) => [
               styles.fieldRow,
               { backgroundColor: cardBg, borderColor: cardBorder, marginTop: 10 },
@@ -487,8 +577,64 @@ export default function SessionSetupScreen() {
                 {nextAppt ? formatDateTime(nextAppt) : 'Set a date'}
               </Text>
             </View>
+            {nextAppt ? (
+              <Pressable
+                onPress={() => setNextAppt(null)}
+                hitSlop={6}
+                style={({ pressed }) => [
+                  styles.fieldMiniBtn,
+                  { backgroundColor: indicatorBg },
+                  pressed && { opacity: 0.7 },
+                ]}
+              >
+                <Ionicons name="close" size={14} color={textSecondary} />
+              </Pressable>
+            ) : null}
             <Ionicons name="chevron-forward" size={18} color={muted} />
           </Pressable>
+          {Platform.OS === 'ios' ? (
+            <Modal
+              transparent
+              animationType="slide"
+              visible={apptPicker !== null}
+              onRequestClose={() => setApptPicker(null)}
+            >
+              <Pressable style={styles.dim} onPress={() => setApptPicker(null)}>
+                <Pressable
+                  style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
+                  onPress={(e) => e.stopPropagation()}
+                >
+                  <View style={styles.sheetHeader}>
+                    <Text style={styles.sheetTitle}>Next appointment</Text>
+                    <Pressable
+                      onPress={() => setApptPicker(null)}
+                      hitSlop={8}
+                      style={({ pressed }) => [pressed && { opacity: 0.6 }]}
+                    >
+                      <Text style={styles.doneText}>Done</Text>
+                    </Pressable>
+                  </View>
+                  <DateTimePicker
+                    value={nextAppt ?? apptBase()}
+                    mode="datetime"
+                    display="spinner"
+                    onChange={(_, picked) => {
+                      if (picked) setNextAppt(picked);
+                    }}
+                  />
+                </Pressable>
+              </Pressable>
+            </Modal>
+          ) : (
+            apptPicker && (
+              <DateTimePicker
+                value={apptBase()}
+                mode={apptPicker}
+                display="default"
+                onChange={onApptChange}
+              />
+            )
+          )}
         </View>
       </ScrollView>
 
@@ -719,6 +865,7 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   sheetTitle: { fontSize: 16, fontWeight: '800', color: '#1B2542' },
+  doneText: { fontSize: 15, fontWeight: '800', color: ACCENT },
   sheetClose: {
     width: 32,
     height: 32,
@@ -765,6 +912,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 10,
     elevation: 2,
+  },
+  fieldMiniBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fieldIcon: {
     width: 34,
