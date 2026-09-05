@@ -12,7 +12,7 @@ import { Stack, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-rou
 import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const AVATAR_PALETTE: readonly (readonly [string, string])[] = [
@@ -246,6 +246,25 @@ export default function PatientDetails() {
           </View>
         </ScrollView>
       )}
+
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={() =>
+          router.push(
+            `/clinic/sessions-dental?patientId=${patientId}&name=${encodeURIComponent(patientName)}` as any
+          )
+        }
+        style={[styles.sessFabWrap, { bottom: insets.bottom + 24 }]}
+      >
+        <LinearGradient
+          colors={['#3D9DFF', '#1668E3']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.sessFab}
+        >
+          <Ionicons name="add" size={30} color="#FFFFFF" />
+        </LinearGradient>
+      </TouchableOpacity>
     </View>
   );
 }
@@ -365,5 +384,22 @@ const styles = StyleSheet.create({
   muted: {
     fontSize: 13.5,
     textAlign: 'center',
+  },
+
+  sessFabWrap: {
+    position: 'absolute',
+    right: 20,
+  },
+  sessFab: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1668E3',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.45,
+    shadowRadius: 18,
+    elevation: 10,
   },
 });
