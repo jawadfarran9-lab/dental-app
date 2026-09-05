@@ -6,17 +6,48 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { FlatList, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { FlatList, Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-const TILE_GRADIENTS: readonly (readonly [string, string])[] = [
-  ['#1E3A5C', '#0F1E33'],
-  ['#1F4D4A', '#0E2A28'],
-  ['#274060', '#122236'],
-  ['#33455E', '#151E2B'],
-  ['#22506B', '#0F2733'],
-  ['#3A3E63', '#171a30'],
-];
+function SessionTile({
+  item,
+  tileW,
+  tileH,
+}: {
+  item: DentalSession;
+  tileW: number;
+  tileH: number;
+}) {
+  return (
+    <Pressable
+      onPress={() => {
+        Haptics.selectionAsync().catch(() => {});
+      }}
+      style={({ pressed }) => [
+        {
+          width: tileW,
+          height: tileH,
+          borderRadius: 20,
+          overflow: 'hidden',
+          opacity: pressed ? 0.92 : 1,
+        },
+      ]}
+    >
+      <Image
+        source={item.image}
+        style={{ width: tileW, height: tileH }}
+        resizeMode="cover"
+      />
+      <LinearGradient
+        colors={['transparent', 'rgba(0,0,0,0.6)']}
+        style={styles.scrim}
+      />
+      <Text style={styles.tileName} numberOfLines={2} ellipsizeMode="tail">
+        {item.name}
+      </Text>
+    </Pressable>
+  );
+}
 
 export default function SessionsDentalScreen() {
   useClinicGuard();
@@ -43,42 +74,8 @@ export default function SessionsDentalScreen() {
     else router.replace('/clinic/dashboard' as any);
   };
 
-  const renderTile = ({ item, index }: { item: DentalSession; index: number }) => {
-    const g = TILE_GRADIENTS[index % TILE_GRADIENTS.length];
-    return (
-      <Pressable
-        onPress={() => {
-          Haptics.selectionAsync().catch(() => {});
-        }}
-        style={({ pressed }) => [
-          {
-            width: TILE_W,
-            height: TILE_H,
-            borderRadius: 20,
-            overflow: 'hidden',
-            opacity: pressed ? 0.92 : 1,
-          },
-        ]}
-      >
-        <LinearGradient
-          colors={g as unknown as [string, string]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <LinearGradient
-          colors={['transparent', 'rgba(0,0,0,0.6)']}
-          style={styles.scrim}
-        />
-        <Text
-          style={styles.tileName}
-          numberOfLines={2}
-          ellipsizeMode="tail"
-        >
-          {item.name}
-        </Text>
-      </Pressable>
-    );
+  const renderTile = ({ item }: { item: DentalSession; index: number }) => {
+    return <SessionTile item={item} tileW={TILE_W} tileH={TILE_H} />;
   };
 
   return (
@@ -112,7 +109,7 @@ export default function SessionsDentalScreen() {
         ItemSeparatorComponent={() => <View style={{ height: GRID_GAP }} />}
         contentContainerStyle={{ paddingTop: 6, paddingBottom: insets.bottom + 24 }}
         showsVerticalScrollIndicator={false}
-        removeClippedSubviews
+        removeClippedSubviews={false}
         initialNumToRender={8}
         windowSize={7}
         renderItem={renderTile}
