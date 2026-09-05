@@ -106,3 +106,80 @@ export async function createSessionRecord(
 
   return { sessionId };
 }
+
+export interface UpdateSessionRecordInput {
+  clinicId: string;
+  patientId: string;
+  memberId: string;
+  templateSlug: string;
+  templateName: string;
+  title: string;
+  date: number;
+  status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED';
+  toothAreas: string[];
+  patientSummary: string;
+  aftercare: string;
+  nextAppointmentAt: number | null;
+  materialsUsed: string;
+  statusChanged: boolean;
+}
+
+export async function updateSessionRecord(
+  sessionId: string,
+  input: UpdateSessionRecordInput
+): Promise<void> {
+  const {
+    clinicId,
+    patientId,
+    memberId,
+    templateSlug,
+    templateName,
+    title,
+    date,
+    status,
+    toothAreas,
+    patientSummary,
+    aftercare,
+    nextAppointmentAt,
+    materialsUsed,
+    statusChanged,
+  } = input;
+
+  const now = Date.now();
+
+  const mainRef = doc(
+    db,
+    `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}`
+  );
+  const privateRef = doc(
+    db,
+    `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}/private/main`
+  );
+
+  const mainPatch = {
+    title,
+    date,
+    status,
+    templateSlug,
+    templateName,
+    patientSummary,
+    aftercare,
+    nextAppointmentAt,
+    toothAreas,
+    updatedAt: now,
+  };
+
+  const privatePatch: Record<string, any> = {
+    materialsUsed,
+    updatedAt: now,
+  };
+  if (statusChanged) {
+    privatePatch.statusUpdatedAt = now;
+    privatePatch.statusUpdatedBy = memberId;
+  }
+
+  const batch = writeBatch(db);
+  batch.update(mainRef, mainPatch);
+  batch.set(privateRef, privatePatch, { merge: true });
+  await batch.commit();
+}

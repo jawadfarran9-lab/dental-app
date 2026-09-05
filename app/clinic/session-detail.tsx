@@ -10,7 +10,6 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Pressable,
   ScrollView,
@@ -145,8 +144,12 @@ export default function SessionDetailScreen() {
     else router.replace('/clinic/dashboard' as any);
   };
   const handleEdit = () => {
-    Alert.alert('Edit', 'Coming next');
-    // TODO Stage 2b
+    if (!clinicId || !patientId || !sessionId) return;
+    const qs = new URLSearchParams();
+    qs.set('editSessionId', String(sessionId));
+    qs.set('patientId', String(patientId));
+    if (patientName) qs.set('name', String(patientName));
+    router.push(`/clinic/session-setup?${qs.toString()}` as any);
   };
 
   const catalog = main?.templateSlug

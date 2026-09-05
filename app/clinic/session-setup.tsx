@@ -3,12 +3,14 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
-import { createSessionRecord } from '@/src/services/sessionRecordsService';
+import { createSessionRecord, updateSessionRecord } from '@/src/services/sessionRecordsService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/firebaseConfig';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -62,11 +64,12 @@ export default function SessionSetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { patientId, name: patientName, slug, sessionName } = useLocalSearchParams<{
+  const { patientId, name: patientName, slug, sessionName, editSessionId } = useLocalSearchParams<{
     patientId?: string;
     name?: string;
     slug: string;
     sessionName?: string;
+    editSessionId?: string;
   }>();
   const { clinicId, memberId } = useAuth();
 
@@ -90,14 +93,80 @@ export default function SessionSetupScreen() {
   const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
   const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
   const [saving, setSaving] = useState(false);
+  const [loadingEdit, setLoadingEdit] = useState<boolean>(!!editSessionId);
+  const [initialStatus, setInitialStatus] = useState<SessionStatus | null>(null);
 
   useEffect(() => {
+    if (editSessionId) return;
     const s = DENTAL_SESSIONS.find((x) => x.slug === slug);
     if (s) {
       setSelected(s);
       setName(sessionName ?? s.name);
     }
-  }, [slug, sessionName]);
+  }, [slug, sessionName, editSessionId]);
+
+  useEffect(() => {
+    if (!editSessionId || !clinicId || !patientId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const mainRef = doc(
+          db,
+          `clinics/${clinicId}/patients/${patientId}/sessions/${editSessionId}`
+        );
+        const privateRef = doc(
+          db,
+          `clinics/${clinicId}/patients/${patientId}/sessions/${editSessionId}/private/main`
+        );
+        const [mainSnap, privSnap] = await Promise.all([
+          getDoc(mainRef),
+          getDoc(privateRef),
+        ]);
+        if (cancelled) return;
+        if (!mainSnap.exists()) {
+          Alert.alert('Not found', 'This session no longer exists.');
+          router.back();
+          return;
+        }
+        const m: any = mainSnap.data();
+        const p: any = privSnap.exists() ? privSnap.data() : {};
+
+        const cat =
+          DENTAL_SESSIONS.find((x) => x.slug === m.templateSlug) ??
+          DENTAL_SESSIONS[0];
+        const localStatus: SessionStatus =
+          m.status === 'COMPLETED'
+            ? 'done'
+            : m.status === 'IN_PROGRESS'
+              ? 'in_progress'
+              : 'planned';
+
+        setSelected(cat);
+        setName(typeof m.title === 'string' ? m.title : cat.name);
+        setDateTime(new Date(typeof m.date === 'number' ? m.date : Date.now()));
+        setStatus(localStatus);
+        setInitialStatus(localStatus);
+        setToothAreas(Array.isArray(m.toothAreas) ? m.toothAreas : []);
+        setWhatDone(typeof m.patientSummary === 'string' ? m.patientSummary : '');
+        setAftercare(typeof m.aftercare === 'string' ? m.aftercare : '');
+        setNextAppt(
+          typeof m.nextAppointmentAt === 'number'
+            ? new Date(m.nextAppointmentAt)
+            : null
+        );
+        setMaterials(typeof p.materialsUsed === 'string' ? p.materialsUsed : '');
+
+        setLoadingEdit(false);
+      } catch (e: any) {
+        if (cancelled) return;
+        Alert.alert('Load failed', e?.message ?? 'Please try again');
+        router.back();
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editSessionId, clinicId, patientId, router]);
 
   const textPrimary = colors.textPrimary;
   const textSecondary = colors.textSecondary;
@@ -163,26 +232,54 @@ export default function SessionSetupScreen() {
     Haptics.selectionAsync().catch(() => {});
     setSaving(true);
     try {
-      await createSessionRecord({
-        clinicId,
-        patientId,
-        memberId,
-        templateSlug: selected.slug,
-        templateName: selected.name,
-        title,
-        date: dateTime.getTime(),
-        status:
-          status === 'done'
+      const mappedStatus: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' =
+        status === 'done'
+          ? 'COMPLETED'
+          : status === 'in_progress'
+            ? 'IN_PROGRESS'
+            : 'PENDING';
+      if (editSessionId) {
+        const mappedInitial: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | null =
+          initialStatus === 'done'
             ? 'COMPLETED'
-            : status === 'in_progress'
+            : initialStatus === 'in_progress'
               ? 'IN_PROGRESS'
-              : 'PENDING',
-        toothAreas,
-        patientSummary: whatDone.trim(),
-        aftercare: aftercare.trim(),
-        nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
-        materialsUsed: materials.trim(),
-      });
+              : initialStatus === 'planned'
+                ? 'PENDING'
+                : null;
+        await updateSessionRecord(editSessionId, {
+          clinicId,
+          patientId,
+          memberId,
+          templateSlug: selected.slug,
+          templateName: selected.name,
+          title,
+          date: dateTime.getTime(),
+          status: mappedStatus,
+          toothAreas,
+          patientSummary: whatDone.trim(),
+          aftercare: aftercare.trim(),
+          nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
+          materialsUsed: materials.trim(),
+          statusChanged: mappedInitial !== null && mappedInitial !== mappedStatus,
+        });
+      } else {
+        await createSessionRecord({
+          clinicId,
+          patientId,
+          memberId,
+          templateSlug: selected.slug,
+          templateName: selected.name,
+          title,
+          date: dateTime.getTime(),
+          status: mappedStatus,
+          toothAreas,
+          patientSummary: whatDone.trim(),
+          aftercare: aftercare.trim(),
+          nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
+          materialsUsed: materials.trim(),
+        });
+      }
       router.back();
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Please try again');
@@ -243,7 +340,9 @@ export default function SessionSetupScreen() {
           <Ionicons name="chevron-back" size={22} color={backIconColor} />
         </Pressable>
         <View style={styles.headerText}>
-          <Text style={[styles.headerTitle, { color: textPrimary }]}>New Session</Text>
+          <Text style={[styles.headerTitle, { color: textPrimary }]}>
+            {editSessionId ? 'Edit session' : 'New Session'}
+          </Text>
           {patientName ? (
             <Text style={[styles.headerSubtitle, { color: muted }]}>
               for {patientName}
@@ -252,6 +351,12 @@ export default function SessionSetupScreen() {
         </View>
       </View>
 
+      {loadingEdit ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={textSecondary} />
+        </View>
+      ) : (
+        <>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{
@@ -715,12 +820,16 @@ export default function SessionSetupScreen() {
             ) : (
               <>
                 <Ionicons name="save-outline" size={18} color="#FFFFFF" />
-                <Text style={styles.saveBtnText}>Save session</Text>
+                <Text style={styles.saveBtnText}>
+                  {editSessionId ? 'Save changes' : 'Save session'}
+                </Text>
               </>
             )}
           </LinearGradient>
         </Pressable>
       </View>
+        </>
+      )}
 
       {/* Switcher modal */}
       <Modal
