@@ -1,7 +1,9 @@
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
+import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
+import { createSessionRecord } from '@/src/services/sessionRecordsService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
@@ -9,6 +11,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   Modal,
   Platform,
@@ -58,12 +62,13 @@ export default function SessionSetupScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { colors, isDark } = useTheme();
-  const { name: patientName, slug, sessionName } = useLocalSearchParams<{
+  const { patientId, name: patientName, slug, sessionName } = useLocalSearchParams<{
     patientId?: string;
     name?: string;
     slug: string;
     sessionName?: string;
   }>();
+  const { clinicId, memberId } = useAuth();
 
   const initial =
     DENTAL_SESSIONS.find((s) => s.slug === slug) ?? DENTAL_SESSIONS[0];
@@ -84,6 +89,7 @@ export default function SessionSetupScreen() {
   const [nextAppt, setNextAppt] = useState<Date | null>(null);
   const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
   const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     const s = DENTAL_SESSIONS.find((x) => x.slug === slug);
@@ -146,9 +152,43 @@ export default function SessionSetupScreen() {
     setToothAreas((prev) => prev.filter((x) => x !== v));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
+    if (!clinicId || !patientId || !memberId) {
+      Alert.alert('Cannot save', 'Missing clinic or patient.');
+      return;
+    }
+    const title = name.trim() || selected.name;
+    if (!title) return;
     Haptics.selectionAsync().catch(() => {});
-    // TODO: persist to Firebase (Stage 1b)
+    setSaving(true);
+    try {
+      await createSessionRecord({
+        clinicId,
+        patientId,
+        memberId,
+        templateSlug: selected.slug,
+        templateName: selected.name,
+        title,
+        date: dateTime.getTime(),
+        status:
+          status === 'done'
+            ? 'COMPLETED'
+            : status === 'in_progress'
+              ? 'IN_PROGRESS'
+              : 'PENDING',
+        toothAreas,
+        patientSummary: whatDone.trim(),
+        aftercare: aftercare.trim(),
+        nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
+        materialsUsed: materials.trim(),
+      });
+      router.back();
+    } catch (e: any) {
+      Alert.alert('Save failed', e?.message ?? 'Please try again');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const onDtChange = (_: unknown, picked?: Date) => {
@@ -654,7 +694,12 @@ export default function SessionSetupScreen() {
         />
         <Pressable
           onPress={handleSave}
-          style={({ pressed }) => [styles.saveBtnOuter, pressed && { opacity: 0.92 }]}
+          disabled={saving}
+          style={({ pressed }) => [
+            styles.saveBtnOuter,
+            pressed && { opacity: 0.92 },
+            saving && { opacity: 0.85 },
+          ]}
         >
           <LinearGradient
             colors={['#3D9DFF', '#1668E3']}
@@ -662,8 +707,17 @@ export default function SessionSetupScreen() {
             end={{ x: 1, y: 1 }}
             style={styles.saveBtn}
           >
-            <Ionicons name="save-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.saveBtnText}>Save session</Text>
+            {saving ? (
+              <>
+                <ActivityIndicator size="small" color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Saving…</Text>
+              </>
+            ) : (
+              <>
+                <Ionicons name="save-outline" size={18} color="#FFFFFF" />
+                <Text style={styles.saveBtnText}>Save session</Text>
+              </>
+            )}
           </LinearGradient>
         </Pressable>
       </View>
