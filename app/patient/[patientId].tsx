@@ -17,6 +17,7 @@ import {
     ActivityIndicator,
     Alert,
     FlatList,
+    Pressable,
     StyleSheet,
     Text,
     TouchableOpacity,
@@ -241,7 +242,18 @@ export default function PatientView() {
               <Text style={[styles.empty, { color: colors.textTertiary }]}>{t('patient.noSessions')}</Text>
             }
             renderItem={({ item }: any) => (
-              <View style={[styles.sessionCard, { backgroundColor: colors.card, borderColor: colors.cardBorder }]}>
+              <Pressable
+                onPress={() =>
+                  router.push(
+                    `/patient/session-detail?sessionId=${encodeURIComponent(item.id)}` as any
+                  )
+                }
+                style={({ pressed }) => [
+                  styles.sessionCard,
+                  { backgroundColor: colors.card, borderColor: colors.cardBorder },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
                 <View style={styles.sessionBar} />
                 <View style={styles.sessionIcon}>
                   <Ionicons name="document-text-outline" size={20} color={colors.accentBlue} />
@@ -255,7 +267,7 @@ export default function PatientView() {
                   <Text style={[styles.sessionDate, { color: colors.textSecondary }]}>{localizeDate(item.date)}</Text>
                   <Text style={[styles.sessionTime, { color: colors.textTertiary }]}>{formatTime(item.date)}</Text>
                 </View>
-              </View>
+              </Pressable>
             )}
           />
         </View>
