@@ -134,6 +134,8 @@ export default function SessionSetupScreen() {
   const [photos, setPhotos] = useState<StagedPhoto[]>([]);
   const [photoSheet, setPhotoSheet] = useState<string | null>(null);
   const [addSheet, setAddSheet] = useState(false);
+  const [catOpen, setCatOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     if (editSessionId) return;
@@ -961,6 +963,8 @@ export default function SessionSetupScreen() {
                   <Pressable
                     key={p.key}
                     onPress={() => setPhotoSheet(p.key)}
+                    onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); removePhoto(p.key); }}
+                    delayLongPress={400}
                     style={({ pressed }) => [
                       styles.photoCell,
                       { width: PHOTO_CELL, height: PHOTO_CELL },
@@ -1013,7 +1017,7 @@ export default function SessionSetupScreen() {
               </Pressable>
             </View>
             <Text style={[styles.photosCaption, { color: muted }]}>
-              Green eye = shared with patient · lock = clinic only
+              Long-press a photo to remove · green eye = shared, lock = clinic only
             </Text>
           </View>
         </View>
@@ -1301,110 +1305,93 @@ export default function SessionSetupScreen() {
         </Pressable>
       </Modal>
 
-      {/* Manage photo sheet */}
+      {/* Full-screen photo editor */}
       <Modal
         transparent
-        animationType="slide"
+        animationType="fade"
         visible={photoSheet !== null}
-        onRequestClose={() => setPhotoSheet(null)}
+        onRequestClose={() => { setCatOpen(false); setShareOpen(false); setPhotoSheet(null); }}
       >
-        <View style={styles.dim}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setPhotoSheet(null)}
-          />
-          <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
-            <View style={styles.grabHandle} />
-            <View style={styles.sheetHeader}>
-              <Text style={styles.sheetTitle}>Photo</Text>
+        <View style={styles.editorRoot}>
+          {activePhoto ? (
+            <Image source={{ uri: activePhoto.uri }} style={styles.editorImage} resizeMode="contain" />
+          ) : null}
+
+          <View style={[styles.editorTopbar, { top: insets.top + 12 }]} pointerEvents="box-none">
+            <Pressable
+              onPress={() => { setCatOpen(false); setShareOpen(false); setPhotoSheet(null); }}
+              style={styles.editorIconBtn}
+              hitSlop={10}
+            >
+              <Ionicons name="close" size={22} color="#FFFFFF" />
+            </Pressable>
+
+            <View style={styles.editorTopRight} pointerEvents="box-none">
               <Pressable
-                onPress={() => setPhotoSheet(null)}
-                style={({ pressed }) => [
-                  styles.sheetClose,
-                  pressed && { opacity: 0.6 },
-                ]}
+                onPress={() => { setShareOpen(false); setCatOpen(true); }}
+                style={styles.editorIconBtn}
+                hitSlop={10}
               >
-                <Ionicons name="close" size={20} color="#1B2542" />
+                <Ionicons name="pricetag" size={19} color="#FFFFFF" />
+              </Pressable>
+              <Pressable
+                onPress={() => { setCatOpen(false); setShareOpen(true); }}
+                style={[styles.editorIconBtn, { marginLeft: 10 }]}
+                hitSlop={10}
+              >
+                <Ionicons
+                  name={activePhoto?.sharedWithPatient ? 'eye' : 'lock-closed'}
+                  size={19}
+                  color={activePhoto?.sharedWithPatient ? '#34D399' : '#FFFFFF'}
+                />
               </Pressable>
             </View>
-            {activePhoto ? (
-              <ScrollView
-                contentContainerStyle={{ paddingBottom: 8 }}
-                showsVerticalScrollIndicator={true}
-                keyboardShouldPersistTaps="handled"
-                nestedScrollEnabled
-              >
-                <Image
-                  source={{ uri: activePhoto.uri }}
-                  style={{
-                    width: '100%',
-                    aspectRatio: 3 / 4,
-                    maxHeight: 600,
-                    borderRadius: 16,
-                    backgroundColor: 'rgba(27,37,66,0.06)',
-                  }}
-                  resizeMode="cover"
-                />
+          </View>
 
-                <Text style={[styles.manageEyebrow]}>CATEGORY</Text>
-                <View style={styles.manageChipsWrap}>
+          {catOpen && activePhoto ? (
+            <View style={styles.editorPanelWrap}>
+              <Pressable style={styles.editorBackdrop} onPress={() => setCatOpen(false)} />
+              <View style={[styles.editorPanel, { paddingBottom: insets.bottom + 16 }]}>
+                <Text style={styles.editorPanelTitle}>Category</Text>
+                <View style={styles.editorChips}>
                   {PHOTO_CATEGORIES.map((c) => {
-                    const isActive = activePhoto.category === c.key;
+                    const on = c.key === activePhoto.category;
                     return (
                       <Pressable
                         key={c.key}
-                        onPress={() => setPhotoCategory(activePhoto.key, c.key)}
-                        style={({ pressed }) => [
-                          styles.manageChip,
-                          isActive
-                            ? { backgroundColor: ACCENT }
-                            : { backgroundColor: 'rgba(27,37,66,0.06)' },
-                          pressed && { opacity: 0.85 },
-                        ]}
+                        onPress={() => { setPhotoCategory(activePhoto.key, c.key); setCatOpen(false); }}
+                        style={[styles.editorChip, on && styles.editorChipOn]}
                       >
-                        <Text
-                          style={[
-                            styles.manageChipText,
-                            { color: isActive ? '#FFFFFF' : '#1B2542' },
-                          ]}
-                        >
-                          {c.label}
-                        </Text>
+                        <Text style={[styles.editorChipTxt, on && styles.editorChipTxtOn]}>{c.label}</Text>
                       </Pressable>
                     );
                   })}
                 </View>
+              </View>
+            </View>
+          ) : null}
 
-                <View style={styles.manageShareRow}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.manageShareTitle}>Share with patient</Text>
-                    <Text style={styles.manageShareSub}>
-                      {activePhoto.sharedWithPatient
-                        ? 'On = patient will see this photo'
-                        : 'Off = clinic only'}
+          {shareOpen && activePhoto ? (
+            <View style={styles.editorPanelWrap}>
+              <Pressable style={styles.editorBackdrop} onPress={() => setShareOpen(false)} />
+              <View style={[styles.editorPanel, { paddingBottom: insets.bottom + 16 }]}>
+                <View style={styles.editorShareRow}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+                    <Text style={styles.editorPanelTitle}>Share with patient</Text>
+                    <Text style={styles.editorShareSub}>
+                      {activePhoto.sharedWithPatient ? 'The patient can see this photo.' : 'Off = clinic only, hidden from the patient.'}
                     </Text>
                   </View>
                   <Switch
                     value={activePhoto.sharedWithPatient}
                     onValueChange={(v) => setPhotoShared(activePhoto.key, v)}
-                    trackColor={{ false: 'rgba(27,37,66,0.15)', true: '#10B981' }}
+                    trackColor={{ false: 'rgba(255,255,255,0.2)', true: '#10B981' }}
                     thumbColor="#FFFFFF"
                   />
                 </View>
-
-                <Pressable
-                  onPress={() => removePhoto(activePhoto.key)}
-                  style={({ pressed }) => [
-                    styles.manageRemoveBtn,
-                    pressed && { opacity: 0.9 },
-                  ]}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
-                  <Text style={styles.manageRemoveText}>Remove photo</Text>
-                </Pressable>
-              </ScrollView>
-            ) : null}
-          </View>
+              </View>
+            </View>
+          ) : null}
         </View>
       </Modal>
     </View>
@@ -1919,4 +1906,21 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     letterSpacing: 0.2,
   },
+
+  editorRoot: { flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' },
+  editorImage: { width: '100%', height: '100%' },
+  editorTopbar: { position: 'absolute', left: 16, right: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  editorTopRight: { flexDirection: 'row', alignItems: 'center' },
+  editorIconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.14)', alignItems: 'center', justifyContent: 'center' },
+  editorPanelWrap: { ...StyleSheet.absoluteFillObject, justifyContent: 'flex-end' },
+  editorBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)' },
+  editorPanel: { backgroundColor: '#161B22', borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 18, paddingHorizontal: 18 },
+  editorPanelTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  editorChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  editorChip: { paddingVertical: 9, paddingHorizontal: 14, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.1)' },
+  editorChipOn: { backgroundColor: '#1668E3' },
+  editorChipTxt: { color: '#DFE7F3', fontSize: 13, fontWeight: '700' },
+  editorChipTxtOn: { color: '#FFFFFF' },
+  editorShareRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  editorShareSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12.5, marginTop: 4, lineHeight: 17 },
 });
