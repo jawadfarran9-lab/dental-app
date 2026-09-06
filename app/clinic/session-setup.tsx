@@ -5,6 +5,7 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { createSessionRecord, updateSessionRecord } from '@/src/services/sessionRecordsService';
 import { uploadSessionPhotos, listSessionPhotos, updateSessionPhoto, deleteSessionPhoto } from '@/src/services/sessionPhotosService';
+import { sendSessionSummary } from '@/src/services/sessionSummaryService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
@@ -124,6 +125,8 @@ export default function SessionSetupScreen() {
   const [materials, setMaterials] = useState('');
   const [aftercare, setAftercare] = useState('');
   const [nextAppt, setNextAppt] = useState<Date | null>(null);
+  const [patientSummarySentAt, setPatientSummarySentAt] = useState<number | null>(null);
+  const [sendingSummary, setSendingSummary] = useState(false);
   const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
   const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
   const [saving, setSaving] = useState(false);
@@ -199,6 +202,7 @@ export default function SessionSetupScreen() {
             : null
         );
         setMaterials(typeof p.materialsUsed === 'string' ? p.materialsUsed : '');
+        setPatientSummarySentAt(typeof m.patientSummarySentAt === 'number' ? m.patientSummarySentAt : null);
 
         setLoadingEdit(false);
       } catch (e: any) {
@@ -445,6 +449,38 @@ export default function SessionSetupScreen() {
     : null;
 
   const currentPhoto = photoSheet !== null ? (photos[editorIndex] ?? null) : null;
+
+  const handleSendSummary = async () => {
+    if (sendingSummary) return;
+    if (!clinicId || !patientId) return;
+    if (!editSessionId) {
+      Alert.alert('Save first', 'Save this session, then open it to send the summary to the patient’s chat.');
+      return;
+    }
+    if (!aftercare.trim() && !nextAppt) {
+      Alert.alert('Nothing to send', 'Add aftercare instructions or a next appointment first.');
+      return;
+    }
+    try {
+      setSendingSummary(true);
+      Haptics.selectionAsync();
+      await sendSessionSummary({
+        clinicId,
+        patientId,
+        patientName,
+        sessionId: editSessionId,
+        title: name.trim() || selected.name,
+        aftercare: aftercare.trim(),
+        nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
+        sessionDate: dateTime.getTime(),
+      });
+      setPatientSummarySentAt(Date.now());
+    } catch (e) {
+      Alert.alert('Send failed', 'Could not send the summary. Please try again.');
+    } finally {
+      setSendingSummary(false);
+    }
+  };
 
   const handleSave = async () => {
     if (saving) return;
@@ -1033,10 +1069,24 @@ export default function SessionSetupScreen() {
             <Text style={[styles.sectionEyebrow, { color: muted, marginBottom: 0 }]}>
               FOR THE PATIENT
             </Text>
-            <View style={[styles.badge, { backgroundColor: 'rgba(22, 104, 227, 0.10)' }]}>
-              <Ionicons name="chatbubble-ellipses-outline" size={11} color={ACCENT} />
-              <Text style={[styles.badgeText, { color: ACCENT }]}>sent to chat</Text>
-            </View>
+            {patientSummarySentAt ? (
+              <View style={styles.badgeSent}>
+                <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                <Text style={styles.badgeSentText}>Sent to chat</Text>
+              </View>
+            ) : (
+              <Pressable onPress={handleSendSummary} disabled={sendingSummary}>
+                <LinearGradient
+                  colors={['#3D9DFF', '#1668E3']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.sendChatBtn}
+                >
+                  <Ionicons name="paper-plane" size={13} color="#FFFFFF" />
+                  <Text style={styles.sendChatBtnText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
+                </LinearGradient>
+              </Pressable>
+            )}
           </View>
 
           <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -1975,4 +2025,8 @@ const styles = StyleSheet.create({
   editorFilmContent: { paddingHorizontal: 12, gap: 8 },
   editorThumb: { width: 48, height: 48, borderRadius: 10, borderWidth: 2, borderColor: 'transparent' },
   editorThumbActive: { borderColor: '#FFFFFF' },
+  sendChatBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, height: 32, paddingHorizontal: 13, borderRadius: 999 },
+  sendChatBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
+  badgeSent: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(16,185,129,0.12)' },
+  badgeSentText: { color: '#0F9D6E', fontSize: 12, fontWeight: '800' },
 });
