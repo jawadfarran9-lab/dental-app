@@ -1202,11 +1202,12 @@ export default function SessionSetupScreen() {
         visible={photoSheet !== null}
         onRequestClose={() => setPhotoSheet(null)}
       >
-        <Pressable style={styles.dim} onPress={() => setPhotoSheet(null)}>
+        <View style={styles.dim}>
           <Pressable
-            style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
-            onPress={(e) => e.stopPropagation()}
-          >
+            style={StyleSheet.absoluteFill}
+            onPress={() => setPhotoSheet(null)}
+          />
+          <View style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}>
             <View style={styles.grabHandle} />
             <View style={styles.sheetHeader}>
               <Text style={styles.sheetTitle}>Photo</Text>
@@ -1222,15 +1223,17 @@ export default function SessionSetupScreen() {
             </View>
             {activePhoto ? (
               <ScrollView
-                style={{ maxHeight: '100%' }}
                 contentContainerStyle={{ paddingBottom: 8 }}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator={true}
+                keyboardShouldPersistTaps="handled"
+                nestedScrollEnabled
               >
                 <Image
                   source={{ uri: activePhoto.uri }}
                   style={{
                     width: '100%',
-                    height: 240,
+                    aspectRatio: 3 / 4,
+                    maxHeight: 600,
                     borderRadius: 16,
                     backgroundColor: 'rgba(27,37,66,0.06)',
                   }}
@@ -1295,8 +1298,8 @@ export default function SessionSetupScreen() {
                 </Pressable>
               </ScrollView>
             ) : null}
-          </Pressable>
-        </Pressable>
+          </View>
+        </View>
       </Modal>
     </View>
   );
@@ -1415,7 +1418,7 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 24,
     paddingHorizontal: 16,
     paddingTop: 8,
-    maxHeight: '76%',
+    maxHeight: '92%',
   },
   grabHandle: {
     alignSelf: 'center',
