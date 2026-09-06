@@ -13,11 +13,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  FlatList,
   Image,
   Modal,
   Platform,
@@ -136,6 +137,8 @@ export default function SessionSetupScreen() {
   const [addSheet, setAddSheet] = useState(false);
   const [catOpen, setCatOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [editorIndex, setEditorIndex] = useState(0);
+  const editorListRef = useRef<FlatList<StagedPhoto>>(null);
 
   useEffect(() => {
     if (editSessionId) return;
@@ -440,6 +443,8 @@ export default function SessionSetupScreen() {
   const activePhoto = photoSheet
     ? photos.find((p) => p.key === photoSheet) ?? null
     : null;
+
+  const currentPhoto = photoSheet !== null ? (photos[editorIndex] ?? null) : null;
 
   const handleSave = async () => {
     if (saving) return;
@@ -962,7 +967,7 @@ export default function SessionSetupScreen() {
                 return (
                   <Pressable
                     key={p.key}
-                    onPress={() => setPhotoSheet(p.key)}
+                    onPress={() => { setEditorIndex(Math.max(0, photos.findIndex((x) => x.key === p.key))); setPhotoSheet(p.key); }}
                     onLongPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); removePhoto(p.key); }}
                     delayLongPress={400}
                     style={({ pressed }) => [
@@ -1313,9 +1318,29 @@ export default function SessionSetupScreen() {
         onRequestClose={() => { setCatOpen(false); setShareOpen(false); setPhotoSheet(null); }}
       >
         <View style={styles.editorRoot}>
-          {activePhoto ? (
-            <Image source={{ uri: activePhoto.uri }} style={styles.editorImage} resizeMode="contain" />
-          ) : null}
+          <FlatList
+            ref={editorListRef}
+            data={photos}
+            keyExtractor={(p) => p.key}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={editorIndex}
+            getItemLayout={(_, index) => ({ length: SCREEN_W, offset: SCREEN_W * index, index })}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => editorListRef.current?.scrollToOffset({ offset: info.index * SCREEN_W, animated: false }), 50);
+            }}
+            onMomentumScrollEnd={(e) => {
+              const idx = Math.round(e.nativeEvent.contentOffset.x / SCREEN_W);
+              setEditorIndex(Math.max(0, Math.min(idx, photos.length - 1)));
+            }}
+            style={StyleSheet.absoluteFill}
+            renderItem={({ item }) => (
+              <View style={styles.editorPage}>
+                <Image source={{ uri: item.uri }} style={styles.editorImage} resizeMode="contain" />
+              </View>
+            )}
+          />
 
           <View style={[styles.editorTopbar, { top: insets.top + 12 }]} pointerEvents="box-none">
             <Pressable
@@ -1340,26 +1365,48 @@ export default function SessionSetupScreen() {
                 hitSlop={10}
               >
                 <Ionicons
-                  name={activePhoto?.sharedWithPatient ? 'eye' : 'lock-closed'}
+                  name={currentPhoto?.sharedWithPatient ? 'eye' : 'lock-closed'}
                   size={19}
-                  color={activePhoto?.sharedWithPatient ? '#34D399' : '#FFFFFF'}
+                  color={currentPhoto?.sharedWithPatient ? '#34D399' : '#FFFFFF'}
                 />
               </Pressable>
             </View>
           </View>
 
-          {catOpen && activePhoto ? (
+          {photos.length > 1 ? (
+            <View style={[styles.editorFilmWrap, { bottom: insets.bottom + 16 }]}>
+              <FlatList
+                data={photos}
+                keyExtractor={(p) => 'film_' + p.key}
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.editorFilmContent}
+                renderItem={({ item, index }) => (
+                  <Pressable
+                    onPress={() => { editorListRef.current?.scrollToIndex({ index, animated: true }); setEditorIndex(index); }}
+                  >
+                    <Image
+                      source={{ uri: item.uri }}
+                      style={[styles.editorThumb, index === editorIndex && styles.editorThumbActive]}
+                    />
+                  </Pressable>
+                )}
+              />
+            </View>
+          ) : null}
+
+          {catOpen && currentPhoto ? (
             <View style={styles.editorPanelWrap}>
               <Pressable style={styles.editorBackdrop} onPress={() => setCatOpen(false)} />
               <View style={[styles.editorPanel, { paddingBottom: insets.bottom + 16 }]}>
                 <Text style={styles.editorPanelTitle}>Category</Text>
                 <View style={styles.editorChips}>
                   {PHOTO_CATEGORIES.map((c) => {
-                    const on = c.key === activePhoto.category;
+                    const on = c.key === currentPhoto.category;
                     return (
                       <Pressable
                         key={c.key}
-                        onPress={() => { setPhotoCategory(activePhoto.key, c.key); setCatOpen(false); }}
+                        onPress={() => { setPhotoCategory(currentPhoto.key, c.key); setCatOpen(false); }}
                         style={[styles.editorChip, on && styles.editorChipOn]}
                       >
                         <Text style={[styles.editorChipTxt, on && styles.editorChipTxtOn]}>{c.label}</Text>
@@ -1371,7 +1418,7 @@ export default function SessionSetupScreen() {
             </View>
           ) : null}
 
-          {shareOpen && activePhoto ? (
+          {shareOpen && currentPhoto ? (
             <View style={styles.editorPanelWrap}>
               <Pressable style={styles.editorBackdrop} onPress={() => setShareOpen(false)} />
               <View style={[styles.editorPanel, { paddingBottom: insets.bottom + 16 }]}>
@@ -1379,12 +1426,12 @@ export default function SessionSetupScreen() {
                   <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={styles.editorPanelTitle}>Share with patient</Text>
                     <Text style={styles.editorShareSub}>
-                      {activePhoto.sharedWithPatient ? 'The patient can see this photo.' : 'Off = clinic only, hidden from the patient.'}
+                      {currentPhoto.sharedWithPatient ? 'The patient can see this photo.' : 'Off = clinic only, hidden from the patient.'}
                     </Text>
                   </View>
                   <Switch
-                    value={activePhoto.sharedWithPatient}
-                    onValueChange={(v) => setPhotoShared(activePhoto.key, v)}
+                    value={currentPhoto.sharedWithPatient}
+                    onValueChange={(v) => setPhotoShared(currentPhoto.key, v)}
                     trackColor={{ false: 'rgba(255,255,255,0.2)', true: '#10B981' }}
                     thumbColor="#FFFFFF"
                   />
@@ -1923,4 +1970,9 @@ const styles = StyleSheet.create({
   editorChipTxtOn: { color: '#FFFFFF' },
   editorShareRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
   editorShareSub: { color: 'rgba(255,255,255,0.6)', fontSize: 12.5, marginTop: 4, lineHeight: 17 },
+  editorPage: { width: SCREEN_W, height: '100%', alignItems: 'center', justifyContent: 'center' },
+  editorFilmWrap: { position: 'absolute', left: 0, right: 0 },
+  editorFilmContent: { paddingHorizontal: 12, gap: 8 },
+  editorThumb: { width: 48, height: 48, borderRadius: 10, borderWidth: 2, borderColor: 'transparent' },
+  editorThumbActive: { borderColor: '#FFFFFF' },
 });
