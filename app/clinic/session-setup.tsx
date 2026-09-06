@@ -7,6 +7,7 @@ import { createSessionRecord, updateSessionRecord } from '@/src/services/session
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import { doc, getDoc } from 'firebase/firestore';
@@ -15,12 +16,14 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -33,6 +36,32 @@ const RENAME_RED = '#C2463F';
 const RENAME_BG = '#FDEFF0';
 
 type SessionStatus = 'planned' | 'in_progress' | 'done';
+
+type PhotoCategory = 'before' | 'after' | 'xray' | 'intraoral' | 'scan' | 'other';
+
+type StagedPhoto = {
+  key: string;
+  uri: string;
+  category: PhotoCategory;
+  sharedWithPatient: boolean;
+};
+
+const PHOTO_CATEGORIES: { key: PhotoCategory; label: string }[] = [
+  { key: 'before', label: 'Before' },
+  { key: 'after', label: 'After' },
+  { key: 'xray', label: 'X-ray' },
+  { key: 'intraoral', label: 'Intraoral' },
+  { key: 'scan', label: 'Scan' },
+  { key: 'other', label: 'Other' },
+];
+
+function labelForCategory(c: PhotoCategory): string {
+  return PHOTO_CATEGORIES.find((x) => x.key === c)?.label ?? 'Other';
+}
+
+const SCREEN_W = Dimensions.get('window').width;
+const PHOTO_GRID_GAP = 8;
+const PHOTO_CELL = Math.floor((SCREEN_W - 32 - 32 - PHOTO_GRID_GAP * 2) / 3);
 
 function formatDateTime(d: Date): string {
   const now = new Date();
@@ -95,6 +124,11 @@ export default function SessionSetupScreen() {
   const [saving, setSaving] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState<boolean>(!!editSessionId);
   const [initialStatus, setInitialStatus] = useState<SessionStatus | null>(null);
+
+  // Photos-1a — staged (local-only) photos for this session
+  const [photos, setPhotos] = useState<StagedPhoto[]>([]);
+  const [photoSheet, setPhotoSheet] = useState<string | null>(null);
+  const [addSheet, setAddSheet] = useState(false);
 
   useEffect(() => {
     if (editSessionId) return;
@@ -221,6 +255,83 @@ export default function SessionSetupScreen() {
     setToothAreas((prev) => prev.filter((x) => x !== v));
   };
 
+  const stageAssets = (uris: string[]) => {
+    if (uris.length === 0) return;
+    const base = Date.now();
+    setPhotos((prev) => [
+      ...prev,
+      ...uris.map((uri, idx) => ({
+        key: `${base}_${idx}_${Math.random().toString(36).slice(2, 8)}`,
+        uri,
+        category: 'other' as PhotoCategory,
+        sharedWithPatient: false,
+      })),
+    ]);
+  };
+
+  const openAddSheet = () => setAddSheet(true);
+  const closeAddSheet = () => setAddSheet(false);
+
+  const handleTakePhoto = async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Camera access is required to take photos.');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 1,
+      });
+      closeAddSheet();
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        stageAssets(result.assets.map((a) => a.uri));
+      }
+    } catch (e: any) {
+      closeAddSheet();
+      Alert.alert('Camera error', e?.message ?? 'Please try again');
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Permission needed', 'Gallery access is required to pick photos.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        quality: 1,
+      });
+      closeAddSheet();
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        stageAssets(result.assets.map((a) => a.uri));
+      }
+    } catch (e: any) {
+      closeAddSheet();
+      Alert.alert('Gallery error', e?.message ?? 'Please try again');
+    }
+  };
+
+  const setPhotoCategory = (key: string, category: PhotoCategory) => {
+    setPhotos((prev) => prev.map((p) => (p.key === key ? { ...p, category } : p)));
+  };
+  const setPhotoShared = (key: string, sharedWithPatient: boolean) => {
+    setPhotos((prev) =>
+      prev.map((p) => (p.key === key ? { ...p, sharedWithPatient } : p)),
+    );
+  };
+  const removePhoto = (key: string) => {
+    setPhotos((prev) => prev.filter((p) => p.key !== key));
+    setPhotoSheet(null);
+  };
+
+  const activePhoto = photoSheet
+    ? photos.find((p) => p.key === photoSheet) ?? null
+    : null;
+
   const handleSave = async () => {
     if (saving) return;
     if (!clinicId || !patientId || !memberId) {
@@ -280,6 +391,7 @@ export default function SessionSetupScreen() {
           materialsUsed: materials.trim(),
         });
       }
+      // TODO: upload staged photos in Photos-1b
       router.back();
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Please try again');
@@ -674,6 +786,96 @@ export default function SessionSetupScreen() {
           </View>
         </View>
 
+        {/* PHOTOS */}
+        <View>
+          <View style={styles.photosHead}>
+            <Text style={[styles.sectionEyebrow, { color: muted, marginBottom: 0 }]}>
+              PHOTOS · {photos.length}
+            </Text>
+            <Pressable
+              onPress={openAddSheet}
+              style={({ pressed }) => [
+                styles.photosAddOuter,
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <LinearGradient
+                colors={['#3D9DFF', '#1668E3']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.photosAddBtn}
+              >
+                <Ionicons name="add" size={14} color="#FFFFFF" />
+                <Text style={styles.photosAddText}>Add</Text>
+              </LinearGradient>
+            </Pressable>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
+            <View style={styles.photoGrid}>
+              {photos.map((p) => {
+                const shared = p.sharedWithPatient;
+                return (
+                  <Pressable
+                    key={p.key}
+                    onPress={() => setPhotoSheet(p.key)}
+                    style={({ pressed }) => [
+                      styles.photoCell,
+                      { width: PHOTO_CELL, height: PHOTO_CELL },
+                      pressed && { opacity: 0.9 },
+                    ]}
+                  >
+                    <Image
+                      source={{ uri: p.uri }}
+                      style={{ width: PHOTO_CELL, height: PHOTO_CELL, borderRadius: 12 }}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.photoCatChip}>
+                      <Text style={styles.photoCatChipText} numberOfLines={1}>
+                        {labelForCategory(p.category).toUpperCase()}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.photoVisBadge,
+                        {
+                          backgroundColor: shared
+                            ? 'rgba(16,185,129,0.95)'
+                            : 'rgba(27,37,66,0.85)',
+                        },
+                      ]}
+                    >
+                      <Ionicons
+                        name={shared ? 'eye' : 'lock-closed'}
+                        size={11}
+                        color="#FFFFFF"
+                      />
+                    </View>
+                  </Pressable>
+                );
+              })}
+              <Pressable
+                onPress={openAddSheet}
+                style={({ pressed }) => [
+                  styles.photoAddCell,
+                  {
+                    width: PHOTO_CELL,
+                    height: PHOTO_CELL,
+                    borderColor: dashedBorder,
+                  },
+                  pressed && { opacity: 0.85 },
+                ]}
+              >
+                <Ionicons name="add" size={22} color={muted} />
+                <Text style={[styles.photoAddCellText, { color: muted }]}>Add</Text>
+              </Pressable>
+            </View>
+            <Text style={[styles.photosCaption, { color: muted }]}>
+              Green eye = shared with patient · lock = clinic only
+            </Text>
+          </View>
+        </View>
+
         {/* FOR THE PATIENT */}
         <View>
           <View style={styles.forPatientHead}>
@@ -890,6 +1092,171 @@ export default function SessionSetupScreen() {
                 );
               })}
             </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Add photo sheet */}
+      <Modal
+        transparent
+        animationType="slide"
+        visible={addSheet}
+        onRequestClose={closeAddSheet}
+      >
+        <Pressable style={styles.dim} onPress={closeAddSheet}>
+          <Pressable
+            style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.grabHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Add photo</Text>
+              <Pressable
+                onPress={closeAddSheet}
+                style={({ pressed }) => [
+                  styles.sheetClose,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons name="close" size={20} color="#1B2542" />
+              </Pressable>
+            </View>
+            <Pressable
+              onPress={handleTakePhoto}
+              style={({ pressed }) => [
+                styles.addSheetRow,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <View style={styles.addSheetIcon}>
+                <Ionicons name="camera" size={20} color={ACCENT} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.addSheetTitle}>Take photo</Text>
+                <Text style={styles.addSheetSub}>Use the camera</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(27,37,66,0.4)" />
+            </Pressable>
+            <Pressable
+              onPress={handlePickFromGallery}
+              style={({ pressed }) => [
+                styles.addSheetRow,
+                pressed && { opacity: 0.85 },
+              ]}
+            >
+              <View style={styles.addSheetIcon}>
+                <Ionicons name="images" size={20} color={ACCENT} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.addSheetTitle}>Choose from gallery</Text>
+                <Text style={styles.addSheetSub}>Pick one or more photos</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="rgba(27,37,66,0.4)" />
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Manage photo sheet */}
+      <Modal
+        transparent
+        animationType="slide"
+        visible={photoSheet !== null}
+        onRequestClose={() => setPhotoSheet(null)}
+      >
+        <Pressable style={styles.dim} onPress={() => setPhotoSheet(null)}>
+          <Pressable
+            style={[styles.sheet, { paddingBottom: insets.bottom + 12 }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.grabHandle} />
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Photo</Text>
+              <Pressable
+                onPress={() => setPhotoSheet(null)}
+                style={({ pressed }) => [
+                  styles.sheetClose,
+                  pressed && { opacity: 0.6 },
+                ]}
+              >
+                <Ionicons name="close" size={20} color="#1B2542" />
+              </Pressable>
+            </View>
+            {activePhoto ? (
+              <ScrollView
+                style={{ maxHeight: '100%' }}
+                contentContainerStyle={{ paddingBottom: 8 }}
+                showsVerticalScrollIndicator={false}
+              >
+                <Image
+                  source={{ uri: activePhoto.uri }}
+                  style={{
+                    width: '100%',
+                    height: 240,
+                    borderRadius: 16,
+                    backgroundColor: 'rgba(27,37,66,0.06)',
+                  }}
+                  resizeMode="cover"
+                />
+
+                <Text style={[styles.manageEyebrow]}>CATEGORY</Text>
+                <View style={styles.manageChipsWrap}>
+                  {PHOTO_CATEGORIES.map((c) => {
+                    const isActive = activePhoto.category === c.key;
+                    return (
+                      <Pressable
+                        key={c.key}
+                        onPress={() => setPhotoCategory(activePhoto.key, c.key)}
+                        style={({ pressed }) => [
+                          styles.manageChip,
+                          isActive
+                            ? { backgroundColor: ACCENT }
+                            : { backgroundColor: 'rgba(27,37,66,0.06)' },
+                          pressed && { opacity: 0.85 },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.manageChipText,
+                            { color: isActive ? '#FFFFFF' : '#1B2542' },
+                          ]}
+                        >
+                          {c.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <View style={styles.manageShareRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.manageShareTitle}>Share with patient</Text>
+                    <Text style={styles.manageShareSub}>
+                      {activePhoto.sharedWithPatient
+                        ? 'On = patient will see this photo'
+                        : 'Off = clinic only'}
+                    </Text>
+                  </View>
+                  <Switch
+                    value={activePhoto.sharedWithPatient}
+                    onValueChange={(v) => setPhotoShared(activePhoto.key, v)}
+                    trackColor={{ false: 'rgba(27,37,66,0.15)', true: '#10B981' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+
+                <Pressable
+                  onPress={() => removePhoto(activePhoto.key)}
+                  style={({ pressed }) => [
+                    styles.manageRemoveBtn,
+                    pressed && { opacity: 0.9 },
+                  ]}
+                >
+                  <Ionicons name="trash-outline" size={16} color="#FFFFFF" />
+                  <Text style={styles.manageRemoveText}>Remove photo</Text>
+                </Pressable>
+              </ScrollView>
+            ) : null}
           </Pressable>
         </Pressable>
       </Modal>
@@ -1225,6 +1592,183 @@ const styles = StyleSheet.create({
   saveBtnText: {
     color: '#FFFFFF',
     fontSize: 15.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+
+  photosHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  photosAddOuter: {
+    borderRadius: 12,
+    shadowColor: '#1668E3',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  photosAddBtn: {
+    height: 28,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  photosAddText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: PHOTO_GRID_GAP,
+  },
+  photoCell: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: 'rgba(27,37,66,0.06)',
+  },
+  photoCatChip: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 8,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(11,15,26,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: '85%',
+  },
+  photoCatChipText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  photoVisBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  photoAddCell: {
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  photoAddCellText: {
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  photosCaption: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 10,
+    letterSpacing: 0.1,
+  },
+
+  addSheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+  },
+  addSheetIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(22, 104, 227, 0.10)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addSheetTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1B2542',
+  },
+  addSheetSub: {
+    fontSize: 12.5,
+    fontWeight: '600',
+    color: 'rgba(27,37,66,0.55)',
+    marginTop: 2,
+  },
+
+  manageEyebrow: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+    color: 'rgba(27,37,66,0.55)',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  manageChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  manageChip: {
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manageChipText: {
+    fontSize: 12.5,
+    fontWeight: '800',
+    letterSpacing: 0.2,
+  },
+  manageShareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 18,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: 'rgba(27,37,66,0.04)',
+  },
+  manageShareTitle: {
+    fontSize: 14.5,
+    fontWeight: '800',
+    color: '#1B2542',
+  },
+  manageShareSub: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: 'rgba(27,37,66,0.55)',
+    marginTop: 2,
+  },
+  manageRemoveBtn: {
+    marginTop: 18,
+    height: 46,
+    borderRadius: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#C2463F',
+  },
+  manageRemoveText: {
+    color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: 0.2,
   },
