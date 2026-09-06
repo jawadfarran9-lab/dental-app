@@ -453,10 +453,6 @@ export default function SessionSetupScreen() {
   const handleSendSummary = async () => {
     if (sendingSummary) return;
     if (!clinicId || !patientId) return;
-    if (!editSessionId) {
-      Alert.alert('Save first', 'Save this session, then open it to send the summary to the patient’s chat.');
-      return;
-    }
     if (!aftercare.trim() && !nextAppt) {
       Alert.alert('Nothing to send', 'Add aftercare instructions or a next appointment first.');
       return;
@@ -468,7 +464,7 @@ export default function SessionSetupScreen() {
         clinicId,
         patientId,
         patientName,
-        sessionId: editSessionId,
+        sessionId: editSessionId || null,
         title: name.trim() || selected.name,
         aftercare: aftercare.trim(),
         nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
@@ -1069,24 +1065,6 @@ export default function SessionSetupScreen() {
             <Text style={[styles.sectionEyebrow, { color: muted, marginBottom: 0 }]}>
               FOR THE PATIENT
             </Text>
-            {patientSummarySentAt ? (
-              <View style={styles.badgeSent}>
-                <Ionicons name="checkmark-circle" size={13} color="#10B981" />
-                <Text style={styles.badgeSentText}>Sent to chat</Text>
-              </View>
-            ) : (
-              <Pressable onPress={handleSendSummary} disabled={sendingSummary}>
-                <LinearGradient
-                  colors={['#3D9DFF', '#1668E3']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 1 }}
-                  style={styles.sendChatBtn}
-                >
-                  <Ionicons name="paper-plane" size={13} color="#FFFFFF" />
-                  <Text style={styles.sendChatBtnText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
-                </LinearGradient>
-              </Pressable>
-            )}
           </View>
 
           <View style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}>
@@ -1184,6 +1162,19 @@ export default function SessionSetupScreen() {
             )
           )}
         </View>
+
+        <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={{ marginTop: 8 }}>
+          <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendChatFull}>
+            <Ionicons name="paper-plane" size={17} color="#FFFFFF" />
+            <Text style={styles.sendChatFullText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
+          </LinearGradient>
+        </Pressable>
+        {patientSummarySentAt ? (
+          <View style={styles.sentLine}>
+            <Ionicons name="checkmark-circle" size={15} color="#10B981" />
+            <Text style={styles.sentLineText}>Sent to patient chat</Text>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Fixed Save bar */}
@@ -2029,4 +2020,8 @@ const styles = StyleSheet.create({
   sendChatBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   badgeSent: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(16,185,129,0.12)' },
   badgeSentText: { color: '#0F9D6E', fontSize: 12, fontWeight: '800' },
+  sendChatFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 16 },
+  sendChatFullText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  sentLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
+  sentLineText: { color: '#0F9D6E', fontSize: 13, fontWeight: '700' },
 });

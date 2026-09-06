@@ -6,7 +6,7 @@ export type SessionSummaryPayload = {
   clinicId: string;
   patientId: string;
   patientName?: string;
-  sessionId: string;
+  sessionId?: string | null;
   title: string;
   aftercare: string;
   nextAppointmentAt: number | null;
@@ -48,14 +48,16 @@ export async function sendSessionSummary(p: SessionSummaryPayload): Promise<void
       nextAppointmentAt: p.nextAppointmentAt ?? null,
       sessionDate: p.sessionDate ?? null,
       clinicName: p.clinicName ?? null,
-      sessionId: p.sessionId,
+      sessionId: p.sessionId ?? null,
     },
   });
 
   await updateThreadOnMessage(p.clinicId, p.patientId, p.patientName ?? '', '📋 Session summary', 'clinic');
 
-  await updateDoc(
-    doc(db, `clinics/${p.clinicId}/patients/${p.patientId}/sessions/${p.sessionId}`),
-    { patientSummarySentAt: Date.now() }
-  );
+  if (p.sessionId) {
+    await updateDoc(
+      doc(db, `clinics/${p.clinicId}/patients/${p.patientId}/sessions/${p.sessionId}`),
+      { patientSummarySentAt: Date.now() }
+    );
+  }
 }
