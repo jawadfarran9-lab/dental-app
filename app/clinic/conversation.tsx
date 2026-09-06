@@ -9,6 +9,7 @@ import { DismissViewerPage } from '@/src/components/DismissViewerPage';
 import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerModal';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
+import SessionSummaryCard from '@/src/components/SessionSummaryCard';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { consumeFocusMessage } from '@/src/state/chatFocusSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -119,7 +120,7 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'album' | 'video' | 'audio';
+  type?: 'image' | 'album' | 'video' | 'audio' | 'session_summary';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -153,6 +154,7 @@ type Message = {
   starredClinic?: boolean;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
   texts?: TextsDoc | null;
+  summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string };
 };
 
 
@@ -1014,6 +1016,10 @@ export default function ClinicConversationScreen() {
         <Ionicons name="star" size={10} color="#F5A623" />
       </View>
     ) : null;
+
+    if (item.type === 'session_summary') {
+      return <SessionSummaryCard summary={item.summary} />;
+    }
 
     if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
       const ALBUM_W = 220;

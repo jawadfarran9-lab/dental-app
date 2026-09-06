@@ -8,6 +8,7 @@ import { DismissViewerPage } from '@/src/components/DismissViewerPage';
 import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerModal';
 import { BubbleTextsOverlay } from '@/src/components/BubbleTextsOverlay';
 import { useTheme } from '@/src/context/ThemeContext';
+import SessionSummaryCard from '@/src/components/SessionSummaryCard';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { sendImageMessage, sendAudioMessage, TextsDoc } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
@@ -117,7 +118,7 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'audio' | 'album' | 'video';
+  type?: 'image' | 'audio' | 'album' | 'video' | 'session_summary';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -150,6 +151,7 @@ type Message = {
   starredPatient?: boolean;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
   texts?: TextsDoc | null;
+  summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string };
 };
 
 const VideoBadge = ({ big }: { big?: boolean }) => (
@@ -1040,6 +1042,10 @@ export default function ClinicConversationScreen() {
         <Ionicons name="star" size={10} color="#F5A623" />
       </View>
     ) : null;
+
+    if (item.type === 'session_summary') {
+      return <SessionSummaryCard summary={item.summary} />;
+    }
 
     if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
       const ALBUM_W = 220;
