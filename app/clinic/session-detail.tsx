@@ -6,11 +6,13 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { Ionicons } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
+  Dimensions,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -73,6 +75,31 @@ type PrivateDoc = {
   createdAt?: number;
 };
 
+type PhotoCategory = 'before' | 'after' | 'xray' | 'intraoral' | 'scan' | 'other';
+
+type SessionPhoto = {
+  id: string;
+  url: string;
+  category: PhotoCategory;
+  sharedWithPatient: boolean;
+  createdAt: number;
+  width?: number;
+  height?: number;
+};
+
+const PHOTO_CAT_LABEL: Record<PhotoCategory, string> = {
+  before: 'BEFORE',
+  after: 'AFTER',
+  xray: 'X-RAY',
+  intraoral: 'INTRAORAL',
+  scan: 'SCAN',
+  other: 'OTHER',
+};
+
+const SCREEN_W = Dimensions.get('window').width;
+const PHOTO_GRID_GAP = 8;
+const PHOTO_CELL = Math.floor((SCREEN_W - 32 - 32 - PHOTO_GRID_GAP * 2) / 3);
+
 export default function SessionDetailScreen() {
   useClinicGuard();
   const router = useRouter();
@@ -89,6 +116,8 @@ export default function SessionDetailScreen() {
   const [priv, setPriv] = useState<PrivateDoc | null>(null);
   const [mainLoading, setMainLoading] = useState(true);
   const [mainMissing, setMainMissing] = useState(false);
+  const [photos, setPhotos] = useState<SessionPhoto[]>([]);
+  const [viewerPhoto, setViewerPhoto] = useState<SessionPhoto | null>(null);
 
   useEffect(() => {
     if (!clinicId || !patientId || !sessionId) return;
@@ -122,6 +151,37 @@ export default function SessionDetailScreen() {
         else setPriv(null);
       },
       () => setPriv(null)
+    );
+    return () => unsub();
+  }, [clinicId, patientId, sessionId]);
+
+  useEffect(() => {
+    if (!clinicId || !patientId || !sessionId) return;
+    const q = query(
+      collection(
+        db,
+        `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}/photos`,
+      ),
+      orderBy('createdAt', 'asc'),
+    );
+    const unsub = onSnapshot(
+      q,
+      (snap) => {
+        const items = snap.docs.map((d) => {
+          const data: any = d.data();
+          return {
+            id: d.id,
+            url: typeof data.url === 'string' ? data.url : '',
+            category: (data.category as PhotoCategory) ?? 'other',
+            sharedWithPatient: !!data.sharedWithPatient,
+            createdAt: typeof data.createdAt === 'number' ? data.createdAt : 0,
+            width: typeof data.width === 'number' ? data.width : undefined,
+            height: typeof data.height === 'number' ? data.height : undefined,
+          } as SessionPhoto;
+        });
+        setPhotos(items);
+      },
+      () => setPhotos([]),
     );
     return () => unsub();
   }, [clinicId, patientId, sessionId]);
@@ -302,6 +362,66 @@ export default function SessionDetailScreen() {
             </View>
           ) : null}
 
+          {/* Photos */}
+          {photos.length > 0 ? (
+            <View
+              style={[styles.card, { backgroundColor: cardBg, borderColor: cardBorder }]}
+            >
+              <View style={styles.cardHeadRow}>
+                <Text style={[styles.cardEyebrow, { color: muted }]}>
+                  PHOTOS · {photos.length}
+                </Text>
+              </View>
+              <View style={styles.photoGrid}>
+                {photos.map((p) => {
+                  const shared = p.sharedWithPatient;
+                  return (
+                    <Pressable
+                      key={p.id}
+                      onPress={() => setViewerPhoto(p)}
+                      style={({ pressed }) => [
+                        styles.photoCell,
+                        { width: PHOTO_CELL, height: PHOTO_CELL },
+                        pressed && { opacity: 0.9 },
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: p.url }}
+                        style={{
+                          width: PHOTO_CELL,
+                          height: PHOTO_CELL,
+                          borderRadius: 12,
+                        }}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.photoCatChip}>
+                        <Text style={styles.photoCatChipText} numberOfLines={1}>
+                          {PHOTO_CAT_LABEL[p.category]}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.photoVisBadge,
+                          {
+                            backgroundColor: shared
+                              ? 'rgba(16,185,129,0.95)'
+                              : 'rgba(27,37,66,0.85)',
+                          },
+                        ]}
+                      >
+                        <Ionicons
+                          name={shared ? 'eye' : 'lock-closed'}
+                          size={11}
+                          color="#FFFFFF"
+                        />
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+          ) : null}
+
           {/* For the patient */}
           {(main.aftercare && main.aftercare.trim().length > 0) ||
           main.nextAppointmentAt ? (
@@ -371,6 +491,34 @@ export default function SessionDetailScreen() {
           </View>
         </ScrollView>
       )}
+
+      <Modal
+        transparent
+        animationType="fade"
+        visible={viewerPhoto !== null}
+        onRequestClose={() => setViewerPhoto(null)}
+      >
+        <View style={styles.viewerRoot}>
+          {viewerPhoto ? (
+            <Image
+              source={{ uri: viewerPhoto.url }}
+              style={styles.viewerImage}
+              resizeMode="contain"
+            />
+          ) : null}
+          <Pressable
+            onPress={() => setViewerPhoto(null)}
+            style={({ pressed }) => [
+              styles.viewerClose,
+              { top: insets.top + 12 },
+              pressed && { opacity: 0.75 },
+            ]}
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={22} color="#FFFFFF" />
+          </Pressable>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -478,4 +626,65 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chipText: { fontSize: 12.5, fontWeight: '800' },
+
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: PHOTO_GRID_GAP,
+  },
+  photoCell: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    position: 'relative',
+    backgroundColor: 'rgba(27,37,66,0.06)',
+  },
+  photoCatChip: {
+    position: 'absolute',
+    left: 6,
+    bottom: 6,
+    paddingHorizontal: 8,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(11,15,26,0.72)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    maxWidth: '85%',
+  },
+  photoCatChipText: {
+    color: '#FFFFFF',
+    fontSize: 9.5,
+    fontWeight: '800',
+    letterSpacing: 0.4,
+  },
+  photoVisBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
+  viewerRoot: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  viewerImage: {
+    width: '100%',
+    height: '100%',
+  },
+  viewerClose: {
+    position: 'absolute',
+    right: 16,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

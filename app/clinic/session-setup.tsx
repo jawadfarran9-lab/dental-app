@@ -4,6 +4,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { createSessionRecord, updateSessionRecord } from '@/src/services/sessionRecordsService';
+import { uploadSessionPhotos } from '@/src/services/sessionPhotosService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
@@ -122,6 +123,7 @@ export default function SessionSetupScreen() {
   const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
   const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [loadingEdit, setLoadingEdit] = useState<boolean>(!!editSessionId);
   const [initialStatus, setInitialStatus] = useState<SessionStatus | null>(null);
 
@@ -349,6 +351,7 @@ export default function SessionSetupScreen() {
           : status === 'in_progress'
             ? 'IN_PROGRESS'
             : 'PENDING';
+      let savedSessionId: string;
       if (editSessionId) {
         const mappedInitial: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | null =
           initialStatus === 'done'
@@ -374,8 +377,9 @@ export default function SessionSetupScreen() {
           materialsUsed: materials.trim(),
           statusChanged: mappedInitial !== null && mappedInitial !== mappedStatus,
         });
+        savedSessionId = editSessionId;
       } else {
-        await createSessionRecord({
+        const created = await createSessionRecord({
           clinicId,
           patientId,
           memberId,
@@ -390,8 +394,40 @@ export default function SessionSetupScreen() {
           nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
           materialsUsed: materials.trim(),
         });
+        savedSessionId = created.sessionId;
       }
-      // TODO: upload staged photos in Photos-1b
+
+      if (photos.length > 0) {
+        setUploadingPhotos(true);
+        try {
+          const { failed } = await uploadSessionPhotos(
+            {
+              clinicId,
+              patientId,
+              sessionId: savedSessionId,
+              memberId,
+            },
+            photos.map((p) => ({
+              uri: p.uri,
+              category: p.category,
+              sharedWithPatient: p.sharedWithPatient,
+            })),
+          );
+          if (failed > 0) {
+            Alert.alert(
+              'Session saved',
+              `Session saved, ${failed} photo${failed === 1 ? '' : 's'} failed to upload.`,
+            );
+          }
+        } catch (e: any) {
+          Alert.alert(
+            'Session saved',
+            'Session saved, some photos failed to upload.',
+          );
+        } finally {
+          setUploadingPhotos(false);
+        }
+      }
       router.back();
     } catch (e: any) {
       Alert.alert('Save failed', e?.message ?? 'Please try again');
@@ -1017,7 +1053,9 @@ export default function SessionSetupScreen() {
             {saving ? (
               <>
                 <ActivityIndicator size="small" color="#FFFFFF" />
-                <Text style={styles.saveBtnText}>Saving…</Text>
+                <Text style={styles.saveBtnText}>
+                  {uploadingPhotos ? 'Uploading photos…' : 'Saving…'}
+                </Text>
               </>
             ) : (
               <>
