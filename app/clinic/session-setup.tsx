@@ -450,13 +450,7 @@ export default function SessionSetupScreen() {
 
   const currentPhoto = photoSheet !== null ? (photos[editorIndex] ?? null) : null;
 
-  const handleSendSummary = async () => {
-    if (sendingSummary) return;
-    if (!clinicId || !patientId) return;
-    if (!aftercare.trim() && !nextAppt) {
-      Alert.alert('Nothing to send', 'Add aftercare instructions or a next appointment first.');
-      return;
-    }
+  const doSendSummary = async () => {
     try {
       setSendingSummary(true);
       Haptics.selectionAsync();
@@ -476,6 +470,27 @@ export default function SessionSetupScreen() {
     } finally {
       setSendingSummary(false);
     }
+  };
+
+  const handleSendSummary = () => {
+    if (sendingSummary) return;
+    if (!clinicId || !patientId) return;
+    if (!aftercare.trim() && !nextAppt) {
+      Alert.alert('Nothing to send', 'Add aftercare instructions or a next appointment first.');
+      return;
+    }
+    if (patientSummarySentAt) {
+      Alert.alert(
+        'Send again?',
+        'You already sent a summary for this session. Sending again posts a new card to the patient’s chat.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Send again', onPress: () => { doSendSummary(); } },
+        ]
+      );
+      return;
+    }
+    doSendSummary();
   };
 
   const handleSave = async () => {
@@ -1163,18 +1178,25 @@ export default function SessionSetupScreen() {
           )}
         </View>
 
-        <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={{ marginTop: 8 }}>
-          <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendChatFull}>
-            <Ionicons name="paper-plane" size={17} color="#FFFFFF" />
-            <Text style={styles.sendChatFullText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
-          </LinearGradient>
-        </Pressable>
         {patientSummarySentAt ? (
-          <View style={styles.sentLine}>
-            <Ionicons name="checkmark-circle" size={15} color="#10B981" />
-            <Text style={styles.sentLineText}>Sent to patient chat</Text>
+          <View style={{ marginTop: 8 }}>
+            <View style={styles.sentBanner}>
+              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
+              <Text style={styles.sentBannerText}>Sent to patient chat</Text>
+            </View>
+            <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={styles.resendBtn}>
+              <Ionicons name="refresh" size={15} color="#1668E3" />
+              <Text style={styles.resendBtnText}>{sendingSummary ? 'Sending…' : 'Send again'}</Text>
+            </Pressable>
           </View>
-        ) : null}
+        ) : (
+          <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={{ marginTop: 8 }}>
+            <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendChatFull}>
+              <Ionicons name="paper-plane" size={17} color="#FFFFFF" />
+              <Text style={styles.sendChatFullText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
+            </LinearGradient>
+          </Pressable>
+        )}
       </ScrollView>
 
       {/* Fixed Save bar */}
@@ -2024,4 +2046,8 @@ const styles = StyleSheet.create({
   sendChatFullText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   sentLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
   sentLineText: { color: '#0F9D6E', fontSize: 13, fontWeight: '700' },
+  sentBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 16, backgroundColor: 'rgba(16,185,129,0.12)' },
+  sentBannerText: { color: '#0F9D6E', fontSize: 15, fontWeight: '800' },
+  resendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 14, marginTop: 8, borderWidth: 1.5, borderColor: 'rgba(22,104,227,0.35)' },
+  resendBtnText: { color: '#1668E3', fontSize: 13.5, fontWeight: '800' },
 });
