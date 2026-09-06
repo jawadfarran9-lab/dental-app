@@ -1,7 +1,21 @@
 import { db, storage } from '@/firebaseConfig';
 import { compressImage } from '@/src/utils/imageCompress';
-import { collection, doc, setDoc } from 'firebase/firestore';
-import { getDownloadURL, ref, uploadBytes } from 'firebase/storage';
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDocs,
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+} from 'firebase/firestore';
+import {
+  deleteObject,
+  getDownloadURL,
+  ref,
+  uploadBytes,
+} from 'firebase/storage';
 
 export type SessionPhotoCategory =
   | 'before'
@@ -119,4 +133,65 @@ export async function uploadSessionPhotos(
     }
   }
   return { failed };
+}
+
+export interface SessionPhotoRef {
+  clinicId: string;
+  patientId: string;
+  sessionId: string;
+}
+
+export async function listSessionPhotos(
+  sessionRef: SessionPhotoRef,
+): Promise<SessionPhotoDoc[]> {
+  const { clinicId, patientId, sessionId } = sessionRef;
+  const col = collection(
+    db,
+    `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}/photos`,
+  );
+  const q = query(col, orderBy('createdAt', 'asc'));
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data() as Omit<SessionPhotoDoc, 'id'>;
+    return { ...data, id: d.id } as SessionPhotoDoc;
+  });
+}
+
+export interface UpdateSessionPhotoInput extends SessionPhotoRef {
+  photoId: string;
+  patch: Partial<Pick<SessionPhotoDoc, 'category' | 'sharedWithPatient'>>;
+}
+
+export async function updateSessionPhoto(
+  input: UpdateSessionPhotoInput,
+): Promise<void> {
+  const { clinicId, patientId, sessionId, photoId, patch } = input;
+  const photoRef = doc(
+    db,
+    `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}/photos/${photoId}`,
+  );
+  await updateDoc(photoRef, { ...patch, updatedAt: Date.now() });
+}
+
+export interface DeleteSessionPhotoInput extends SessionPhotoRef {
+  photoId: string;
+  storagePath?: string;
+}
+
+export async function deleteSessionPhoto(
+  input: DeleteSessionPhotoInput,
+): Promise<void> {
+  const { clinicId, patientId, sessionId, photoId, storagePath } = input;
+  const photoRef = doc(
+    db,
+    `clinics/${clinicId}/patients/${patientId}/sessions/${sessionId}/photos/${photoId}`,
+  );
+  await deleteDoc(photoRef);
+  if (storagePath) {
+    try {
+      await deleteObject(ref(storage, storagePath));
+    } catch (e) {
+      console.warn('[deleteSessionPhoto] storage delete ignored', e);
+    }
+  }
 }

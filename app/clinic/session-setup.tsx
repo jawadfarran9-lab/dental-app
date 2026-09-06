@@ -4,7 +4,7 @@ import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { createSessionRecord, updateSessionRecord } from '@/src/services/sessionRecordsService';
-import { uploadSessionPhotos } from '@/src/services/sessionPhotosService';
+import { uploadSessionPhotos, listSessionPhotos, updateSessionPhoto, deleteSessionPhoto } from '@/src/services/sessionPhotosService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
@@ -45,6 +45,9 @@ type StagedPhoto = {
   uri: string;
   category: PhotoCategory;
   sharedWithPatient: boolean;
+  saved?: boolean;
+  id?: string;
+  storagePath?: string;
 };
 
 const PHOTO_CATEGORIES: { key: PhotoCategory; label: string }[] = [
@@ -204,6 +207,38 @@ export default function SessionSetupScreen() {
     };
   }, [editSessionId, clinicId, patientId, router]);
 
+  useEffect(() => {
+    if (!editSessionId || !clinicId || !patientId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const docs = await listSessionPhotos({
+          clinicId,
+          patientId,
+          sessionId: editSessionId,
+        });
+        if (cancelled) return;
+        setPhotos(
+          docs.map((d) => ({
+            key: d.id,
+            id: d.id,
+            saved: true,
+            uri: d.url,
+            storagePath: d.storagePath,
+            category: d.category as PhotoCategory,
+            sharedWithPatient: !!d.sharedWithPatient,
+          })),
+        );
+      } catch (e) {
+        if (cancelled) return;
+        console.warn('[session-setup] listSessionPhotos failed', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [editSessionId, clinicId, patientId]);
+
   const textPrimary = colors.textPrimary;
   const textSecondary = colors.textSecondary;
   const muted = colors.textTertiary;
@@ -318,14 +353,84 @@ export default function SessionSetupScreen() {
   };
 
   const setPhotoCategory = (key: string, category: PhotoCategory) => {
+    const item = photos.find((p) => p.key === key);
     setPhotos((prev) => prev.map((p) => (p.key === key ? { ...p, category } : p)));
+    if (
+      item?.saved &&
+      item.id &&
+      editSessionId &&
+      clinicId &&
+      patientId
+    ) {
+      updateSessionPhoto({
+        clinicId,
+        patientId,
+        sessionId: editSessionId,
+        photoId: item.id,
+        patch: { category },
+      }).catch((e) => {
+        console.warn('[session-setup] updateSessionPhoto category', e);
+      });
+    }
   };
   const setPhotoShared = (key: string, sharedWithPatient: boolean) => {
+    const item = photos.find((p) => p.key === key);
     setPhotos((prev) =>
       prev.map((p) => (p.key === key ? { ...p, sharedWithPatient } : p)),
     );
+    if (
+      item?.saved &&
+      item.id &&
+      editSessionId &&
+      clinicId &&
+      patientId
+    ) {
+      updateSessionPhoto({
+        clinicId,
+        patientId,
+        sessionId: editSessionId,
+        photoId: item.id,
+        patch: { sharedWithPatient },
+      }).catch((e) => {
+        console.warn('[session-setup] updateSessionPhoto shared', e);
+      });
+    }
   };
   const removePhoto = (key: string) => {
+    const item = photos.find((p) => p.key === key);
+    if (!item) return;
+    if (item.saved && item.id && editSessionId && clinicId && patientId) {
+      Alert.alert(
+        'Delete photo?',
+        'This permanently deletes the photo from this session.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                await deleteSessionPhoto({
+                  clinicId,
+                  patientId,
+                  sessionId: editSessionId,
+                  photoId: item.id!,
+                  storagePath: item.storagePath,
+                });
+                setPhotos((prev) => prev.filter((p) => p.key !== key));
+                setPhotoSheet(null);
+              } catch (e: any) {
+                Alert.alert(
+                  'Delete failed',
+                  e?.message ?? 'Please try again',
+                );
+              }
+            },
+          },
+        ],
+      );
+      return;
+    }
     setPhotos((prev) => prev.filter((p) => p.key !== key));
     setPhotoSheet(null);
   };
@@ -397,7 +502,8 @@ export default function SessionSetupScreen() {
         savedSessionId = created.sessionId;
       }
 
-      if (photos.length > 0) {
+      const toUpload = photos.filter((p) => p.saved !== true);
+      if (toUpload.length > 0) {
         setUploadingPhotos(true);
         try {
           const { failed } = await uploadSessionPhotos(
@@ -407,7 +513,7 @@ export default function SessionSetupScreen() {
               sessionId: savedSessionId,
               memberId,
             },
-            photos.map((p) => ({
+            toUpload.map((p) => ({
               uri: p.uri,
               category: p.category,
               sharedWithPatient: p.sharedWithPatient,
