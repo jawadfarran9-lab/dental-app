@@ -117,7 +117,6 @@ export default function SessionDetailScreen() {
   const [mainLoading, setMainLoading] = useState(true);
   const [mainMissing, setMainMissing] = useState(false);
   const [photos, setPhotos] = useState<SessionPhoto[]>([]);
-  const [viewerPhoto, setViewerPhoto] = useState<SessionPhoto | null>(null);
 
   useEffect(() => {
     if (!clinicId || !patientId || !sessionId) return;
@@ -378,7 +377,14 @@ export default function SessionDetailScreen() {
                   return (
                     <Pressable
                       key={p.id}
-                      onPress={() => setViewerPhoto(p)}
+                      onPress={() => {
+                        const qs = new URLSearchParams();
+                        qs.set('clinicId', String(clinicId));
+                        qs.set('patientId', String(patientId));
+                        qs.set('sessionId', String(sessionId));
+                        qs.set('photoId', String(p.id));
+                        router.push(`/clinic/photo-editor?${qs.toString()}` as any);
+                      }}
                       style={({ pressed }) => [
                         styles.photoCell,
                         { width: PHOTO_CELL, height: PHOTO_CELL },
@@ -491,34 +497,6 @@ export default function SessionDetailScreen() {
           </View>
         </ScrollView>
       )}
-
-      <Modal
-        transparent
-        animationType="fade"
-        visible={viewerPhoto !== null}
-        onRequestClose={() => setViewerPhoto(null)}
-      >
-        <View style={styles.viewerRoot}>
-          {viewerPhoto ? (
-            <Image
-              source={{ uri: viewerPhoto.url }}
-              style={styles.viewerImage}
-              resizeMode="contain"
-            />
-          ) : null}
-          <Pressable
-            onPress={() => setViewerPhoto(null)}
-            style={({ pressed }) => [
-              styles.viewerClose,
-              { top: insets.top + 12 },
-              pressed && { opacity: 0.75 },
-            ]}
-            hitSlop={8}
-          >
-            <Ionicons name="close" size={22} color="#FFFFFF" />
-          </Pressable>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -663,27 +641,6 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     borderRadius: 11,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  viewerRoot: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewerImage: {
-    width: '100%',
-    height: '100%',
-  },
-  viewerClose: {
-    position: 'absolute',
-    right: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
