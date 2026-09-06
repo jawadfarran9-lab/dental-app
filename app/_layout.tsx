@@ -63,7 +63,6 @@ function RootNavigator() {
       <Stack.Screen name="patient/starred" options={{ headerShown: false }} />
       <Stack.Screen name="clinic/chat-camera" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="clinic/media-preview" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
-      <Stack.Screen name="clinic/photo-editor" options={{ headerShown: false, presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
       <Stack.Screen name="clinic/team" options={{ title: 'Team', headerShown: true }} />
       <Stack.Screen name="clinic/usage" options={{ title: 'Usage & Trial', headerShown: true }} />
       <Stack.Screen name="clinic/audit" options={{ title: 'Audit Log', headerShown: true }} />
