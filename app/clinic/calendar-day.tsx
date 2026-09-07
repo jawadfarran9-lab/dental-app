@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, FlatList, Dimensions } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet, FlatList, Dimensions, Modal, Alert } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { useAuth } from '@/src/context/AuthContext';
-import { subscribeClinicAppointments, AppointmentDoc, AppointmentStatus } from '@/src/services/appointmentsService';
+import { subscribeClinicAppointments, deleteAppointment, AppointmentDoc, AppointmentStatus } from '@/src/services/appointmentsService';
 import NewAppointmentSheet from '@/src/components/NewAppointmentSheet';
 
 const WD = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -16,6 +16,7 @@ const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 
 const STATUS_COLOR: Record<AppointmentStatus, string> = { confirmed: '#10B981', proposed: '#F59E0B', requested: '#7C5CFF', completed: '#10B981', cancelled: '#9AA7BD' };
 const DAY = 86400000;
 const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_H = Dimensions.get('window').height;
 const WEEK_SPAN = 26;
 
 const startOfDay = (ms: number) => { const d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); };
@@ -32,14 +33,19 @@ export default function ClinicDayScreen() {
   const initialMs = useMemo(() => startOfDay(params.dayMs ? Number(params.dayMs) : Date.now()), [params.dayMs]);
   const [selectedMs, setSelectedMs] = useState<number>(initialMs);
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [editingAppt, setEditingAppt] = useState<AppointmentDoc | null>(null);
   const [expandedHour, setExpandedHour] = useState<number | null>(null);
+  const [menuFor, setMenuFor] = useState<AppointmentDoc | null>(null);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const ink = colors?.textPrimary ?? (isDark ? '#EAF1FB' : '#1B2542');
   const faint = isDark ? '#7688A1' : '#8493AB';
   const hair = isDark ? '#1E2A3C' : '#EEF2F8';
   const cardBg = isDark ? 'rgba(255,255,255,0.05)' : '#ffffff';
+  const cardSolid = isDark ? '#141e2d' : '#ffffff';
   const accent = '#1668E3';
+  const danger = '#E5484D';
 
   useEffect(() => {
     if (!clinicId) return;
@@ -84,10 +90,20 @@ export default function ClinicDayScreen() {
 
   const sel = new Date(selectedMs);
 
+  const openCreate = () => { setEditingAppt(null); setSheetOpen(true); };
+  const onEdit = () => { const a = menuFor; setMenuFor(null); if (a) setTimeout(() => { setEditingAppt(a); setSheetOpen(true); }, 250); };
+  const onDelete = () => {
+    const a = menuFor; if (!a) return;
+    Alert.alert('Delete appointment?', 'This removes it from the calendar and the patient side.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: async () => { setMenuFor(null); try { await deleteAppointment(a.patientId, a.id); } catch (e) { console.warn('delete', e); } } },
+    ]);
+  };
+
   const ApptCard = (a: AppointmentDoc) => {
     const c = STATUS_COLOR[a.status] || accent;
     return (
-      <View key={a.id} style={[styles.appt, { backgroundColor: cardBg, borderColor: hair }]}>
+      <Pressable key={a.id} onLongPress={(e) => { setMenuPos({ x: e.nativeEvent.pageX, y: e.nativeEvent.pageY }); setMenuFor(a); }} delayLongPress={350} style={[styles.appt, { backgroundColor: cardBg, borderColor: hair }]}>
         <View style={[styles.apptBar, { backgroundColor: c }]} />
         <View style={{ flex: 1 }}>
           <Text style={[styles.evTime, { color: c }]}>{fmtTime(a.dateTime)}</Text>
@@ -95,7 +111,7 @@ export default function ClinicDayScreen() {
           {!!a.title && <Text style={[styles.evSes, { color: faint }]} numberOfLines={1}>{a.title}</Text>}
         </View>
         <Text style={[styles.evTag, { color: c }]}>{a.status}</Text>
-      </View>
+      </Pressable>
     );
   };
 
@@ -124,7 +140,7 @@ export default function ClinicDayScreen() {
           <Text style={[styles.backTxt, { color: accent }]}>Calendar</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable style={styles.addBtn} hitSlop={10} onPress={() => setCreateOpen(true)}>
+        <Pressable style={styles.addBtn} hitSlop={10} onPress={openCreate}>
           <Ionicons name="add" size={22} color={accent} />
         </Pressable>
       </View>
@@ -190,12 +206,38 @@ export default function ClinicDayScreen() {
         ) : null}
       </ScrollView>
 
+      <Modal transparent animationType="fade" visible={menuFor != null} onRequestClose={() => setMenuFor(null)}>
+        <Pressable style={styles.menuDim} onPress={() => setMenuFor(null)}>
+          <View style={[styles.menuPop, { left: Math.min(Math.max(12, menuPos.x - 24), SCREEN_W - 222), top: Math.min(menuPos.y + 4, SCREEN_H - 220) }]}>
+            {menuFor && (
+              <View style={[styles.previewCard, { backgroundColor: cardSolid }]}>
+                <View style={[styles.apptBar, { backgroundColor: STATUS_COLOR[menuFor.status] || accent }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.evTime, { color: STATUS_COLOR[menuFor.status] || accent }]}>{fmtTime(menuFor.dateTime)}</Text>
+                  <Text style={[styles.evWho, { color: ink }]} numberOfLines={1}>{menuFor.patientName || 'Patient'}</Text>
+                  {!!menuFor.title && <Text style={[styles.evSes, { color: faint }]} numberOfLines={1}>{menuFor.title}</Text>}
+                </View>
+              </View>
+            )}
+            <Pressable onPress={onEdit} style={[styles.menuBtn, { backgroundColor: accent }]}>
+              <Ionicons name="create-outline" size={15} color="#fff" />
+              <Text style={styles.menuBtnTxt}>Edit</Text>
+            </Pressable>
+            <Pressable onPress={onDelete} style={[styles.menuBtn, { backgroundColor: cardSolid, marginTop: 8 }]}>
+              <Ionicons name="trash-outline" size={15} color={danger} />
+              <Text style={[styles.menuBtnTxt, { color: danger }]}>Delete</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       <NewAppointmentSheet
-        visible={createOpen}
+        visible={sheetOpen}
         initialDayMs={selectedMs}
+        editing={editingAppt}
         clinicId={clinicId}
         memberId={memberId}
-        onClose={() => setCreateOpen(false)}
+        onClose={() => { setSheetOpen(false); setEditingAppt(null); }}
       />
     </LinearGradient>
   );
@@ -235,4 +277,9 @@ const styles = StyleSheet.create({
   backPill: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1668E3', paddingHorizontal: 11, height: 30, borderRadius: 999 },
   backPillTxt: { color: '#fff', fontSize: 12.5, fontWeight: '800' },
   empty: { fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 24 },
+  menuDim: { flex: 1, backgroundColor: 'rgba(20,28,44,0.4)' },
+  menuPop: { position: 'absolute', width: 210 },
+  previewCard: { flexDirection: 'row', gap: 8, borderRadius: 14, padding: 10, marginBottom: 10, overflow: 'hidden', shadowColor: '#0b1220', shadowOpacity: 0.3, shadowRadius: 14, shadowOffset: { width: 0, height: 10 }, elevation: 10 },
+  menuBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, height: 42, borderRadius: 13, shadowColor: '#0b1220', shadowOpacity: 0.28, shadowRadius: 12, shadowOffset: { width: 0, height: 8 }, elevation: 8 },
+  menuBtnTxt: { color: '#fff', fontSize: 14, fontWeight: '800' },
 });

@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 import { useTheme } from '@/src/context/ThemeContext';
-import { createAppointment } from '@/src/services/appointmentsService';
+import { createAppointment, updateAppointment, AppointmentDoc } from '@/src/services/appointmentsService';
 
 type Patient = { id: string; name: string };
 
@@ -30,9 +30,10 @@ function buildSections(patients: Patient[], query: string) {
   return Object.keys(groups).sort().map((letter) => ({ title: letter, data: groups[letter] }));
 }
 
-export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, memberId, onClose }: {
+export default function NewAppointmentSheet({ visible, initialDayMs, editing, clinicId, memberId, onClose }: {
   visible: boolean;
   initialDayMs?: number | null;
+  editing?: AppointmentDoc | null;
   clinicId?: string | null;
   memberId?: string | null;
   onClose: () => void;
@@ -57,10 +58,17 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
 
   useEffect(() => {
     if (!visible) return;
+    setQuery(''); setPickerOpen(false); setPickerMode(null);
+    if (editing) {
+      setSelPatient({ id: editing.patientId, name: editing.patientName || 'Patient' });
+      setApptDate(new Date(editing.dateTime));
+      setTitle(editing.title || '');
+      return;
+    }
     const base = initialDayMs != null ? new Date(initialDayMs) : new Date();
     const now = new Date();
     base.setHours(now.getHours() + 1, 0, 0, 0);
-    setApptDate(base); setSelPatient(null); setTitle(''); setQuery(''); setPickerOpen(false); setPickerMode(null);
+    setApptDate(base); setSelPatient(null); setTitle('');
     if (clinicId) {
       setLoadingPatients(true);
       getDocs(collection(db, `clinics/${clinicId}/patients`))
@@ -72,7 +80,7 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
         .catch((e) => console.warn('patients', e))
         .finally(() => setLoadingPatients(false));
     }
-  }, [visible, initialDayMs, clinicId]);
+  }, [visible, initialDayMs, clinicId, editing]);
 
   const sections = useMemo(() => buildSections(patients, query), [patients, query]);
 
@@ -87,17 +95,21 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
     });
   };
 
-  const doCreate = async () => {
+  const doSave = async () => {
     if (saving || !clinicId || !selPatient) return;
     try {
       setSaving(true);
-      await createAppointment({
-        clinicId, patientId: selPatient.id, patientName: selPatient.name,
-        dateTime: apptDate.getTime(), title: title.trim(), status: 'confirmed', source: 'clinic',
-        createdBy: memberId || 'clinic',
-      });
+      if (editing) {
+        await updateAppointment(editing.patientId, editing.id, { dateTime: apptDate.getTime(), title: title.trim() });
+      } else {
+        await createAppointment({
+          clinicId, patientId: selPatient.id, patientName: selPatient.name,
+          dateTime: apptDate.getTime(), title: title.trim(), status: 'confirmed', source: 'clinic',
+          createdBy: memberId || 'clinic',
+        });
+      }
       onClose();
-    } catch (e) { console.warn('create appt', e); }
+    } catch (e) { console.warn('save appt', e); }
     finally { setSaving(false); }
   };
 
@@ -107,15 +119,15 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
         <View style={[styles.sheet, { backgroundColor: cardBg, paddingBottom: insets.bottom + 14 }]}>
           <View style={styles.grab} />
-          <Text style={[styles.title, { color: ink }]}>New appointment</Text>
+          <Text style={[styles.title, { color: ink }]}>{editing ? 'Edit appointment' : 'New appointment'}</Text>
 
           <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <Pressable onPress={() => setPickerOpen(true)} style={[styles.field, { borderColor: hair, marginBottom: 10, flexDirection: 'row', alignItems: 'center' }]}>
+            <Pressable onPress={editing ? undefined : () => setPickerOpen(true)} style={[styles.field, { borderColor: hair, marginBottom: 10, flexDirection: 'row', alignItems: 'center', opacity: editing ? 0.7 : 1 }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.fldLabel, { color: faint }]}>PATIENT</Text>
                 <Text style={[styles.fldVal, { color: selPatient ? ink : faint }]}>{selPatient ? selPatient.name : 'Choose patient'}</Text>
               </View>
-              <Ionicons name="chevron-forward" size={18} color={faint} />
+              {!editing ? <Ionicons name="chevron-forward" size={18} color={faint} /> : null}
             </Pressable>
 
             <View style={styles.row2}>
@@ -133,17 +145,16 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
             <TextInput value={title} onChangeText={setTitle} placeholder="e.g. Teeth Cleaning" placeholderTextColor={faint}
               style={[styles.input, { borderColor: hair, color: ink }]} />
 
-            <Text style={[styles.note, { color: faint }]}>Booked in clinic · confirmed immediately.</Text>
+            <Text style={[styles.note, { color: faint }]}>{editing ? 'Editing this appointment.' : 'Booked in clinic · confirmed immediately.'}</Text>
 
-            <Pressable onPress={doCreate} disabled={!selPatient || saving} style={{ opacity: !selPatient || saving ? 0.5 : 1, marginTop: 6 }}>
+            <Pressable onPress={doSave} disabled={!selPatient || saving} style={{ opacity: !selPatient || saving ? 0.5 : 1, marginTop: 6 }}>
               <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.cta}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.ctaTxt}>{saving ? 'Saving…' : 'Create appointment'}</Text>
+                <Text style={styles.ctaTxt}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create appointment'}</Text>
               </LinearGradient>
             </Pressable>
           </ScrollView>
 
-          {/* PATIENT PICKER — in-tree overlay (NOT a nested Modal). SectionList is the only scroll surface. */}
           {pickerOpen && (
             <View style={[styles.overlay, { backgroundColor: cardBg, paddingBottom: insets.bottom + 10 }]}>
               <View style={styles.pHead}>
@@ -186,7 +197,6 @@ export default function NewAppointmentSheet({ visible, initialDayMs, clinicId, m
             </View>
           )}
 
-          {/* iOS date/time — in-tree overlay (NOT a nested Modal) */}
           {pickerMode && Platform.OS === 'ios' && (
             <View style={[styles.dtOverlay, { backgroundColor: cardBg, paddingBottom: insets.bottom + 10 }]}>
               <DateTimePicker value={apptDate} mode={pickerMode} display="spinner" onChange={onPick} />

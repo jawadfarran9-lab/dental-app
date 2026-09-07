@@ -1,4 +1,4 @@
-import { addDoc, collection, collectionGroup, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, collectionGroup, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 
 export type AppointmentStatus = 'proposed' | 'confirmed' | 'requested' | 'cancelled' | 'completed';
@@ -84,4 +84,8 @@ export function subscribeClinicAppointments(
 
 export async function updateAppointment(patientId: string, apptId: string, patch: Partial<AppointmentDoc>): Promise<void> {
   await updateDoc(doc(db, `patients/${patientId}/appointments/${apptId}`), { ...patch, updatedAt: Date.now() });
+}
+
+export async function deleteAppointment(patientId: string, apptId: string): Promise<void> {
+  await deleteDoc(doc(db, `patients/${patientId}/appointments/${apptId}`));
 }
