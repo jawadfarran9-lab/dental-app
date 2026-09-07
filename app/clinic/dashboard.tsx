@@ -623,6 +623,11 @@ export default function ClinicDashboard() {
             onPress={() => router.push('/clinic/messages' as any)}
           />
           <TabButton
+            icon="calendar-outline"
+            label="Calendar"
+            onPress={() => router.push('/clinic/calendar' as any)}
+          />
+          <TabButton
             icon="settings-outline"
             label="Settings"
             locked={clinicRole !== 'owner'}
