@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, Pressable, StyleSheet, Modal } from 'react-native';
+import { View, Text, ScrollView, Pressable, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,7 +30,6 @@ function monthCells(year: number, month: number): (number | null)[] {
   return cells;
 }
 const dayKey = (y: number, m: number, d: number) => `${y}-${m}-${d}`;
-const fmtTime = (ms: number) => { const d = new Date(ms); let h = d.getHours(); const mm = d.getMinutes(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12; if (h === 0) h = 12; return `${h}:${mm < 10 ? '0' + mm : mm} ${ap}`; };
 
 export default function ClinicCalendarScreen() {
   useClinicGuard();
@@ -46,9 +45,7 @@ export default function ClinicCalendarScreen() {
   const accent = '#1668E3';
 
   const [appts, setAppts] = useState<AppointmentDoc[]>([]);
-  const [dayOpen, setDayOpen] = useState<number | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createDay, setCreateDay] = useState<number | null>(null);
 
   useEffect(() => {
     if (!clinicId) return;
@@ -69,16 +66,6 @@ export default function ClinicCalendarScreen() {
     return map;
   }, [appts]);
 
-  const dayList = useMemo(() => {
-    if (dayOpen == null) return [];
-    const s = new Date(dayOpen); const e = new Date(dayOpen); e.setHours(23, 59, 59, 999);
-    return appts.filter((a) => a.dateTime >= s.getTime() && a.dateTime <= e.getTime() && a.status !== 'cancelled').sort((a, b) => a.dateTime - b.dateTime);
-  }, [appts, dayOpen]);
-
-  const openCreate = (dayMs?: number | null) => { setCreateDay(dayMs ?? null); setCreateOpen(true); };
-
-  const fmtDayTitle = (ms: number) => { const d = new Date(ms); const dn = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()]; return `${dn}, ${d.getDate()} ${MONTHS[d.getMonth()].slice(0,3)}`; };
-
   return (
     <LinearGradient colors={isDark ? ['#0f1826', '#0b121d'] : ['#e8f3fe', '#f2f9ff', '#eaf6fd']} style={styles.root}>
       <View style={[styles.nav, { paddingTop: insets.top + 6 }]}>
@@ -87,7 +74,7 @@ export default function ClinicCalendarScreen() {
           <Text style={[styles.backTxt, { color: accent }]}>Clinic</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
-        <Pressable style={styles.addBtn} hitSlop={10} onPress={() => openCreate()}>
+        <Pressable style={styles.addBtn} hitSlop={10} onPress={() => setCreateOpen(true)}>
           <Ionicons name="add" size={22} color={accent} />
         </Pressable>
       </View>
@@ -110,7 +97,7 @@ export default function ClinicCalendarScreen() {
                   const dots = dotsByDay[dayKey(year, month, d)] || [];
                   const dayMs = new Date(year, month, d, 0, 0, 0, 0).getTime();
                   return (
-                    <Pressable key={i} style={styles.cell} onPress={() => setDayOpen(dayMs)}>
+                    <Pressable key={i} style={styles.cell} onPress={() => router.push(`/clinic/calendar-day?dayMs=${dayMs}` as any)}>
                       <View style={[styles.dayWrap, isToday && styles.todayWrap]}>
                         <Text style={[styles.dayTxt, { color: isToday ? '#FFFFFF' : ink }]}>{d}</Text>
                       </View>
@@ -126,37 +113,9 @@ export default function ClinicCalendarScreen() {
         })}
       </ScrollView>
 
-      <Modal transparent animationType="slide" visible={dayOpen != null} onRequestClose={() => setDayOpen(null)}>
-        <View style={styles.dim}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setDayOpen(null)} />
-          <View style={[styles.sheet, { backgroundColor: isDark ? '#141e2d' : '#fff', paddingBottom: insets.bottom + 14 }]}>
-            <View style={styles.grab} />
-            <View style={styles.daySheetHead}>
-              <Text style={[styles.daySheetTitle, { color: ink }]}>{dayOpen != null ? fmtDayTitle(dayOpen) : ''}</Text>
-              <Pressable onPress={() => { const d = dayOpen; setDayOpen(null); setTimeout(() => openCreate(d ?? undefined), 250); }} style={styles.daySheetAdd}>
-                <Ionicons name="add" size={16} color="#fff" /><Text style={styles.daySheetAddTxt}>New</Text>
-              </Pressable>
-            </View>
-            {dayList.length === 0 ? (
-              <Text style={[styles.empty, { color: faint }]}>No appointments this day.</Text>
-            ) : dayList.map((a) => (
-              <View key={a.id} style={[styles.appt, { borderColor: hair }]}>
-                <View style={[styles.apptBar, { backgroundColor: STATUS_COLOR[a.status] || accent }]} />
-                <Text style={[styles.apptTime, { color: ink }]}>{fmtTime(a.dateTime)}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.apptWho, { color: ink }]} numberOfLines={1}>{a.patientName || 'Patient'}</Text>
-                  {!!a.title && <Text style={[styles.apptSes, { color: faint }]} numberOfLines={1}>{a.title}</Text>}
-                </View>
-                <Text style={[styles.apptStatus, { color: STATUS_COLOR[a.status] || accent }]}>{a.status}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      </Modal>
-
       <NewAppointmentSheet
         visible={createOpen}
-        initialDayMs={createDay}
+        initialDayMs={null}
         clinicId={clinicId}
         memberId={memberId}
         onClose={() => setCreateOpen(false)}
@@ -183,18 +142,4 @@ const styles = StyleSheet.create({
   dayTxt: { fontSize: 15.5, fontWeight: '600' },
   dotRow: { flexDirection: 'row', gap: 3, marginTop: 2, height: 6 },
   dot: { width: 5, height: 5, borderRadius: 3 },
-  dim: { flex: 1, backgroundColor: 'rgba(12,20,34,0.4)', justifyContent: 'flex-end' },
-  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 10, paddingHorizontal: 16 },
-  grab: { width: 38, height: 5, borderRadius: 3, backgroundColor: 'rgba(140,150,170,0.4)', alignSelf: 'center', marginBottom: 12 },
-  daySheetHead: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  daySheetTitle: { fontSize: 17, fontWeight: '800', flex: 1 },
-  daySheetAdd: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1668E3', paddingHorizontal: 12, height: 32, borderRadius: 999 },
-  daySheetAddTxt: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  empty: { fontSize: 13, fontWeight: '600', paddingVertical: 18, textAlign: 'center' },
-  appt: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 14, padding: 11, marginBottom: 9, overflow: 'hidden' },
-  apptBar: { position: 'absolute', left: 0, top: 0, bottom: 0, width: 4 },
-  apptTime: { fontSize: 12.5, fontWeight: '800', width: 66 },
-  apptWho: { fontSize: 13.5, fontWeight: '800' },
-  apptSes: { fontSize: 11.5, fontWeight: '600', marginTop: 1 },
-  apptStatus: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
 });
