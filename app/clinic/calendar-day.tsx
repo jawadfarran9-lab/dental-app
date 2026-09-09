@@ -7,7 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/context/ThemeContext';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { useAuth } from '@/src/context/AuthContext';
-import { subscribeClinicAppointments, deleteAppointment, AppointmentDoc, AppointmentStatus } from '@/src/services/appointmentsService';
+import { subscribeClinicAppointments, deleteAppointment, approveAppointment, declineAppointment, AppointmentDoc, AppointmentStatus } from '@/src/services/appointmentsService';
 import NewAppointmentSheet from '@/src/components/NewAppointmentSheet';
 
 const WD = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -92,6 +92,16 @@ export default function ClinicDayScreen() {
 
   const openCreate = () => { setEditingAppt(null); setSheetOpen(true); };
   const onEdit = () => { const a = menuFor; setMenuFor(null); if (a) setTimeout(() => { setEditingAppt(a); setSheetOpen(true); }, 250); };
+  const onApprove = async () => {
+    const a = menuFor; if (!a) return;
+    setMenuFor(null);
+    try { await approveAppointment(a.patientId, a.id, a.chatMessageId); } catch (e) { console.warn('approve', e); }
+  };
+  const onDeclineReq = async () => {
+    const a = menuFor; if (!a) return;
+    setMenuFor(null);
+    try { await declineAppointment(a.patientId, a.id, a.chatMessageId); } catch (e) { console.warn('decline', e); }
+  };
   const onDelete = () => {
     const a = menuFor; if (!a) return;
     Alert.alert('Delete appointment?', 'This removes it from the calendar and the patient side.', [
@@ -219,10 +229,27 @@ export default function ClinicDayScreen() {
                 </View>
               </View>
             )}
-            <Pressable onPress={onEdit} style={[styles.menuBtn, { backgroundColor: accent }]}>
-              <Ionicons name="create-outline" size={15} color="#fff" />
-              <Text style={styles.menuBtnTxt}>Edit</Text>
-            </Pressable>
+            {menuFor?.status === 'requested' ? (
+              <>
+                <Pressable onPress={onApprove} style={[styles.menuBtn, { backgroundColor: '#10B981' }]}>
+                  <Ionicons name="checkmark" size={15} color="#fff" />
+                  <Text style={styles.menuBtnTxt}>Approve</Text>
+                </Pressable>
+                <Pressable onPress={onDeclineReq} style={[styles.menuBtn, { backgroundColor: cardSolid, marginTop: 8 }]}>
+                  <Ionicons name="close" size={15} color={faint} />
+                  <Text style={[styles.menuBtnTxt, { color: faint }]}>Decline</Text>
+                </Pressable>
+                <Pressable onPress={onEdit} style={[styles.menuBtn, { backgroundColor: accent, marginTop: 8 }]}>
+                  <Ionicons name="create-outline" size={15} color="#fff" />
+                  <Text style={styles.menuBtnTxt}>Edit</Text>
+                </Pressable>
+              </>
+            ) : (
+              <Pressable onPress={onEdit} style={[styles.menuBtn, { backgroundColor: accent }]}>
+                <Ionicons name="create-outline" size={15} color="#fff" />
+                <Text style={styles.menuBtnTxt}>Edit</Text>
+              </Pressable>
+            )}
             <Pressable onPress={onDelete} style={[styles.menuBtn, { backgroundColor: cardSolid, marginTop: 8 }]}>
               <Ionicons name="trash-outline" size={15} color={danger} />
               <Text style={[styles.menuBtnTxt, { color: danger }]}>Delete</Text>
