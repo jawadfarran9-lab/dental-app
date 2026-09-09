@@ -4,10 +4,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { collection, onSnapshot, orderBy, query } from 'firebase/firestore';
+import * as Haptics from 'expo-haptics';
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from 'firebase/firestore';
 import { patientDb } from '@/firebaseConfig';
 import { useTheme } from '@/src/context/ThemeContext';
 import { usePatientGuard } from '@/src/utils/navigationGuards';
+import { useAuth } from '@/src/context/AuthContext';
+import PatientRequestSheet from '@/src/components/PatientRequestSheet';
 
 const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -28,6 +31,7 @@ export default function PatientCalendarScreen() {
   const { colors, isDark } = useTheme() as any;
   const params = useLocalSearchParams<{ patientId?: string }>();
   const patientId = params.patientId ? String(params.patientId) : null;
+  const { clinicId } = useAuth();
 
   const today = useMemo(() => new Date(), []);
   const months = useMemo(() => buildMonths(12), []);
@@ -38,6 +42,20 @@ export default function PatientCalendarScreen() {
 
   const [appts, setAppts] = useState<Appt[]>([]);
   const [dayOpen, setDayOpen] = useState<number | null>(null);
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [patientName, setPatientName] = useState<string>('Patient');
+
+  useEffect(() => {
+    if (!clinicId || !patientId) return;
+    getDoc(doc(patientDb, 'clinics', clinicId, 'patients', patientId))
+      .then((snap) => {
+        if (!snap.exists()) return;
+        const d = snap.data() as any;
+        const name: string = d.name || d.patientName || 'Patient';
+        setPatientName(name);
+      })
+      .catch(() => {});
+  }, [clinicId, patientId]);
 
   useEffect(() => {
     if (!patientId) return;
@@ -72,6 +90,16 @@ export default function PatientCalendarScreen() {
           <Text style={[styles.backTxt, { color: accent }]}>Back</Text>
         </Pressable>
         <View style={{ flex: 1 }} />
+        {clinicId && patientId ? (
+          <Pressable
+            onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); setRequestOpen(true); }}
+            hitSlop={10}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 999, backgroundColor: 'rgba(22,104,227,0.10)' }}
+          >
+            <Ionicons name="add-circle-outline" size={17} color={accent} />
+            <Text style={{ color: accent, fontSize: 13.5, fontWeight: '800' }}>Request</Text>
+          </Pressable>
+        ) : null}
       </View>
       <Text style={[styles.h1, { color: ink }]}>My appointments</Text>
 
@@ -131,6 +159,17 @@ export default function PatientCalendarScreen() {
           </View>
         </View>
       </Modal>
+
+      {clinicId && patientId ? (
+        <PatientRequestSheet
+          visible={requestOpen}
+          onClose={() => setRequestOpen(false)}
+          clinicId={clinicId}
+          patientId={patientId}
+          patientName={patientName}
+          onSubmitted={() => setRequestOpen(false)}
+        />
+      ) : null}
     </LinearGradient>
   );
 }

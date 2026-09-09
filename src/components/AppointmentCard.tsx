@@ -62,6 +62,26 @@ export default function AppointmentCard({ appointment, viewerRole, onConfirm, on
           <Ionicons name="close-circle" size={17} color="#E5484D" />
           <Text style={[styles.stateTxt, { color: '#E5484D' }]}>Declined</Text>
         </View>
+      ) : status === 'requested' ? (
+        viewerRole === 'clinic' ? (
+          <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 }}>
+            <Text style={[styles.ask, { color: faint }]}>Please approve this request</Text>
+            <View style={styles.acts}>
+              <Pressable onPress={onConfirm} style={[styles.btn, { backgroundColor: '#10B981' }]}>
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={styles.btnTxt}>Approve</Text>
+              </Pressable>
+              <Pressable onPress={onDecline} style={[styles.btn, { backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(27,37,66,0.06)' }]}>
+                <Text style={[styles.btnTxt, { color: faint }]}>Decline</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
+          <View style={[styles.state, { backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(27,37,66,0.04)' }]}>
+            <Ionicons name="time-outline" size={16} color={faint} />
+            <Text style={[styles.stateTxt, { color: faint }]}>Waiting for clinic to approve</Text>
+          </View>
+        )
       ) : viewerRole === 'patient' ? (
         <View style={{ paddingHorizontal: 14, paddingBottom: 14, paddingTop: 4 }}>
           <Text style={[styles.ask, { color: faint }]}>Please confirm this appointment</Text>

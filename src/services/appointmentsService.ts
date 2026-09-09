@@ -1,5 +1,5 @@
 import { addDoc, collection, collectionGroup, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
-import { db } from '@/firebaseConfig';
+import { db, patientDb } from '@/firebaseConfig';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
 
 export type AppointmentStatus = 'proposed' | 'confirmed' | 'requested' | 'cancelled' | 'completed';
@@ -22,6 +22,7 @@ export type AppointmentDoc = {
   updatedAt: number;
   confirmedAt?: number | null;
   sessionId?: string | null;
+  chatMessageId?: string | null;
 };
 
 export type CreateAppointmentInput = {
@@ -107,9 +108,70 @@ export async function proposeAppointmentViaChat(p: {
     dateTime: p.dateTime, title: p.title, status: 'proposed', source: 'chat', createdBy: p.createdBy,
   });
   const text = `📅 Appointment · ${fmtWhenText(p.dateTime)}${p.title ? ' · ' + p.title : ''} · tap to confirm`;
-  await addDoc(collection(db, `patients/${p.patientId}/messages`), {
+  const msgRef = await addDoc(collection(db, `patients/${p.patientId}/messages`), {
     from: 'clinic', type: 'appointment', text, senderName: 'Clinic', createdAt: Date.now(),
     appointment: { appointmentId: apptId, patientId: p.patientId, clinicId: p.clinicId, dateTime: p.dateTime, title: p.title || '', status: 'proposed', clinicName: p.clinicName ?? null },
   });
+  await updateDoc(doc(db, `patients/${p.patientId}/appointments/${apptId}`), { chatMessageId: msgRef.id, updatedAt: Date.now() });
   await updateThreadOnMessage(p.clinicId, p.patientId, p.patientName ?? '', '📅 Appointment', 'clinic');
+}
+
+export async function requestAppointmentAsPatient(input: {
+  clinicId: string;
+  patientId: string;
+  patientName: string;
+  dateTime: number;
+  title: string;
+  clinicName?: string;
+}): Promise<string> {
+  const now = Date.now();
+  const apptRef = await addDoc(collection(patientDb, `patients/${input.patientId}/appointments`), {
+    clinicId: input.clinicId,
+    patientId: input.patientId,
+    patientName: input.patientName,
+    dateTime: input.dateTime,
+    title: input.title,
+    status: 'requested',
+    source: 'chat',
+    requestedBy: 'patient',
+    createdBy: input.patientId,
+    createdAt: now,
+    updatedAt: now,
+    confirmedAt: null,
+  });
+  const msgRef = await addDoc(collection(patientDb, `patients/${input.patientId}/messages`), {
+    from: 'patient',
+    type: 'appointment',
+    text: '📅 Appointment request · waiting for clinic',
+    senderName: input.patientName,
+    createdAt: Date.now(),
+    appointment: {
+      appointmentId: apptRef.id,
+      patientId: input.patientId,
+      clinicId: input.clinicId,
+      dateTime: input.dateTime,
+      title: input.title,
+      status: 'requested',
+      source: 'chat',
+      requestedBy: 'patient',
+      clinicName: input.clinicName ?? null,
+    },
+  });
+  await updateDoc(doc(patientDb, `patients/${input.patientId}/appointments/${apptRef.id}`), { chatMessageId: msgRef.id, updatedAt: Date.now() });
+  await updateThreadOnMessage(input.clinicId, input.patientId, input.patientName, '📅 Appointment request', 'patient', patientDb);
+  return apptRef.id;
+}
+
+export async function approveAppointment(patientId: string, appointmentId: string, chatMessageId?: string | null): Promise<void> {
+  await updateAppointment(patientId, appointmentId, { status: 'confirmed', confirmedAt: Date.now() });
+  if (chatMessageId) {
+    await updateDoc(doc(db, `patients/${patientId}/messages/${chatMessageId}`), { 'appointment.status': 'confirmed' });
+  }
+}
+
+export async function declineAppointment(patientId: string, appointmentId: string, chatMessageId?: string | null): Promise<void> {
+  await updateAppointment(patientId, appointmentId, { status: 'cancelled' });
+  if (chatMessageId) {
+    await updateDoc(doc(db, `patients/${patientId}/messages/${chatMessageId}`), { 'appointment.status': 'cancelled' });
+  }
 }

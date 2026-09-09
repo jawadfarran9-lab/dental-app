@@ -11,6 +11,7 @@ import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import SessionSummaryCard from '@/src/components/SessionSummaryCard';
 import AppointmentCard from '@/src/components/AppointmentCard';
+import { approveAppointment, declineAppointment } from '@/src/services/appointmentsService';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { consumeFocusMessage } from '@/src/state/chatFocusSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -1024,7 +1025,20 @@ export default function ClinicConversationScreen() {
     }
 
     if (item.type === 'appointment' && item.appointment) {
-      return <AppointmentCard appointment={item.appointment} viewerRole="clinic" />;
+      return (
+        <AppointmentCard
+          appointment={item.appointment}
+          viewerRole="clinic"
+          onConfirm={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            approveAppointment(patientId as string, item.appointment!.appointmentId!, item.id).catch((e) => console.warn('approve appt', e));
+          }}
+          onDecline={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+            declineAppointment(patientId as string, item.appointment!.appointmentId!, item.id).catch((e) => console.warn('decline appt', e));
+          }}
+        />
+      );
     }
 
     if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
