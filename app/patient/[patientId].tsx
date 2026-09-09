@@ -23,7 +23,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const toMillis = (v: any): number | null => {
   if (v == null) return null;
@@ -54,6 +54,7 @@ export default function PatientView() {
   const { colors, isDark } = useTheme();
   const { checkAuthState } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (!patientAuthReady) return;
@@ -236,7 +237,7 @@ export default function PatientView() {
           <FlatList
             data={sessions}
             keyExtractor={(item: any) => item.id}
-            contentContainerStyle={{ paddingBottom: 28 }}
+            contentContainerStyle={{ paddingBottom: 28 + 72 + Math.max(insets.bottom, 12) }}
             showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <Text style={[styles.empty, { color: colors.textTertiary }]}>{t('patient.noSessions')}</Text>
@@ -272,6 +273,28 @@ export default function PatientView() {
           />
         </View>
       </SafeAreaView>
+
+      <LinearGradient
+        colors={['#EFF6FE', '#DCEBFB']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={{
+          position: 'absolute', left: 0, right: 0, bottom: 0,
+          paddingTop: 12, paddingBottom: Math.max(insets.bottom, 12),
+          flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center',
+          borderTopWidth: 1, borderTopColor: 'rgba(22,104,227,0.14)',
+          shadowColor: '#1668E3', shadowOpacity: 0.12, shadowRadius: 12, shadowOffset: { width: 0, height: -4 }, elevation: 8,
+        }}
+      >
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => router.push(`/patient/calendar?patientId=${authenticatedPatientId}` as any)}
+          style={{ alignItems: 'center', paddingHorizontal: 22, paddingVertical: 4 }}
+        >
+          <Ionicons name="calendar" size={23} color="#1668E3" />
+          <Text style={{ marginTop: 3, fontSize: 11, fontWeight: '800', color: '#1668E3' }}>Appointments</Text>
+        </TouchableOpacity>
+      </LinearGradient>
     </View>
   );
 }
