@@ -46,7 +46,7 @@ export default function AppointmentCard({ appointment, viewerRole, onConfirm, on
             <View style={styles.ic}><Ionicons name="pricetag-outline" size={15} color="#1668E3" /></View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.k, { color: faint }]}>SESSION</Text>
-              <Text style={[styles.v, { color: ink }]} numberOfLines={1}>{a.title}</Text>
+              <Text style={[styles.v, { color: ink }]} numberOfLines={8}>{a.title}</Text>
             </View>
           </View>
         </View>

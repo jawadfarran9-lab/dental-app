@@ -108,6 +108,9 @@ export default function PatientRequestSheet({ visible, onClose, clinicId, patien
               placeholderTextColor={faint}
               style={[styles.input, { borderColor: hair, color: ink }]}
               multiline
+              returnKeyType="default"
+              blurOnSubmit={false}
+              maxLength={280}
             />
 
             <Text style={[styles.note, { color: faint }]}>Your request will be sent to the clinic for approval.</Text>
@@ -145,7 +148,7 @@ const styles = StyleSheet.create({
   row2: { flexDirection: 'row', gap: 10, marginBottom: 4 },
   fldLabel: { fontSize: 10.5, fontWeight: '800', letterSpacing: 0.6 },
   fldVal: { fontSize: 14.5, fontWeight: '700', marginTop: 3 },
-  input: { borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14.5, fontWeight: '600', marginTop: 8, minHeight: 60, textAlignVertical: 'top' },
+  input: { borderWidth: 1, borderRadius: 13, paddingHorizontal: 13, paddingVertical: 11, fontSize: 14.5, fontWeight: '600', marginTop: 8, minHeight: 96, maxHeight: 180, textAlignVertical: 'top' },
   note: { fontSize: 11.5, fontWeight: '600', marginTop: 12, marginBottom: 6 },
   cta: { height: 52, borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   ctaTxt: { color: '#fff', fontSize: 15.5, fontWeight: '800' },
