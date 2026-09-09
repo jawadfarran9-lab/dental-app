@@ -1,5 +1,6 @@
 import { addDoc, collection, collectionGroup, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
+import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
 
 export type AppointmentStatus = 'proposed' | 'confirmed' | 'requested' | 'cancelled' | 'completed';
 export type AppointmentSource = 'clinic' | 'chat';
@@ -88,4 +89,27 @@ export async function updateAppointment(patientId: string, apptId: string, patch
 
 export async function deleteAppointment(patientId: string, apptId: string): Promise<void> {
   await deleteDoc(doc(db, `patients/${patientId}/appointments/${apptId}`));
+}
+
+function fmtWhenText(ms: number): string {
+  const d = new Date(ms);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  let h = d.getHours(); const m = d.getMinutes(); const ap = h >= 12 ? 'PM' : 'AM'; h = h % 12; if (h === 0) h = 12;
+  return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} · ${h}:${m < 10 ? '0' + m : m} ${ap}`;
+}
+
+export async function proposeAppointmentViaChat(p: {
+  clinicId: string; patientId: string; patientName?: string; dateTime: number; title?: string; clinicName?: string | null; createdBy: string;
+}): Promise<void> {
+  const apptId = await createAppointment({
+    clinicId: p.clinicId, patientId: p.patientId, patientName: p.patientName,
+    dateTime: p.dateTime, title: p.title, status: 'proposed', source: 'chat', createdBy: p.createdBy,
+  });
+  const text = `📅 Appointment · ${fmtWhenText(p.dateTime)}${p.title ? ' · ' + p.title : ''} · tap to confirm`;
+  await addDoc(collection(db, `patients/${p.patientId}/messages`), {
+    from: 'clinic', type: 'appointment', text, senderName: 'Clinic', createdAt: Date.now(),
+    appointment: { appointmentId: apptId, patientId: p.patientId, clinicId: p.clinicId, dateTime: p.dateTime, title: p.title || '', status: 'proposed', clinicName: p.clinicName ?? null },
+  });
+  await updateThreadOnMessage(p.clinicId, p.patientId, p.patientName ?? '', '📅 Appointment', 'clinic');
 }

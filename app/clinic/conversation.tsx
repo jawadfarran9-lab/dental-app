@@ -10,6 +10,7 @@ import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerM
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import SessionSummaryCard from '@/src/components/SessionSummaryCard';
+import AppointmentCard from '@/src/components/AppointmentCard';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
 import { consumeFocusMessage } from '@/src/state/chatFocusSignal';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -120,7 +121,7 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'album' | 'video' | 'audio' | 'session_summary';
+  type?: 'image' | 'album' | 'video' | 'audio' | 'session_summary' | 'appointment';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -155,6 +156,7 @@ type Message = {
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
   texts?: TextsDoc | null;
   summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string };
+  appointment?: { appointmentId?: string; dateTime?: number; title?: string; status?: string; clinicName?: string | null; patientId?: string; clinicId?: string };
 };
 
 
@@ -1019,6 +1021,10 @@ export default function ClinicConversationScreen() {
 
     if (item.type === 'session_summary') {
       return <SessionSummaryCard summary={item.summary} />;
+    }
+
+    if (item.type === 'appointment' && item.appointment) {
+      return <AppointmentCard appointment={item.appointment} viewerRole="clinic" />;
     }
 
     if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {

@@ -7,7 +7,7 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 import { useTheme } from '@/src/context/ThemeContext';
-import { createAppointment, updateAppointment, AppointmentDoc } from '@/src/services/appointmentsService';
+import { createAppointment, updateAppointment, proposeAppointmentViaChat, AppointmentDoc } from '@/src/services/appointmentsService';
 
 type Patient = { id: string; name: string };
 
@@ -55,10 +55,11 @@ export default function NewAppointmentSheet({ visible, initialDayMs, editing, cl
   const [saving, setSaving] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [source, setSource] = useState<'clinic' | 'chat'>('clinic');
 
   useEffect(() => {
     if (!visible) return;
-    setQuery(''); setPickerOpen(false); setPickerMode(null);
+    setQuery(''); setPickerOpen(false); setPickerMode(null); setSource('clinic');
     if (editing) {
       setSelPatient({ id: editing.patientId, name: editing.patientName || 'Patient' });
       setApptDate(new Date(editing.dateTime));
@@ -101,6 +102,11 @@ export default function NewAppointmentSheet({ visible, initialDayMs, editing, cl
       setSaving(true);
       if (editing) {
         await updateAppointment(editing.patientId, editing.id, { dateTime: apptDate.getTime(), title: title.trim() });
+      } else if (source === 'chat') {
+        await proposeAppointmentViaChat({
+          clinicId, patientId: selPatient.id, patientName: selPatient.name,
+          dateTime: apptDate.getTime(), title: title.trim(), createdBy: memberId || 'clinic',
+        });
       } else {
         await createAppointment({
           clinicId, patientId: selPatient.id, patientName: selPatient.name,
@@ -145,12 +151,28 @@ export default function NewAppointmentSheet({ visible, initialDayMs, editing, cl
             <TextInput value={title} onChangeText={setTitle} placeholder="e.g. Teeth Cleaning" placeholderTextColor={faint}
               style={[styles.input, { borderColor: hair, color: ink }]} />
 
-            <Text style={[styles.note, { color: faint }]}>{editing ? 'Editing this appointment.' : 'Booked in clinic · confirmed immediately.'}</Text>
+            {!editing ? (
+              <>
+                <Text style={[styles.fldLabel, { color: faint, marginTop: 10 }]}>HOW IS IT BOOKED?</Text>
+                <View style={styles.srcRow}>
+                  <Pressable onPress={() => setSource('clinic')} style={[styles.src, { borderColor: hair }, source === 'clinic' && styles.srcOn]}>
+                    <Text style={[styles.srcTxt, { color: source === 'clinic' ? '#fff' : ink }]}>In clinic</Text>
+                    <Text style={[styles.srcSub, { color: source === 'clinic' ? 'rgba(255,255,255,0.85)' : faint }]}>Confirmed now</Text>
+                  </Pressable>
+                  <Pressable onPress={() => setSource('chat')} style={[styles.src, { borderColor: hair }, source === 'chat' && styles.srcOn]}>
+                    <Text style={[styles.srcTxt, { color: source === 'chat' ? '#fff' : ink }]}>Propose via chat</Text>
+                    <Text style={[styles.srcSub, { color: source === 'chat' ? 'rgba(255,255,255,0.85)' : faint }]}>Patient confirms</Text>
+                  </Pressable>
+                </View>
+              </>
+            ) : (
+              <Text style={[styles.note, { color: faint }]}>Editing this appointment.</Text>
+            )}
 
             <Pressable onPress={doSave} disabled={!selPatient || saving} style={{ opacity: !selPatient || saving ? 0.5 : 1, marginTop: 6 }}>
               <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.cta}>
                 <Ionicons name="checkmark" size={18} color="#fff" />
-                <Text style={styles.ctaTxt}>{saving ? 'Saving…' : editing ? 'Save changes' : 'Create appointment'}</Text>
+                <Text style={styles.ctaTxt}>{saving ? 'Saving…' : editing ? 'Save changes' : source === 'chat' ? 'Propose to patient' : 'Create appointment'}</Text>
               </LinearGradient>
             </Pressable>
           </ScrollView>
@@ -238,4 +260,9 @@ const styles = StyleSheet.create({
   dtOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 22, borderTopRightRadius: 22, paddingTop: 8, alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(140,150,170,0.2)' },
   done: { alignSelf: 'stretch', marginHorizontal: 16, marginTop: 8, height: 46, borderRadius: 14, backgroundColor: '#1668E3', alignItems: 'center', justifyContent: 'center' },
   doneTxt: { color: '#fff', fontSize: 15, fontWeight: '800' },
+  srcRow: { flexDirection: 'row', gap: 9, marginTop: 8, marginBottom: 10 },
+  src: { flex: 1, borderWidth: 1.5, borderRadius: 13, paddingVertical: 11, alignItems: 'center' },
+  srcOn: { borderColor: 'transparent', backgroundColor: '#1668E3' },
+  srcTxt: { fontSize: 13, fontWeight: '800' },
+  srcSub: { fontSize: 10, fontWeight: '600', marginTop: 2 },
 });

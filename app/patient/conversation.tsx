@@ -9,6 +9,7 @@ import MediaViewerModal, { type ViewerPage } from '@/src/components/MediaViewerM
 import { BubbleTextsOverlay } from '@/src/components/BubbleTextsOverlay';
 import { useTheme } from '@/src/context/ThemeContext';
 import SessionSummaryCard from '@/src/components/SessionSummaryCard';
+import AppointmentCard from '@/src/components/AppointmentCard';
 import { usePatientAuthReady } from '@/src/hooks/usePatientAuthReady';
 import { sendImageMessage, sendAudioMessage, TextsDoc } from '@/src/services/chatImages';
 import { consumeOpenSearch } from '@/src/state/chatSearchSignal';
@@ -118,7 +119,7 @@ type Message = {
   text: string;
   senderName?: string;
   createdAt?: any;
-  type?: 'image' | 'audio' | 'album' | 'video' | 'session_summary';
+  type?: 'image' | 'audio' | 'album' | 'video' | 'session_summary' | 'appointment';
   imageUrl?: string;
   imageWidth?: number;
   imageHeight?: number;
@@ -152,6 +153,7 @@ type Message = {
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
   texts?: TextsDoc | null;
   summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string };
+  appointment?: { appointmentId?: string; dateTime?: number; title?: string; status?: string; clinicName?: string | null; patientId?: string; clinicId?: string };
 };
 
 const VideoBadge = ({ big }: { big?: boolean }) => (
@@ -592,6 +594,18 @@ export default function ClinicConversationScreen() {
   const removeSticker = (entry: { index: number; sticker?: string }) => {
     if (!stickerSheetTarget || !entry.sticker) return;
     setImageSticker({ msgId: stickerSheetTarget.id, mediaIndex: entry.index }, entry.sticker);
+  };
+
+  const respondAppt = async (m: any, status: 'confirmed' | 'cancelled') => {
+    const ap = m.appointment; if (!ap) return;
+    if (!patientId) return;
+    const now = Date.now();
+    try {
+      if (ap.appointmentId) {
+        await updateDoc(doc(patientDb, `patients/${patientId}/appointments/${ap.appointmentId}`), { status, updatedAt: now, confirmedAt: status === 'confirmed' ? now : null });
+      }
+      await updateDoc(doc(patientDb, `patients/${patientId}/messages/${m.id}`), { 'appointment.status': status });
+    } catch (e) { console.warn('respond appt', e); }
   };
 
   const setMessageReaction = async (message: Message, emoji: string) => {
@@ -1045,6 +1059,10 @@ export default function ClinicConversationScreen() {
 
     if (item.type === 'session_summary') {
       return <SessionSummaryCard summary={item.summary} />;
+    }
+
+    if (item.type === 'appointment' && item.appointment) {
+      return <AppointmentCard appointment={item.appointment} viewerRole="patient" onConfirm={() => respondAppt(item, 'confirmed')} onDecline={() => respondAppt(item, 'cancelled')} />;
     }
 
     if (item.type === 'album' && Array.isArray(item.media) && item.media.length > 0) {
