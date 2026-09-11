@@ -156,7 +156,7 @@ type Message = {
   starredClinic?: boolean;
   drawing?: { vb: [number, number]; strokes: Array<{ color: string; width: number; d: string }> } | null;
   texts?: TextsDoc | null;
-  summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string };
+  summary?: { title?: string; aftercare?: string; nextAppointmentAt?: number | null; sessionDate?: number | null; clinicName?: string | null; sessionId?: string; appointmentId?: string };
   appointment?: { appointmentId?: string; dateTime?: number; title?: string; status?: string; clinicName?: string | null; patientId?: string; clinicId?: string };
 };
 
@@ -211,6 +211,7 @@ export default function ClinicConversationScreen() {
   const { patientId, name } = useLocalSearchParams<{ patientId: string; name?: string }>();
 
   const [messages, setMessages] = useState<Message[]>([]);
+  const [apptLive, setApptLive] = useState<Record<string, { dateTime: number | null; status: string | null }>>({});
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
@@ -453,6 +454,7 @@ export default function ClinicConversationScreen() {
     const isOwn = m.from === 'clinic';
     const isImage = m.type === 'image';
     const isAudio = m.type === 'audio';
+    const isNonText = !!m.type;
     if (isOwn) {
       const items: ActionItem[] = [
         { key: 'forward', label: 'Forward', icon: 'arrow-redo-outline' },
@@ -464,7 +466,8 @@ export default function ClinicConversationScreen() {
       ];
       return items
         .filter((a) => !(isAudio && (a.key === 'copy' || a.key === 'edit')))
-        .filter((a) => !((a.key === 'copy' || a.key === 'edit') && !hasText));
+        .filter((a) => !((a.key === 'copy' || a.key === 'edit') && !hasText))
+        .filter((a) => !(isNonText && a.key === 'edit'));
     }
     if (isImage) {
       return [
@@ -831,6 +834,40 @@ export default function ClinicConversationScreen() {
     return () => unsub();
   }, [clinicId, clinicUser, clinicLoading, patientId, router]);
 
+  const summaryApptIdsKey = useMemo(() => {
+    const ids = new Set<string>();
+    for (const m of messages) {
+      if (m.type === 'session_summary' && m.summary?.appointmentId) ids.add(m.summary.appointmentId);
+    }
+    return Array.from(ids).sort().join(',');
+  }, [messages]);
+
+  useEffect(() => {
+    if (!patientId) return;
+    const ids = summaryApptIdsKey ? summaryApptIdsKey.split(',') : [];
+    if (ids.length === 0) return;
+    const unsubs: Array<() => void> = [];
+    for (const id of ids) {
+      const ref = doc(db, `patients/${patientId as string}/appointments/${id}`);
+      const unsub = onSnapshot(
+        ref,
+        (snap) => {
+          const data: any = snap.exists() ? snap.data() : null;
+          setApptLive((prev) => ({
+            ...prev,
+            [id]: {
+              dateTime: typeof data?.dateTime === 'number' ? data.dateTime : null,
+              status: typeof data?.status === 'string' ? data.status : null,
+            },
+          }));
+        },
+        (err) => console.warn('[clinic/conversation] appt live sub', err),
+      );
+      unsubs.push(unsub);
+    }
+    return () => { for (const u of unsubs) u(); };
+  }, [summaryApptIdsKey, patientId]);
+
   useEffect(() => {
     if (!clinicId || !patientId) return;
     const unsub = onSnapshot(
@@ -1021,7 +1058,19 @@ export default function ClinicConversationScreen() {
     ) : null;
 
     if (item.type === 'session_summary') {
-      return <SessionSummaryCard summary={item.summary} />;
+      return <SessionSummaryCard
+        summary={item.summary}
+        liveNextAppointmentAt={
+          item.summary?.appointmentId
+            ? (apptLive[item.summary.appointmentId] ? (apptLive[item.summary.appointmentId].dateTime ?? null) : undefined)
+            : undefined
+        }
+        liveStatus={
+          item.summary?.appointmentId
+            ? (apptLive[item.summary.appointmentId] ? (apptLive[item.summary.appointmentId].status ?? null) : undefined)
+            : undefined
+        }
+      />;
     }
 
     if (item.type === 'appointment' && item.appointment) {

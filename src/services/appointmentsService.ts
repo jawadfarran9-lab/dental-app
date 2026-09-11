@@ -1,4 +1,4 @@
-import { addDoc, collection, collectionGroup, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
+import { addDoc, collection, collectionGroup, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc, where } from 'firebase/firestore';
 import { db, patientDb } from '@/firebaseConfig';
 import { updateThreadOnMessage } from '@/src/utils/threadsHelper';
 
@@ -174,4 +174,49 @@ export async function declineAppointment(patientId: string, appointmentId: strin
   if (chatMessageId) {
     await updateDoc(doc(db, `patients/${patientId}/messages/${chatMessageId}`), { 'appointment.status': 'cancelled' });
   }
+}
+
+export async function syncSessionAppointment(params: {
+  clinicId: string;
+  patientId: string;
+  patientName: string;
+  sessionId: string;
+  memberId?: string | null;
+  title: string;
+  newNextAppointmentAt: number | null;
+  oldNextAppointmentId?: string | null;
+}): Promise<string | null> {
+  const { clinicId, patientId, patientName, sessionId, memberId, title, newNextAppointmentAt, oldNextAppointmentId } = params;
+
+  if (newNextAppointmentAt != null) {
+    if (oldNextAppointmentId) {
+      const ref = doc(db, `patients/${patientId}/appointments/${oldNextAppointmentId}`);
+      const snap = await getDoc(ref);
+      if (snap.exists()) {
+        await updateAppointment(patientId, oldNextAppointmentId, { dateTime: newNextAppointmentAt, title, status: 'confirmed' });
+        return oldNextAppointmentId;
+      }
+    }
+    const id = await createAppointment({
+      clinicId,
+      patientId,
+      patientName,
+      dateTime: newNextAppointmentAt,
+      title,
+      status: 'confirmed',
+      source: 'clinic',
+      createdBy: memberId || 'clinic',
+      sessionId,
+    });
+    return id;
+  }
+
+  if (oldNextAppointmentId) {
+    const ref = doc(db, `patients/${patientId}/appointments/${oldNextAppointmentId}`);
+    const snap = await getDoc(ref);
+    if (snap.exists()) {
+      await updateAppointment(patientId, oldNextAppointmentId, { status: 'cancelled' });
+    }
+  }
+  return null;
 }

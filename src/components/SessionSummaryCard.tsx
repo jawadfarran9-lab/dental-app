@@ -27,7 +27,7 @@ function formatWhen(ms?: number | null): string {
   return `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} · ${h}:${mm} ${ampm}`;
 }
 
-export default function SessionSummaryCard({ summary }: { summary?: Summary }) {
+export default function SessionSummaryCard({ summary, liveNextAppointmentAt, liveStatus }: { summary?: Summary; liveNextAppointmentAt?: number | null; liveStatus?: string | null }) {
   const { colors, isDark } = useTheme() as any;
   const s = summary ?? {};
   const cardBg = isDark ? '#141E2D' : '#FFFFFF';
@@ -37,6 +37,8 @@ export default function SessionSummaryCard({ summary }: { summary?: Summary }) {
   const hasAftercare = !!(s.aftercare && s.aftercare.trim());
   const clinicName = s.clinicName || 'Clinic';
   const initial = (clinicName.trim()[0] || 'C').toUpperCase();
+  const displayNextAt = liveNextAppointmentAt !== undefined ? (liveNextAppointmentAt ?? null) : (s.nextAppointmentAt ?? null);
+  const isCancelled = liveStatus === 'cancelled';
 
   return (
     <View style={[styles.card, { backgroundColor: cardBg, borderColor: isDark ? 'rgba(61,157,255,0.25)' : 'rgba(22,104,227,0.18)' }]}>
@@ -65,7 +67,10 @@ export default function SessionSummaryCard({ summary }: { summary?: Summary }) {
           <View style={styles.ic}><Ionicons name="calendar-outline" size={16} color="#1668E3" /></View>
           <View style={styles.blockText}>
             <Text style={[styles.k, { color: faint }]}>NEXT APPOINTMENT</Text>
-            <Text style={styles.vAppt}>{formatWhen(s.nextAppointmentAt)}</Text>
+            <Text style={[styles.vAppt, isCancelled && { color: faint }]}>{formatWhen(displayNextAt)}</Text>
+            {isCancelled ? (
+              <Text style={[styles.k, { color: faint, marginTop: 3, letterSpacing: 0.6 }]}>CANCELLED</Text>
+            ) : null}
           </View>
         </View>
       </View>

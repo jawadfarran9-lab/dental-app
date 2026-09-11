@@ -5,14 +5,15 @@ import { useClinicGuard } from '@/src/utils/navigationGuards';
 import { DENTAL_SESSIONS, type DentalSession } from '@/src/constants/sessions/dentalSessions';
 import { createSessionRecord, updateSessionRecord } from '@/src/services/sessionRecordsService';
 import { uploadSessionPhotos, listSessionPhotos, updateSessionPhoto, deleteSessionPhoto } from '@/src/services/sessionPhotosService';
-import { sendSessionSummary } from '@/src/services/sessionSummaryService';
+import { sendSessionSummary, updateSessionSummaryMessage, findSummaryMessageId } from '@/src/services/sessionSummaryService';
+import { syncSessionAppointment } from '@/src/services/appointmentsService';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebaseConfig';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -125,8 +126,10 @@ export default function SessionSetupScreen() {
   const [materials, setMaterials] = useState('');
   const [aftercare, setAftercare] = useState('');
   const [nextAppt, setNextAppt] = useState<Date | null>(null);
+  const [nextAppointmentId, setNextAppointmentId] = useState<string | null>(null);
   const [patientSummarySentAt, setPatientSummarySentAt] = useState<number | null>(null);
-  const [sendingSummary, setSendingSummary] = useState(false);
+  const [patientSummaryMessageId, setPatientSummaryMessageId] = useState<string | null>(null);
+  const [sharingSummary, setSharingSummary] = useState(false);
   const [dtPicker, setDtPicker] = useState<null | 'date' | 'time'>(null);
   const [apptPicker, setApptPicker] = useState<null | 'date' | 'time'>(null);
   const [saving, setSaving] = useState(false);
@@ -196,13 +199,51 @@ export default function SessionSetupScreen() {
         setToothAreas(Array.isArray(m.toothAreas) ? m.toothAreas : []);
         setWhatDone(typeof m.patientSummary === 'string' ? m.patientSummary : '');
         setAftercare(typeof m.aftercare === 'string' ? m.aftercare : '');
-        setNextAppt(
-          typeof m.nextAppointmentAt === 'number'
-            ? new Date(m.nextAppointmentAt)
-            : null
-        );
+
+        // Source of truth for next-appointment date is the appointment doc.
+        // Resolve via the session's pointer; fall back to legacy nextAppointmentAt on any failure.
+        try {
+          if (typeof m.nextAppointmentId === 'string' && m.nextAppointmentId) {
+            setNextAppointmentId(m.nextAppointmentId);
+            const apptRef = doc(db, `patients/${patientId}/appointments/${m.nextAppointmentId}`);
+            const apptSnap = await getDoc(apptRef);
+            if (!cancelled) {
+              if (apptSnap.exists()) {
+                const a: any = apptSnap.data();
+                if (a?.status !== 'cancelled' && typeof a?.dateTime === 'number') {
+                  setNextAppt(new Date(a.dateTime));
+                } else {
+                  setNextAppt(null);
+                }
+              } else {
+                setNextAppt(
+                  typeof m.nextAppointmentAt === 'number'
+                    ? new Date(m.nextAppointmentAt)
+                    : null
+                );
+              }
+            }
+          } else {
+            setNextAppointmentId(null);
+            setNextAppt(
+              typeof m.nextAppointmentAt === 'number'
+                ? new Date(m.nextAppointmentAt)
+                : null
+            );
+          }
+        } catch (err) {
+          console.warn('[session-setup] resolve next-appt from pointer failed', err);
+          setNextAppointmentId(typeof m.nextAppointmentId === 'string' ? m.nextAppointmentId : null);
+          setNextAppt(
+            typeof m.nextAppointmentAt === 'number'
+              ? new Date(m.nextAppointmentAt)
+              : null
+          );
+        }
+
         setMaterials(typeof p.materialsUsed === 'string' ? p.materialsUsed : '');
         setPatientSummarySentAt(typeof m.patientSummarySentAt === 'number' ? m.patientSummarySentAt : null);
+        setPatientSummaryMessageId(typeof m.patientSummaryMessageId === 'string' ? m.patientSummaryMessageId : null);
 
         setLoadingEdit(false);
       } catch (e: any) {
@@ -450,47 +491,46 @@ export default function SessionSetupScreen() {
 
   const currentPhoto = photoSheet !== null ? (photos[editorIndex] ?? null) : null;
 
-  const doSendSummary = async () => {
-    try {
-      setSendingSummary(true);
-      Haptics.selectionAsync();
-      await sendSessionSummary({
-        clinicId,
-        patientId,
-        patientName,
-        sessionId: editSessionId || null,
-        title: name.trim() || selected.name,
-        aftercare: aftercare.trim(),
-        nextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
-        sessionDate: dateTime.getTime(),
-      });
-      setPatientSummarySentAt(Date.now());
-    } catch (e) {
-      Alert.alert('Send failed', 'Could not send the summary. Please try again.');
-    } finally {
-      setSendingSummary(false);
-    }
-  };
+  const doUpsertSummary = async (sessionIdArg: string, pointerArg: string | null): Promise<void> => {
+    if (!clinicId || !patientId || !sessionIdArg) return;
+    const title = name.trim() || selected.name;
+    const aftercareVal = aftercare.trim();
+    const nextAt = nextAppt ? nextAppt.getTime() : null;
+    const sessionDateVal = dateTime ? dateTime.getTime() : null;
 
-  const handleSendSummary = () => {
-    if (sendingSummary) return;
-    if (!clinicId || !patientId) return;
-    if (!aftercare.trim() && !nextAppt) {
-      Alert.alert('Nothing to send', 'Add aftercare instructions or a next appointment first.');
-      return;
+    let msgId = patientSummaryMessageId;
+    if (!msgId && patientSummarySentAt) {
+      msgId = await findSummaryMessageId(patientId, sessionIdArg);
+      if (msgId) setPatientSummaryMessageId(msgId);
     }
-    if (patientSummarySentAt) {
-      Alert.alert(
-        'Send again?',
-        'You already sent a summary for this session. Sending again posts a new card to the patient’s chat.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Send again', onPress: () => { doSendSummary(); } },
-        ]
-      );
-      return;
+
+    if (msgId) {
+      await updateSessionSummaryMessage({
+        patientId,
+        messageId: msgId,
+        title,
+        aftercare: aftercareVal,
+        nextAppointmentAt: nextAt,
+        sessionDate: sessionDateVal,
+        appointmentId: pointerArg,
+      });
+    } else {
+      if (aftercareVal.length > 0 || nextAt != null) {
+        const newId = await sendSessionSummary({
+          clinicId,
+          patientId,
+          patientName,
+          sessionId: sessionIdArg,
+          title,
+          aftercare: aftercareVal,
+          nextAppointmentAt: nextAt,
+          sessionDate: sessionDateVal,
+          appointmentId: pointerArg,
+        });
+        setPatientSummaryMessageId(newId);
+        setPatientSummarySentAt(Date.now());
+      }
     }
-    doSendSummary();
   };
 
   const handleSave = async () => {
@@ -554,6 +594,39 @@ export default function SessionSetupScreen() {
           materialsUsed: materials.trim(),
         });
         savedSessionId = created.sessionId;
+      }
+
+      // Single source of truth: appointment doc. Session stores only the pointer.
+      let syncedPointer: string | null = nextAppointmentId;
+      try {
+        const newPointer = await syncSessionAppointment({
+          clinicId,
+          patientId,
+          patientName: patientName ?? '',
+          sessionId: savedSessionId,
+          memberId,
+          title: name.trim() || selected.name,
+          newNextAppointmentAt: nextAppt ? nextAppt.getTime() : null,
+          oldNextAppointmentId: nextAppointmentId,
+        });
+        await updateDoc(
+          doc(db, `clinics/${clinicId}/patients/${patientId}/sessions/${savedSessionId}`),
+          { nextAppointmentId: newPointer },
+        );
+        setNextAppointmentId(newPointer);
+        syncedPointer = newPointer;
+      } catch (err) {
+        console.warn('[session-setup] syncSessionAppointment failed', err);
+      }
+
+      // δ.2 — auto-upsert the patient summary card (create once, update in place)
+      try {
+        setSharingSummary(true);
+        await doUpsertSummary(savedSessionId, syncedPointer);
+      } catch (e) {
+        console.warn('[session-setup] summary upsert failed', e);
+      } finally {
+        setSharingSummary(false);
       }
 
       const toUpload = photos.filter((p) => p.saved !== true);
@@ -1178,24 +1251,16 @@ export default function SessionSetupScreen() {
           )}
         </View>
 
-        {patientSummarySentAt ? (
-          <View style={{ marginTop: 8 }}>
-            <View style={styles.sentBanner}>
-              <Ionicons name="checkmark-circle" size={18} color="#10B981" />
-              <Text style={styles.sentBannerText}>Sent to patient chat</Text>
-            </View>
-            <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={styles.resendBtn}>
-              <Ionicons name="refresh" size={15} color="#1668E3" />
-              <Text style={styles.resendBtnText}>{sendingSummary ? 'Sending…' : 'Send again'}</Text>
-            </Pressable>
+        {(patientSummarySentAt || patientSummaryMessageId) ? (
+          <View style={[styles.autoShareRow, { marginTop: 8 }]}>
+            <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+            <Text style={styles.autoShareRowText}>Shared with patient · updates on save</Text>
           </View>
         ) : (
-          <Pressable onPress={handleSendSummary} disabled={sendingSummary} style={{ marginTop: 8 }}>
-            <LinearGradient colors={['#3D9DFF', '#1668E3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.sendChatFull}>
-              <Ionicons name="paper-plane" size={17} color="#FFFFFF" />
-              <Text style={styles.sendChatFullText}>{sendingSummary ? 'Sending…' : 'Send to patient chat'}</Text>
-            </LinearGradient>
-          </Pressable>
+          <View style={[styles.autoShareRow, { marginTop: 8 }]}>
+            <Ionicons name="chatbubble-ellipses-outline" size={15} color="#1668E3" />
+            <Text style={[styles.autoShareRowText, { color: '#1668E3' }]}>Patient gets a summary on save</Text>
+          </View>
         )}
       </ScrollView>
 
@@ -2042,12 +2107,8 @@ const styles = StyleSheet.create({
   sendChatBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800' },
   badgeSent: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 999, backgroundColor: 'rgba(16,185,129,0.12)' },
   badgeSentText: { color: '#0F9D6E', fontSize: 12, fontWeight: '800' },
-  sendChatFull: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 50, borderRadius: 16 },
-  sendChatFullText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   sentLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 10 },
   sentLineText: { color: '#0F9D6E', fontSize: 13, fontWeight: '700' },
-  sentBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: 48, borderRadius: 16, backgroundColor: 'rgba(16,185,129,0.12)' },
-  sentBannerText: { color: '#0F9D6E', fontSize: 15, fontWeight: '800' },
-  resendBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 14, marginTop: 8, borderWidth: 1.5, borderColor: 'rgba(22,104,227,0.35)' },
-  resendBtnText: { color: '#1668E3', fontSize: 13.5, fontWeight: '800' },
+  autoShareRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 40, borderRadius: 14, backgroundColor: 'rgba(16,185,129,0.10)' },
+  autoShareRowText: { color: '#0F9D6E', fontSize: 12.5, fontWeight: '700' },
 });
