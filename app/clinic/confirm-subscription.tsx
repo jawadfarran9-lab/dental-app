@@ -487,8 +487,8 @@ BeSmile AI Team
         ['subscriptionSummaryClinicName', clinicName || 'Clinic'],
       ]);
 
-      // Clear ONLY pending subscription data from AsyncStorage
-      // NOTE: Keep clinicId for the login flow to work properly
+      // Clear ONLY pending subscription data from AsyncStorage here.
+      // `clinicId` is purged below alongside the session keys (R5).
       await AsyncStorage.multiRemove([
         'pendingSubscriptionPlan',
         'pendingSubscriptionPlanName',
@@ -517,9 +517,13 @@ BeSmile AI Team
       // ✅ PHASE 2: Terminate Firebase auth session — user must login manually
       await signOut(auth);
 
-      // ✅ PHASE 5: Purge auth session keys to prevent AuthContext auto-hydration
-      // setClinicAuth() (renew/upgrade) writes these; checkAuthState() would re-hydrate on remount
+      // R5 (session hygiene): purge ALL clinic session AsyncStorage keys —
+      // including `clinicId` — so AuthContext.checkAuthState cannot silently
+      // re-hydrate a partial-session on the next cold start. `login.tsx`
+      // derives `clinicId` from the Firebase UID via `resolveClinicIdForUid`
+      // and does not read it from AsyncStorage, so this is safe.
       await AsyncStorage.multiRemove([
+        'clinicId',
         'clinicMemberId',
         'clinicRole',
         'clinicMemberStatus',

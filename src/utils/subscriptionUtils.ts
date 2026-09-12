@@ -26,3 +26,18 @@ export function hasActiveSubscription(clinicData: Record<string, any>): boolean 
   // Legacy compatibility: older docs without status field
   return clinicData.subscribed === true;
 }
+
+/**
+ * Statuses that unambiguously represent NON-active subscription state.
+ * Used by subscribe.tsx (auto-open renew sheet) and renew-subscribe.tsx
+ * (allow the plan-picker guard). Includes 'pending_subscription' so newly
+ * signed-up but never-paid clinics are treated as inactive here too, matching
+ * `!hasActiveSubscription`.
+ */
+export const INACTIVE_STATUSES: readonly string[] = [
+  'cancelled',
+  'expired',
+  'inactive',
+  'past_due',
+  'pending_subscription',
+];

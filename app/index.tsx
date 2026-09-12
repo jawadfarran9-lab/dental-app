@@ -25,7 +25,7 @@ const MAX_RETRIES = 2;
  */
 export default function Index() {
   const router = useRouter();
-  const { loading, userRole, error, checkAuthState } = useAuth();
+  const { loading, userRole, error, isSubscribed, checkAuthState } = useAuth();
   const navigatedRef = useRef(false);
   const retryCountRef = useRef(0);
   const retryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -33,6 +33,15 @@ export default function Index() {
   useEffect(() => {
     if (navigatedRef.current) return;
     if (loading) return;
+
+    if (userRole === 'clinic' && isSubscribed === false) {
+      navigatedRef.current = true;
+      router.replace('/login' as any);
+      setTimeout(() => {
+        SplashScreen.hideAsync().catch(() => {});
+      }, 100);
+      return;
+    }
 
     if (userRole === 'clinic' || userRole === 'patient') {
       navigatedRef.current = true;
@@ -60,7 +69,7 @@ export default function Index() {
         });
       }, RETRY_DELAY_MS);
     }
-  }, [loading, userRole, error, router, checkAuthState]);
+  }, [loading, userRole, error, isSubscribed, router, checkAuthState]);
 
   useEffect(() => {
     return () => {

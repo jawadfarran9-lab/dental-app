@@ -14,6 +14,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { SUBSCRIPTION_PRICING, SUBSCRIPTION_PRICING_OLD } from '@/src/types/subscription';
+import { INACTIVE_STATUSES } from '@/src/utils/subscriptionUtils';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -114,10 +115,9 @@ export default function RenewSubscribeScreen() {
         }
 
         const data = snap.data();
-        const INACTIVE_STATUSES = ['cancelled', 'expired', 'inactive', 'past_due'];
         if (!INACTIVE_STATUSES.includes(data.status)) {
           // Active or unknown — send to home or subscribe
-          router.replace('/(tabs)/home' as any);
+          router.replace('/' as any);
           return;
         }
 

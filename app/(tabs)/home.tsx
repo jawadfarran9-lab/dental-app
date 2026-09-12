@@ -697,7 +697,17 @@ const PostStarAvatar: React.FC<{
 export default function HomeScreen() {
   const { colors, isDark } = useTheme();
   const router = useRouter();
-  const { clinicId, memberId, isSubscribed } = useAuth();
+  const { clinicId, memberId, isSubscribed, userRole, loading: authLoading } = useAuth();
+
+  // R4: In-app Home-tab guard — an unsubscribed clinic session must not
+  // linger on Home. Gates strictly on `userRole==='clinic' && isSubscribed===false`
+  // so patients, logged-out visitors, subscribed clinics, and any unknown
+  // subscription state (null) are unaffected.
+  useEffect(() => {
+    if (!authLoading && userRole === 'clinic' && isSubscribed === false) {
+      router.replace('/login' as any);
+    }
+  }, [authLoading, userRole, isSubscribed]);
 
   // ========== Pro Feature Access Check ==========
   const isProUser = isSubscribed === true && clinicId !== null;
