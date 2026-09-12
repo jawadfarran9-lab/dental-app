@@ -4,13 +4,14 @@ import {
     ensureOwnerMembership,
     fetchMemberProfile,
     recordMemberLogin,
+    resolveClinicIdForUid,
 } from '@/src/services/clinicMembersService';
 import { ClinicRole, MemberStatus } from '@/src/types/members';
 import { logSilentFailure } from '@/src/utils/silentFailure';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 export type UserRole = 'clinic' | 'patient' | null;
@@ -250,15 +251,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
         const firebaseUid = auth.currentUser.uid;
-        const clinicQuery = query(
-          collection(db, 'clinics'),
-          where('ownerUid', '==', firebaseUid),
-        );
-        const clinicSnap = await getDocs(clinicQuery);
+        const restoredClinicId = await resolveClinicIdForUid(firebaseUid);
 
-        if (!clinicSnap.empty) {
-          const clinicDoc = clinicSnap.docs[0];
-          const restoredClinicId = clinicDoc.id;
+        if (restoredClinicId) {
+          const clinicDoc = await getDoc(doc(db, 'clinics', restoredClinicId));
           const clinicEmail = clinicDoc.data()?.email ?? '';
           const ownerMember = await ensureOwnerMembership(restoredClinicId, clinicEmail);
           const { subscribed, detailsComplete } = await checkClinicSubscription(restoredClinicId);

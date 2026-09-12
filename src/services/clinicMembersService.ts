@@ -5,8 +5,10 @@ import {
     doc,
     getDoc,
     getDocs,
+    query,
     serverTimestamp,
-    setDoc
+    setDoc,
+    where
 } from 'firebase/firestore';
 import { writeAuditLog } from './auditLogService';
 
@@ -26,6 +28,27 @@ function assertOwner(actingRole: string) {
 
 function normalizeEmail(email: string) {
   return email.toLowerCase().trim();
+}
+
+/**
+ * F1 — resolve the owner's clinicId via users/{uid}.clinicId mirror, with a
+ * fallback to the legacy `where('ownerUid'==uid)` scan. Once every active
+ * owner has re-logged (mirror written server-side by assignOwnerClaims),
+ * future rules can deny `list /clinics` and the fast path still succeeds.
+ */
+export async function resolveClinicIdForUid(uid: string): Promise<string | null> {
+  try {
+    const mirrorSnap = await getDoc(doc(db, 'users', uid));
+    if (mirrorSnap.exists()) {
+      const cid = (mirrorSnap.data() as { clinicId?: unknown } | undefined)?.clinicId;
+      if (typeof cid === 'string' && cid.length > 0) return cid;
+    }
+  } catch {
+    // Non-blocking — fall back to legacy scan.
+  }
+  const legacy = await getDocs(query(collection(db, 'clinics'), where('ownerUid', '==', uid)));
+  if (legacy.empty) return null;
+  return legacy.docs[0].id;
 }
 
 export async function fetchMemberProfile(clinicId: string, memberId: string): Promise<ClinicMember | null> {

@@ -360,6 +360,23 @@ exports.assignOwnerClaims = functions.https.onCall(async (_data, context) => {
     clinicId,
   });
 
+  // F1 mirror: users/{uid}.clinicId — read by client with fallback so future
+  // rules can deny `list /clinics where ownerUid==uid`. Best-effort; must
+  // never fail the callable.
+  try {
+    const { FieldValue } = require('firebase-admin/firestore');
+    const clinicData = snap.docs[0].data() || {};
+    const ownerEmail = user.email || clinicData.email || '';
+    await db.doc(`users/${uid}`).set({
+      clinicId,
+      role: 'owner',
+      email: ownerEmail,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, { merge: true });
+  } catch (mirrorErr) {
+    console.warn(`[assignOwnerClaims] users/${uid} mirror write failed (non-blocking):`, mirrorErr && mirrorErr.message);
+  }
+
   console.log(`[assignOwnerClaims] uid=${uid} clinicId=${clinicId}`);
   return { clinicId };
 });

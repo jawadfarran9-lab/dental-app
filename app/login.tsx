@@ -2,7 +2,7 @@ import { auth, db, functions } from '@/firebaseConfig';
 import PremiumGradientBackground from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
+import { ensureOwnerMembership, resolveClinicIdForUid } from '@/src/services/clinicMembersService';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
 import { hasActiveSubscription } from '@/src/utils/subscriptionUtils';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,7 +12,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { useFocusEffect, useRouter } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
+import { doc, getDoc } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -136,16 +136,11 @@ export default function LoginScreen() {
       );
       const firebaseUid = userCredential.user.uid;
 
-      const q = query(
-        collection(db, 'clinics'),
-        where('ownerUid', '==', firebaseUid)
-      );
-      const snapshot = await getDocs(q);
+      const clinicId = await resolveClinicIdForUid(firebaseUid);
 
-      if (!snapshot.empty) {
-        const clinicDoc = snapshot.docs[0];
-        const clinicId = clinicDoc.id;
-        const clinicData = clinicDoc.data();
+      if (clinicId) {
+        const clinicDoc = await getDoc(doc(db, 'clinics', clinicId));
+        const clinicData = clinicDoc.data() ?? {};
 
         // Ensure owner custom claims (role + clinicId) are present on the token.
         // Idempotent: only assigns if missing; never blocks login on failure.
