@@ -139,36 +139,3 @@ export async function findPendingInviteByEmail(clinicId: string, email: string):
   const d = snap.docs[0];
   return { id: d.id, ...(d.data() as ClinicInvite) };
 }
-
-/**
- * Search for a pending invite globally across all clinics by email.
- * Uses collectionGroup to query all invites subcollections.
- */
-export async function findPendingInviteGloballyByEmail(email: string): Promise<ClinicInvite | null> {
-  const normalizedEmail = email.toLowerCase().trim();
-  
-  // Use collectionGroup to search across all clinics
-  const q = query(
-    collection(db, 'clinics'),
-  );
-  
-  const clinicsSnap = await getDocs(q);
-  
-  // Search each clinic's invites subcollection
-  for (const clinicDoc of clinicsSnap.docs) {
-    const inviteQuery = query(
-      invitesCollection(clinicDoc.id),
-      where('email', '==', normalizedEmail),
-      where('status', '==', 'PENDING')
-    );
-    
-    const inviteSnap = await getDocs(inviteQuery);
-    if (!inviteSnap.empty) {
-      const d = inviteSnap.docs[0];
-      const data = d.data() as ClinicInvite;
-      return { ...data, id: d.id, clinicId: clinicDoc.id };
-    }
-  }
-  
-  return null;
-}

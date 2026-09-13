@@ -4,12 +4,13 @@ import StaticMapPreview from '@/src/components/StaticMapPreview';
 import WorkingHoursEditor from '@/src/components/WorkingHoursEditor';
 import { useTheme } from '@/src/context/ThemeContext';
 import { createDefaultSchedule, DAYS_ORDER, formatDayLabel, isValidTimeRange, WeeklySchedule } from '@/src/types/clinicSchedule';
+import { withAuthRetry } from '@/src/utils/withAuthRetry';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { addDoc, collection, doc, getDoc, setDoc } from 'firebase/firestore';
+import { addDoc, collection, doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ActivityIndicator, Alert, Animated, BackHandler, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
@@ -479,11 +480,11 @@ export default function ClinicSignup() {
     try {
       
       // Create a real Firebase Auth account (email/password) — single source of identity
-      const userCredential = await createUserWithEmailAndPassword(
+      const userCredential = await withAuthRetry(() => createUserWithEmailAndPassword(
         auth,
         email.trim().toLowerCase(),
         password
-      );
+      ));
       const ownerUid = userCredential.user.uid;
 
       // Phase C: Always create clinic doc after Auth success (guarantees ownerUid)
@@ -573,6 +574,10 @@ export default function ClinicSignup() {
       }
       await setDoc(doc(db, 'clinics', existingClinicId), profilePayload, { merge: true });
 
+      try {
+        await setDoc(doc(db, 'users', ownerUid), { clinicId: existingClinicId, role: 'owner', email: email.trim().toLowerCase(), updatedAt: serverTimestamp() }, { merge: true });
+      } catch (e) { /* non-blocking mirror */ }
+
 
       // ✅ CRITICAL: Verify clinicId is saved before navigating
       const verifyClinicId = await AsyncStorage.getItem('clinicId');
@@ -602,7 +607,7 @@ export default function ClinicSignup() {
         const normalizedEmail = email.trim().toLowerCase();
         try {
           // Prove ownership: sign in with same credentials
-          const cred = await signInWithEmailAndPassword(auth, normalizedEmail, password);
+          const cred = await withAuthRetry(() => signInWithEmailAndPassword(auth, normalizedEmail, password));
           const ownerUid = cred.user.uid;
 
           // ── ClinicId resolution (deterministic, no duplicates) ──
@@ -658,6 +663,10 @@ export default function ClinicSignup() {
           }
           await setDoc(doc(db, 'clinics', recoveredClinicId), recoveredPayload, { merge: true });
 
+          try {
+            await setDoc(doc(db, 'users', ownerUid), { clinicId: recoveredClinicId, role: 'owner', email: normalizedEmail, updatedAt: serverTimestamp() }, { merge: true });
+          } catch (e) { /* non-blocking mirror */ }
+
           // Write pending keys (same as normal path)
           const recoveryStorage: [string, string][] = [
             ['pendingClinicName', clinicName.trim() || 'Clinic'],
@@ -694,9 +703,13 @@ export default function ClinicSignup() {
           router.replace('/clinic/confirm-subscription' as any);
           return;
         } catch (signInErr: any) {
-          // Wrong password for existing account → redirect to login
           console.warn('[SIGNUP] Recovery sign-in failed:', signInErr.code);
           setLoading(false);
+          if (signInErr?.code === 'auth/network-request-failed' || signInErr?.code === 'auth/timeout' || signInErr?.code === 'auth/internal-error') {
+            Alert.alert(t('common.error'), t('auth.errors.noConnection'));
+            return;
+          }
+          // Wrong password / invalid credential → redirect to login
           Alert.alert(
             t('common.attention'),
             t('auth.accountExists', 'Account already exists. Please log in.'),
@@ -708,10 +721,21 @@ export default function ClinicSignup() {
 
       console.error('clinic signup error', err);
       setLoading(false);
-      
+
       let errorMsg = t('auth.signupError');
-      if (err.message) {
-        errorMsg = err.message;
+      switch (err?.code) {
+        case 'auth/network-request-failed':
+        case 'auth/timeout':
+        case 'auth/internal-error':
+          errorMsg = t('auth.errors.noConnection'); break;
+        case 'auth/email-already-in-use':
+          errorMsg = t('auth.errors.emailInUse'); break;
+        case 'auth/weak-password':
+          errorMsg = t('auth.errors.weakPassword'); break;
+        case 'auth/invalid-email':
+          errorMsg = t('auth.errors.invalidEmail'); break;
+        default:
+          errorMsg = t('auth.signupError');
       }
       Alert.alert(t('common.error'), errorMsg);
     }

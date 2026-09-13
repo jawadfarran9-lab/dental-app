@@ -5,10 +5,8 @@ import {
     doc,
     getDoc,
     getDocs,
-    query,
     serverTimestamp,
-    setDoc,
-    where
+    setDoc
 } from 'firebase/firestore';
 import { writeAuditLog } from './auditLogService';
 
@@ -31,10 +29,10 @@ function normalizeEmail(email: string) {
 }
 
 /**
- * F1 — resolve the owner's clinicId via users/{uid}.clinicId mirror, with a
- * fallback to the legacy `where('ownerUid'==uid)` scan. Once every active
- * owner has re-logged (mirror written server-side by assignOwnerClaims),
- * future rules can deny `list /clinics` and the fast path still succeeds.
+ * F1 — resolve the owner's clinicId via the users/{uid}.clinicId mirror.
+ * The legacy `where('ownerUid'==uid)` fallback has been removed; if the
+ * mirror is missing, callers get null and should re-authenticate so the
+ * server-side assignOwnerClaims writes the mirror.
  */
 export async function resolveClinicIdForUid(uid: string): Promise<string | null> {
   try {
@@ -44,11 +42,9 @@ export async function resolveClinicIdForUid(uid: string): Promise<string | null>
       if (typeof cid === 'string' && cid.length > 0) return cid;
     }
   } catch {
-    // Non-blocking — fall back to legacy scan.
+    // Non-blocking read failure.
   }
-  const legacy = await getDocs(query(collection(db, 'clinics'), where('ownerUid', '==', uid)));
-  if (legacy.empty) return null;
-  return legacy.docs[0].id;
+  return null;
 }
 
 export async function fetchMemberProfile(clinicId: string, memberId: string): Promise<ClinicMember | null> {

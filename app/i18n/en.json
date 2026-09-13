@@ -121,7 +121,13 @@
     "signupError": "Something went wrong. Please try again.",
     "emailInUse": "Email already registered. Please use a different email or log in.",
     "weakPassword": "Password should be at least 6 characters.",
-    "invalidEmail": "Invalid email format."
+    "invalidEmail": "Invalid email format.",
+    "errors": {
+      "noConnection": "Connection lost. Please check your internet and try again.",
+      "emailInUse": "This email is already registered.",
+      "weakPassword": "Password is too weak (at least 6 characters).",
+      "invalidEmail": "Please enter a valid email address."
+    }
   },
   "createPatient": {
     "title": "Create Patient",
