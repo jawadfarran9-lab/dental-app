@@ -113,6 +113,12 @@ export default function ClinicCancelSubscriptionScreen() {
         { merge: true }
       );
       await logout();
+      // Fully reset the nav stack so no zombie clinic-guarded screens
+      // (settings, dashboard, etc.) remain mounted underneath /login. If
+      // they did, their useEffect subscription guards would fire when
+      // RenewLoginSheet later flips isSubscribed null→false and race the
+      // renew push, stranding the user on the subscribe page.
+      try { if (router.canDismiss()) router.dismissAll(); } catch {}
       router.replace('/login' as any);
     } catch (err) {
       console.error('[CANCEL-SUB] cancel error', err);
