@@ -39,6 +39,7 @@ export async function sendSessionSummary(p: SessionSummaryPayload): Promise<stri
 
   const msgRef = await addDoc(collection(db, `patients/${p.patientId}/messages`), {
     from: 'clinic',
+    clinicId: p.clinicId,
     type: 'session_summary',
     text,
     senderName: 'Clinic',

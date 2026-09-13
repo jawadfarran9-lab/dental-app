@@ -59,6 +59,7 @@ export async function sendImageMessage(params: {
   const imageUrl = await getDownloadURL(snap.ref);
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
+    clinicId,
     text: params.caption ?? '',
     drawing: params.drawing ?? null,
     texts: params.texts ?? null,
@@ -154,6 +155,7 @@ export async function sendVideoMessage(params: {
 
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
+    clinicId,
     text: params.caption ?? '',
     drawing: params.drawing ?? null,
     texts: params.texts ?? null,
@@ -194,6 +196,7 @@ export async function sendAudioMessage(params: {
   const audioUrl = await getDownloadURL(snap.ref);
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
+    clinicId,
     text: '',
     type: 'audio',
     audioUrl,
@@ -328,6 +331,7 @@ export async function sendAlbumMessage(
   }
   await addDoc(collection(dbInstance, `patients/${patientId}/messages`), {
     from,
+    clinicId,
     text: caption ?? '',
     type: 'album',
     media,

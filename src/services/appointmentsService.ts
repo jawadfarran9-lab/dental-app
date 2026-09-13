@@ -109,7 +109,7 @@ export async function proposeAppointmentViaChat(p: {
   });
   const text = `📅 Appointment · ${fmtWhenText(p.dateTime)}${p.title ? ' · ' + p.title : ''} · tap to confirm`;
   const msgRef = await addDoc(collection(db, `patients/${p.patientId}/messages`), {
-    from: 'clinic', type: 'appointment', text, senderName: 'Clinic', createdAt: Date.now(),
+    from: 'clinic', clinicId: p.clinicId, type: 'appointment', text, senderName: 'Clinic', createdAt: Date.now(),
     appointment: { appointmentId: apptId, patientId: p.patientId, clinicId: p.clinicId, dateTime: p.dateTime, title: p.title || '', status: 'proposed', clinicName: p.clinicName ?? null },
   });
   await updateDoc(doc(db, `patients/${p.patientId}/appointments/${apptId}`), { chatMessageId: msgRef.id, updatedAt: Date.now() });
@@ -141,6 +141,7 @@ export async function requestAppointmentAsPatient(input: {
   });
   const msgRef = await addDoc(collection(patientDb, `patients/${input.patientId}/messages`), {
     from: 'patient',
+    clinicId: input.clinicId,
     type: 'appointment',
     text: '📅 Appointment request · waiting for clinic',
     senderName: input.patientName,

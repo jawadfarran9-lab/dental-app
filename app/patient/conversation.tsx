@@ -921,6 +921,7 @@ export default function ClinicConversationScreen() {
     try {
       await addDoc(collection(patientDb, `patients/${patientId}/messages`), {
         from: 'patient',
+        clinicId,
         text,
         senderName: 'Patient',
         createdAt: Date.now(),
