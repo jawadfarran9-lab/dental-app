@@ -177,48 +177,53 @@ export default function LoginScreen() {
           status: ownerMember.status,
         });
 
-        // Biometric opt-in: prompt user after first successful login
-        const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
-        if (biometricFlag === null) {
-          // First login — check if device supports biometrics before asking
-          const hasHw = await LocalAuthentication.hasHardwareAsync();
-          const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-          if (hasHw && isEnrolled) {
-            await new Promise<void>((resolve) => {
-              Alert.alert(
-                'Enable Face ID',
-                'Enable Face ID / Fingerprint for faster login?',
-                [
-                  {
-                    text: 'Not now',
-                    style: 'cancel',
-                    onPress: async () => {
-                      await SecureStore.setItemAsync('biometric_enabled', 'false');
-                      resolve();
+        // Biometric opt-in: only run on a subscribed successful login so an
+        // unsubscribed owner is not prompted to enable Face ID (nor have
+        // their credentials stored) on a login that will immediately bounce
+        // to /clinic/subscribe?reason=cancelled.
+        if (isSubscribed) {
+          const biometricFlag = await SecureStore.getItemAsync('biometric_enabled');
+          if (biometricFlag === null) {
+            // First login — check if device supports biometrics before asking
+            const hasHw = await LocalAuthentication.hasHardwareAsync();
+            const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+            if (hasHw && isEnrolled) {
+              await new Promise<void>((resolve) => {
+                Alert.alert(
+                  'Enable Face ID',
+                  'Enable Face ID / Fingerprint for faster login?',
+                  [
+                    {
+                      text: 'Not now',
+                      style: 'cancel',
+                      onPress: async () => {
+                        await SecureStore.setItemAsync('biometric_enabled', 'false');
+                        resolve();
+                      },
                     },
-                  },
-                  {
-                    text: 'Enable',
-                    onPress: async () => {
-                      await SecureStore.setItemAsync('biometric_enabled', 'true');
-                      await SecureStore.setItemAsync(
-                        'clinic_credentials',
-                        JSON.stringify({ email: loginEmail, password: loginPassword })
-                      );
-                      resolve();
+                    {
+                      text: 'Enable',
+                      onPress: async () => {
+                        await SecureStore.setItemAsync('biometric_enabled', 'true');
+                        await SecureStore.setItemAsync(
+                          'clinic_credentials',
+                          JSON.stringify({ email: loginEmail, password: loginPassword })
+                        );
+                        resolve();
+                      },
                     },
-                  },
-                ],
-                { cancelable: false }
-              );
-            });
+                  ],
+                  { cancelable: false }
+                );
+              });
+            }
+          } else if (biometricFlag === 'true') {
+            // Already opted in — update stored credentials
+            await SecureStore.setItemAsync(
+              'clinic_credentials',
+              JSON.stringify({ email: loginEmail, password: loginPassword })
+            );
           }
-        } else if (biometricFlag === 'true') {
-          // Already opted in — update stored credentials
-          await SecureStore.setItemAsync(
-            'clinic_credentials',
-            JSON.stringify({ email: loginEmail, password: loginPassword })
-          );
         }
 
         if (!isSubscribed) {
