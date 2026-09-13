@@ -317,6 +317,14 @@ export default function ChatCameraScreen() {
   const compositeRef = useRef<View>(null);
   const [previewUri, setPreviewUri] = useState<string | null>(null);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const previewVideoRef = useRef<Video>(null);
+  useEffect(() => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    if (videoPlaying) { v.playAsync().catch(() => {}); }
+    else { v.pauseAsync().catch(() => {}); }
+  }, [videoPlaying]);
   const [caption, setCaption] = useState('');
   const [drawMode, setDrawMode] = useState(false);
   const [cropMode, setCropMode] = useState(false);
@@ -786,6 +794,7 @@ export default function ChatCameraScreen() {
     setPreviewUri(null);
     setCaption('');
     setPreviewIsVideo(false);
+    setVideoPlaying(false);
     setStrokes([]);
     setCurrentD('');
     currentPtsRef.current = [];
@@ -1504,6 +1513,7 @@ export default function ChatCameraScreen() {
       if (video?.uri) {
         setCaption('');
         setPreviewIsVideo(true);
+        setVideoPlaying(false);
         setStrokes([]);
         setCurrentD('');
         currentPtsRef.current = [];
@@ -1774,16 +1784,29 @@ export default function ChatCameraScreen() {
       {previewUri && (
         <View ref={compositeRef} style={styles.previewOverlay}>
           {previewIsVideo ? (
-            <Video
-              key="prev-video"
-              source={{ uri: previewUri }}
-              style={styles.previewImage}
-              resizeMode={ResizeMode.CONTAIN}
-              isLooping
-              shouldPlay
-              useNativeControls={false}
-              onReadyForDisplay={(e) => { setPrevMediaW(e.naturalSize.width); setPrevMediaH(e.naturalSize.height); }}
-            />
+            <>
+              <Video
+                key="prev-video"
+                ref={previewVideoRef}
+                source={{ uri: previewUri }}
+                style={styles.previewImage}
+                resizeMode={ResizeMode.CONTAIN}
+                isLooping
+                useNativeControls={false}
+                onReadyForDisplay={(e) => { setPrevMediaW(e.naturalSize.width); setPrevMediaH(e.naturalSize.height); }}
+              />
+              <Pressable
+                onPress={() => setVideoPlaying((p) => !p)}
+                style={StyleSheet.absoluteFill}
+                accessibilityRole="button"
+                accessibilityLabel={videoPlaying ? 'Pause video' : 'Play video'}
+              />
+              {!videoPlaying && !textMode && !drawMode && !cropMode && texts.length === 0 && (
+                <View pointerEvents="none" style={{ position: 'absolute', alignSelf: 'center', top: '50%', marginTop: -34, width: 68, height: 68, borderRadius: 34, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center', zIndex: 10 }}>
+                  <Ionicons name="play" size={34} color="#FFFFFF" style={{ marginLeft: 3 }} />
+                </View>
+              )}
+            </>
           ) : (
             <ExpoImage
               key="prev-image"

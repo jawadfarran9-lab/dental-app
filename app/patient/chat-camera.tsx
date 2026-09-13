@@ -424,6 +424,13 @@ export default function PatientChatCameraScreen() {
   useEffect(() => { setReady(false); }, [previewUri]);
   const [previewIsVideo, setPreviewIsVideo] = useState(false);
   const [videoPlaying, setVideoPlaying] = useState(false);
+  const previewVideoRef = useRef<Video>(null);
+  useEffect(() => {
+    const v = previewVideoRef.current;
+    if (!v) return;
+    if (videoPlaying) { v.playAsync().catch(() => {}); }
+    else { v.pauseAsync().catch(() => {}); }
+  }, [videoPlaying]);
   const [sendPct, setSendPct] = useState<number | null>(null);
   const [caption, setCaption] = useState('');
   const [sending, setSending] = useState(false);
@@ -1904,9 +1911,9 @@ export default function PatientChatCameraScreen() {
               style={styles.previewImage}
               resizeMode={ResizeMode.CONTAIN}
               isLooping
-              shouldPlay={videoPlaying}
               useNativeControls={false}
               onReadyForDisplay={(e) => { setPrevMediaW(e.naturalSize.width); setPrevMediaH(e.naturalSize.height); }}
+              ref={previewVideoRef}
             />
           ) : (
             <ExpoImage
