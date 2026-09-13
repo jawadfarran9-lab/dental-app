@@ -1,110 +1,245 @@
 const { initializeTestEnvironment, assertSucceeds, assertFails } = require('@firebase/rules-unit-testing');
 const { readFileSync } = require('fs');
-const { doc, getDoc, setDoc, collection, query, where, getDocs } = require('firebase/firestore');
+const { doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc, collection, collectionGroup, query, where, orderBy, getDocs } = require('firebase/firestore');
 
 const PROJECT_ID = 'demo-rules-test', HOST = '127.0.0.1', PORT = 8080;
 let passed = 0, failed = 0;
 async function check(name, p) { try { await p; console.log('  PASS:', name); passed++; } catch (e) { console.error('  FAIL:', name, '-', e.message); failed++; } }
 
 async function main() {
-  const env = await initializeTestEnvironment({ projectId: PROJECT_ID, firestore: { rules: readFileSync('firebase/firestore.rules.candidate', 'utf8'), host: HOST, port: PORT } });
+  const env = await initializeTestEnvironment({
+    projectId: PROJECT_ID,
+    firestore: { rules: readFileSync('firebase/firestore.rules.candidate', 'utf8'), host: HOST, port: PORT }
+  });
   await env.clearFirestore();
 
-  const ownerA = env.authenticatedContext('ownerA', { role: 'owner', clinicId: 'clinicA' }).firestore();
-  const doctorA = env.authenticatedContext('doctorA', { role: 'doctor', clinicId: 'clinicA' }).firestore();
-  const p1 = env.authenticatedContext('P1', { role: 'patient', clinicId: 'clinicA', patientId: 'P1' }).firestore();
-  const p2 = env.authenticatedContext('P2', { role: 'patient', clinicId: 'clinicA', patientId: 'P2' }).firestore();
-  const ownerB = env.authenticatedContext('ownerB', { role: 'owner', clinicId: 'clinicB' }).firestore();
-  const ownerA_noclaim = env.authenticatedContext('ownerA', {}).firestore();
-  const guest = env.unauthenticatedContext().firestore();
+  // ── Auth contexts ──────────────────────────────────────────────────────
+  const ownerA         = env.authenticatedContext('ownerA',  { role: 'owner',   clinicId: 'clinicA' }).firestore();
+  const doctorA        = env.authenticatedContext('doctorA', { role: 'doctor',  clinicId: 'clinicA' }).firestore();
+  const p1             = env.authenticatedContext('P1',      { role: 'patient', clinicId: 'clinicA', patientId: 'P1' }).firestore();
+  const p2             = env.authenticatedContext('P2',      { role: 'patient', clinicId: 'clinicA', patientId: 'P2' }).firestore();
+  const ownerB         = env.authenticatedContext('ownerB',  { role: 'owner',   clinicId: 'clinicB' }).firestore();
+  const ownerA_noclaim = env.authenticatedContext('ownerA',  {}).firestore();
+  const guest          = env.unauthenticatedContext().firestore();
 
+  // ── Seed data (rules disabled) ─────────────────────────────────────────
   await env.withSecurityRulesDisabled(async (ctx) => {
     const db = ctx.firestore();
+    // Clinic roots
     await setDoc(doc(db, 'clinics/clinicA'), { ownerUid: 'ownerA', name: 'A' });
     await setDoc(doc(db, 'clinics/clinicB'), { ownerUid: 'ownerB', name: 'B' });
     await setDoc(doc(db, 'clinics_public/clinicA'), { name: 'A' });
-    await setDoc(doc(db, 'clinics/clinicA/patients/P1'), { phone: 'x' });
+    await setDoc(doc(db, 'clinics_public/clinicB'), { name: 'B' });
+    // Members
+    await setDoc(doc(db, 'clinics/clinicA/members/M1'), { role: 'doctor' });
+    // Patients + nested
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1'), { phone: 'x', clinicId: 'clinicA' });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P2'), { phone: 'y', clinicId: 'clinicA' });
+    await setDoc(doc(db, 'clinics/clinicB/patients/PB'), { phone: 'b', clinicId: 'clinicB' });
     await setDoc(doc(db, 'clinics/clinicA/patients/P1/sessions/S1'), { date: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1/sessions/S1/private/main'), { note: 'private' });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1/sessions/S1/photos/PH1'), { url: 'u' });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1/timeline/T1'), { at: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1/media/MD1'), { url: 'x' });
+    await setDoc(doc(db, 'clinics/clinicA/patients/P1/images/IMG1'), { url: 'i' });
+    // Owner-only clinic subcollections
+    await setDoc(doc(db, 'clinics/clinicA/settings/profile'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/analytics/timeManagement'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/usage/stats'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/trial/status'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/invites/I1'), { email: 'x@y' });
+    await setDoc(doc(db, 'clinics/clinicA/questionResponses/QR1'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/auditLogs/AL1'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/archive/Ar1'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/branding/logo'), { url: 'x' });
+    // Public-read clinic subcollections
+    await setDoc(doc(db, 'clinics/clinicA/highlights/H1'), { a: 1 });
+    await setDoc(doc(db, 'clinics/clinicA/stories/ST1'), { a: 1 });
     await setDoc(doc(db, 'clinics/clinicA/media/M1'), { url: 'x' });
     await setDoc(doc(db, 'clinics/clinicA/media/M1/likes/L1'), { by: 'g' });
-    await setDoc(doc(db, 'clinics/clinicA/settings/profile'), { a: 1 });
-    await setDoc(doc(db, 'clinics/clinicA/highlights/H1'), { a: 1 });
+    // users mirror
     await setDoc(doc(db, 'users/ownerA'), { clinicId: 'clinicA', role: 'owner' });
-    await setDoc(doc(db, 'patients/P1/messages/msg1'), { text: 'hi' });
-    await setDoc(doc(db, 'threads/clinicA_P1'), { a: 1 });
+    await setDoc(doc(db, 'users/ownerA/saved/PP1'), { at: 1 });
+    // Top-level messages/appointments — F2 stamps clinicId
+    await setDoc(doc(db, 'patients/P1/messages/msg1'), { text: 'hi', clinicId: 'clinicA' });
+    await setDoc(doc(db, 'patients/P2/messages/msgP2'), { text: 'bye', clinicId: 'clinicA' });
+    await setDoc(doc(db, 'patients/P1/appointments/AP1'), { dateTime: 1, clinicId: 'clinicA' });
+    await setDoc(doc(db, 'patients/QQ/appointments/AP2'), { dateTime: 2, clinicId: 'clinicB' });
+    // threads
+    await setDoc(doc(db, 'threads/clinicA_P1'), { clinicId: 'clinicA', lastMessageAt: 1 });
+    await setDoc(doc(db, 'threads/clinicB_XX'), { clinicId: 'clinicB', lastMessageAt: 1 });
+    // patientCodes
     await setDoc(doc(db, 'patientCodes/CODE1'), { clinicId: 'clinicA', patientId: 'P1' });
+    // ai_logs
     await setDoc(doc(db, 'ai_logs/L1'), { a: 1 });
   });
 
-  await check('public: guest reads clinics_public', assertSucceeds(getDoc(doc(guest, 'clinics_public/clinicA'))));
-  await check('public: ownerA writes own clinics_public', assertSucceeds(setDoc(doc(ownerA, 'clinics_public/clinicA'), { name: 'A2' })));
-  await check('public: ownerB CANNOT write clinicA public', assertFails(setDoc(doc(ownerB, 'clinics_public/clinicA'), { name: 'x' })));
-  await check('public: guest CANNOT write clinics_public', assertFails(setDoc(doc(guest, 'clinics_public/clinicA'), { name: 'x' })));
+  console.log('\n── clinics/{cid} root doc ──────────────────────────────────');
+  await check('clinic: ownerA gets clinicA',                assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA'))));
+  await check('clinic: doctorA gets clinicA',               assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA'))));
+  await check('clinic: P1 gets clinicA (isPatientOfClinic)',assertSucceeds(getDoc(doc(p1, 'clinics/clinicA'))));
+  await check('clinic: ownerB DENIED gets clinicA',         assertFails(getDoc(doc(ownerB, 'clinics/clinicA'))));
+  await check('clinic: guest DENIED gets clinicA',          assertFails(getDoc(doc(guest, 'clinics/clinicA'))));
+  await check('clinic bootstrap: no-claim owner gets own',  assertSucceeds(getDoc(doc(ownerA_noclaim, 'clinics/clinicA'))));
+  await check('clinic: ownerA updates clinicA',             assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA'), { name: 'A2' }, { merge: true })));
+  await check('clinic: doctorA DENIED update clinicA',      assertFails(setDoc(doc(doctorA, 'clinics/clinicA'), { name: 'x' }, { merge: true })));
+  await check('clinic bootstrap: no-claim owner merges own',assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics/clinicA'), { subscribed: true }, { merge: true })));
+  await check('clinic bootstrap: create with own ownerUid', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics/newCid'), { ownerUid: 'ownerA', name: 'New' })));
+  await check('clinic bootstrap: create with OTHER ownerUid DENIED', assertFails(setDoc(doc(ownerA_noclaim, 'clinics/otherCid'), { ownerUid: 'someoneElse', name: 'X' })));
+  await check('clinic: list DENIED for ownerA',             assertFails(getDocs(collection(ownerA, 'clinics'))));
+  await check('clinic: list DENIED for guest',              assertFails(getDocs(collection(guest, 'clinics'))));
 
-  await check('clinic: ownerA reads clinicA', assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA'))));
-  await check('clinic: doctorA reads clinicA', assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA'))));
-  await check('clinic: P1 reads clinicA', assertSucceeds(getDoc(doc(p1, 'clinics/clinicA'))));
-  await check('clinic: ownerB CANNOT read clinicA', assertFails(getDoc(doc(ownerB, 'clinics/clinicA'))));
-  await check('clinic: guest CANNOT read clinicA', assertFails(getDoc(doc(guest, 'clinics/clinicA'))));
-  await check('clinic bootstrap: ownerA(no claims) reads own clinicA', assertSucceeds(getDoc(doc(ownerA_noclaim, 'clinics/clinicA'))));
-  await check('clinic: ownerA writes clinicA', assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA'), { ownerUid: 'ownerA', name: 'A3' })));
-  await check('clinic: doctorA CANNOT write clinicA', assertFails(setDoc(doc(doctorA, 'clinics/clinicA'), { ownerUid: 'ownerA', name: 'x' })));
+  console.log('\n── clinics/{cid}/members ────────────────────────────────────');
+  await check('members: ownerA reads',                       assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/members/M1'))));
+  await check('members: doctorA reads',                      assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/members/M1'))));
+  await check('members: P1 DENIED reads',                    assertFails(getDoc(doc(p1, 'clinics/clinicA/members/M1'))));
+  await check('members: ownerA writes',                      assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/members/M2'), { role: 'doctor' })));
+  await check('members: doctorA DENIED writes',              assertFails(setDoc(doc(doctorA, 'clinics/clinicA/members/M3'), { role: 'doctor' })));
 
-  await check('patientDoc: ownerA reads P1', assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/patients/P1'))));
-  await check('patientDoc: P1 reads own', assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/patients/P1'))));
-  await check('patientDoc: P2 CANNOT read P1', assertFails(getDoc(doc(p2, 'clinics/clinicA/patients/P1'))));
-  await check('patientDoc: ownerB CANNOT read P1', assertFails(getDoc(doc(ownerB, 'clinics/clinicA/patients/P1'))));
-  await check('patientDoc: P1 CANNOT write own record', assertFails(setDoc(doc(p1, 'clinics/clinicA/patients/P1'), { phone: 'y' })));
-  await check('patientDoc: ownerA writes P1', assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/patients/P1'), { phone: 'y' })));
-  await check('sessions: P1 reads own session', assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1'))));
-  await check('sessions: P1 CANNOT write session', assertFails(setDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1'), { date: 2 })));
+  console.log('\n── clinics/{cid}/patients ──────────────────────────────────');
+  await check('patient: ownerA reads P1',                    assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/patients/P1'))));
+  await check('patient: doctorA reads P1',                   assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/patients/P1'))));
+  await check('patient: P1 reads own',                       assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/patients/P1'))));
+  await check('patient: P2 DENIED reads P1',                 assertFails(getDoc(doc(p2, 'clinics/clinicA/patients/P1'))));
+  await check('patient: ownerB DENIED reads P1',             assertFails(getDoc(doc(ownerB, 'clinics/clinicA/patients/P1'))));
+  await check('patient: P1 DENIED writes own',               assertFails(setDoc(doc(p1, 'clinics/clinicA/patients/P1'), { phone: 'z' }, { merge: true })));
+  await check('patient: ownerA writes P1',                   assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/patients/P1'), { phone: 'z' }, { merge: true })));
+  await check('patient: doctorA writes P1',                  assertSucceeds(setDoc(doc(doctorA, 'clinics/clinicA/patients/P1'), { phone: 'w' }, { merge: true })));
 
-  await check('media: guest reads media', assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/media/M1'))));
-  await check('media: ownerA writes media', assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/media/M1'), { url: 'y' })));
-  await check('media: guest CANNOT write media', assertFails(setDoc(doc(guest, 'clinics/clinicA/media/M1'), { url: 'z' })));
-  await check('likes: guest reads likes', assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/media/M1/likes/L1'))));
+  console.log('\n── sessions + private + photos + timeline + media + images ─');
+  await check('session: P1 reads own session',               assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1'))));
+  await check('session: P1 DENIED writes session',           assertFails(setDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1'), { date: 2 }, { merge: true })));
+  await check('session: P1 reads own session photo',         assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1/photos/PH1'))));
+  await check('session: P1 DENIED reads private/main',       assertFails(getDoc(doc(p1, 'clinics/clinicA/patients/P1/sessions/S1/private/main'))));
+  await check('session: doctorA reads private/main',         assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/patients/P1/sessions/S1/private/main'))));
+  await check('session: P2 DENIED reads P1 session',         assertFails(getDoc(doc(p2, 'clinics/clinicA/patients/P1/sessions/S1'))));
+  await check('timeline: P1 DENIED reads',                   assertFails(getDoc(doc(p1, 'clinics/clinicA/patients/P1/timeline/T1'))));
+  await check('timeline: doctorA reads',                     assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/patients/P1/timeline/T1'))));
+  await check('patient media: P1 DENIED reads',              assertFails(getDoc(doc(p1, 'clinics/clinicA/patients/P1/media/MD1'))));
+  await check('patient media: doctorA reads',                assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/patients/P1/media/MD1'))));
+  await check('patient images: P1 DENIED reads',             assertFails(getDoc(doc(p1, 'clinics/clinicA/patients/P1/images/IMG1'))));
+  await check('patient images: doctorA reads',               assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/patients/P1/images/IMG1'))));
 
-  await check('settings: ownerA reads', assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/settings/profile'))));
-  await check('settings: P1 CANNOT read', assertFails(getDoc(doc(p1, 'clinics/clinicA/settings/profile'))));
-  await check('highlights: ownerB CANNOT read clinicA', assertFails(getDoc(doc(ownerB, 'clinics/clinicA/highlights/H1'))));
+  console.log('\n── settings / analytics / usage / trial / invites / QR / audit / archive ──');
+  await check('settings: ownerA reads',                      assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/settings/profile'))));
+  await check('settings: doctorA reads',                     assertSucceeds(getDoc(doc(doctorA, 'clinics/clinicA/settings/profile'))));
+  await check('settings: P1 DENIED reads',                   assertFails(getDoc(doc(p1, 'clinics/clinicA/settings/profile'))));
+  await check('settings: ownerA writes',                     assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/settings/profile'), { a: 2 }, { merge: true })));
+  await check('settings: doctorA DENIED writes',             assertFails(setDoc(doc(doctorA, 'clinics/clinicA/settings/profile'), { a: 3 }, { merge: true })));
+  await check('settings bootstrap: no-claim owner writes',   assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics/clinicA/settings/profile'), { a: 4 }, { merge: true })));
+  await check('analytics: doctorA DENIED writes',            assertFails(setDoc(doc(doctorA, 'clinics/clinicA/analytics/timeManagement'), { a: 2 }, { merge: true })));
+  await check('analytics: ownerA writes',                    assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/analytics/timeManagement'), { a: 3 }, { merge: true })));
+  await check('usage: doctorA DENIED writes',                assertFails(setDoc(doc(doctorA, 'clinics/clinicA/usage/stats'), { a: 2 }, { merge: true })));
+  await check('usage: ownerA writes',                        assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/usage/stats'), { a: 3 }, { merge: true })));
+  await check('trial: doctorA DENIED writes',                assertFails(setDoc(doc(doctorA, 'clinics/clinicA/trial/status'), { a: 2 }, { merge: true })));
+  await check('trial: ownerA writes',                        assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/trial/status'), { a: 3 }, { merge: true })));
+  await check('invites: doctorA DENIED writes',              assertFails(setDoc(doc(doctorA, 'clinics/clinicA/invites/I2'), { email: 'z@x' })));
+  await check('invites: ownerA writes',                      assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/invites/I3'), { email: 'z@x' })));
+  await check('questionResponses: doctorA DENIED writes',    assertFails(setDoc(doc(doctorA, 'clinics/clinicA/questionResponses/QR2'), { a: 1 })));
+  await check('questionResponses: ownerA writes',            assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/questionResponses/QR3'), { a: 1 })));
+  await check('auditLogs: ownerA reads',                     assertSucceeds(getDoc(doc(ownerA, 'clinics/clinicA/auditLogs/AL1'))));
+  await check('auditLogs: doctorA DENIED reads',             assertFails(getDoc(doc(doctorA, 'clinics/clinicA/auditLogs/AL1'))));
+  await check('auditLogs: doctorA creates (staff)',          assertSucceeds(setDoc(doc(doctorA, 'clinics/clinicA/auditLogs/AL2'), { action: 'X' })));
+  await check('auditLogs: ownerA cannot update',             assertFails(setDoc(doc(ownerA, 'clinics/clinicA/auditLogs/AL1'), { action: 'Y' }, { merge: true })));
+  await check('archive: ownerA writes',                      assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/archive/Ar2'), { a: 1 })));
+  await check('archive: doctorA DENIED writes',              assertFails(setDoc(doc(doctorA, 'clinics/clinicA/archive/Ar3'), { a: 1 })));
+  await check('branding: patient of A reads',                assertSucceeds(getDoc(doc(p1, 'clinics/clinicA/branding/logo'))));
+  await check('branding: patient of B DENIED reads clinicA', assertFails(getDoc(doc(ownerB, 'clinics/clinicA/branding/logo'))) /* ownerB isn't patient; test any non-clinicA actor */);
 
-  await check('users: self reads own', assertSucceeds(getDoc(doc(ownerA, 'users/ownerA'))));
-  await check('users: guest CANNOT read', assertFails(getDoc(doc(guest, 'users/ownerA'))));
+  console.log('\n── highlights / stories / clinic media (public reads) ──────');
+  await check('highlights: guest reads',                     assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/highlights/H1'))));
+  await check('highlights: ownerA writes',                   assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/highlights/H2'), { a: 1 })));
+  await check('highlights: ownerB DENIED write clinicA',     assertFails(setDoc(doc(ownerB, 'clinics/clinicA/highlights/H3'), { a: 1 })));
+  await check('stories: guest reads',                        assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/stories/ST1'))));
+  await check('stories: ownerA writes',                      assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/stories/ST2'), { a: 1 })));
+  await check('clinic media: guest reads',                   assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/media/M1'))));
+  await check('clinic media: guest DENIED writes',           assertFails(setDoc(doc(guest, 'clinics/clinicA/media/MX'), { url: 'z' })));
+  await check('clinic media: ownerA writes',                 assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/media/M2'), { url: 'y' })));
+  await check('clinic media likes: guest reads',             assertSucceeds(getDoc(doc(guest, 'clinics/clinicA/media/M1/likes/L1'))));
+  await check('clinic media likes: ownerA writes',           assertSucceeds(setDoc(doc(ownerA, 'clinics/clinicA/media/M1/likes/L2'), { by: 'u' })));
+  await check('clinic media likes: guest DENIED writes',     assertFails(setDoc(doc(guest, 'clinics/clinicA/media/M1/likes/LG'), { by: 'g' })));
 
-  await check('msg: P1 reads own messages', assertSucceeds(getDoc(doc(p1, 'patients/P1/messages/msg1'))));
-  await check('msg: P1 writes own message', assertSucceeds(setDoc(doc(p1, 'patients/P1/messages/msg2'), { text: 'hey' })));
-  await check('msg: ownerA reads P1 messages', assertSucceeds(getDoc(doc(ownerA, 'patients/P1/messages/msg1'))));
-  await check('msg: ownerB CANNOT read P1 messages', assertFails(getDoc(doc(ownerB, 'patients/P1/messages/msg1'))));
-  await check('msg: guest CANNOT read messages', assertFails(getDoc(doc(guest, 'patients/P1/messages/msg1'))));
+  console.log('\n── patients/{pid}/messages (top-level) ─────────────────────');
+  await check('msg: P1 reads own msg1',                      assertSucceeds(getDoc(doc(p1, 'patients/P1/messages/msg1'))));
+  await check('msg: ownerA reads P1 msg1 (clinicA)',         assertSucceeds(getDoc(doc(ownerA, 'patients/P1/messages/msg1'))));
+  await check('msg: doctorA reads P1 msg1 (clinicA)',        assertSucceeds(getDoc(doc(doctorA, 'patients/P1/messages/msg1'))));
+  await check('msg: ownerB DENIED reads P1 msg1',            assertFails(getDoc(doc(ownerB, 'patients/P1/messages/msg1'))));
+  await check('msg: P2 DENIED reads P1 msg1',                assertFails(getDoc(doc(p2, 'patients/P1/messages/msg1'))));
+  await check('msg: guest DENIED reads msg1',                assertFails(getDoc(doc(guest, 'patients/P1/messages/msg1'))));
+  await check('msg: P1 creates with clinicId=A',             assertSucceeds(setDoc(doc(p1, 'patients/P1/messages/newP1A'), { text: 'a', clinicId: 'clinicA' })));
+  await check('msg: P1 DENIED create with clinicId=B',       assertFails(setDoc(doc(p1, 'patients/P1/messages/newP1B'), { text: 'b', clinicId: 'clinicB' })));
+  await check('msg: P1 DENIED create WITHOUT clinicId',      assertFails(setDoc(doc(p1, 'patients/P1/messages/newP1none'), { text: 'x' })));
+  await check('msg: ownerA creates for P1 with clinicId=A',  assertSucceeds(setDoc(doc(ownerA, 'patients/P1/messages/newOA'), { text: 'x', clinicId: 'clinicA' })));
+  await check('msg: ownerB DENIED forge clinicA for P1',     assertFails(setDoc(doc(ownerB, 'patients/P1/messages/newOB_forgeA'), { text: 'x', clinicId: 'clinicA' })));
+  await check('msg: ownerB DENIED stamp clinicB for P1 (P1 not under clinicB)', assertFails(setDoc(doc(ownerB, 'patients/P1/messages/newOB_crossPid'), { text: 'x', clinicId: 'clinicB' })));
+  await check('msg: ownerB creates for PB stamped clinicB',  assertSucceeds(setDoc(doc(ownerB, 'patients/PB/messages/newOB_ownB'), { text: 'x', clinicId: 'clinicB' })));
+  await check('msg: P1 lists own messages',                  assertSucceeds(getDocs(collection(p1, 'patients/P1/messages'))));
+  await check('msg: ownerA lists P1 messages (clinicA-scoped)', assertSucceeds(getDocs(query(collection(ownerA, 'patients/P1/messages'), where('clinicId', '==', 'clinicA')))));
+  await check('msg: ownerB DENIED list P1 messages',         assertFails(getDocs(collection(ownerB, 'patients/P1/messages'))));
+  await check('msg: P2 DENIED list P1 messages',             assertFails(getDocs(collection(p2, 'patients/P1/messages'))));
 
-  await check('thread: ownerA reads clinicA_P1', assertSucceeds(getDoc(doc(ownerA, 'threads/clinicA_P1'))));
-  await check('thread: P1 reads clinicA_P1', assertSucceeds(getDoc(doc(p1, 'threads/clinicA_P1'))));
-  await check('thread: ownerB CANNOT read clinicA_P1', assertFails(getDoc(doc(ownerB, 'threads/clinicA_P1'))));
+  console.log('\n── patients/{pid}/appointments (top-level + collectionGroup) ──');
+  await check('appt: P1 reads own AP1',                      assertSucceeds(getDoc(doc(p1, 'patients/P1/appointments/AP1'))));
+  await check('appt: ownerA reads AP1 (clinicA)',            assertSucceeds(getDoc(doc(ownerA, 'patients/P1/appointments/AP1'))));
+  await check('appt: ownerB DENIED reads AP1',               assertFails(getDoc(doc(ownerB, 'patients/P1/appointments/AP1'))));
+  await check('appt: ownerA DENIED reads AP2 (clinicB)',     assertFails(getDoc(doc(ownerA, 'patients/QQ/appointments/AP2'))));
+  await check('appt: P1 creates with clinicId=A',            assertSucceeds(setDoc(doc(p1, 'patients/P1/appointments/AP_new'), { dateTime: 3, clinicId: 'clinicA' })));
+  await check('appt: P1 DENIED create with clinicId=B',      assertFails(setDoc(doc(p1, 'patients/P1/appointments/AP_bad'), { dateTime: 3, clinicId: 'clinicB' })));
+  await check('appt: P1 DENIED create WITHOUT clinicId',     assertFails(setDoc(doc(p1, 'patients/P1/appointments/AP_none'), { dateTime: 3 })));
+  await check('appt: ownerA creates for P1 with clinicId=A', assertSucceeds(setDoc(doc(ownerA, 'patients/P1/appointments/AP_OA'), { dateTime: 4, clinicId: 'clinicA' })));
+  await check('appt: ownerB DENIED forge clinicA for P1',    assertFails(setDoc(doc(ownerB, 'patients/P1/appointments/AP_OB_forgeA'), { dateTime: 5, clinicId: 'clinicA' })));
+  await check('appt: ownerB DENIED stamp clinicB for P1 (P1 not under clinicB)', assertFails(setDoc(doc(ownerB, 'patients/P1/appointments/AP_OB_crossPid'), { dateTime: 5, clinicId: 'clinicB' })));
+  await check('appt: ownerB creates for PB stamped clinicB', assertSucceeds(setDoc(doc(ownerB, 'patients/PB/appointments/AP_OB_ownB'), { dateTime: 6, clinicId: 'clinicB' })));
+  await check('cg-appt: ownerA lists where clinicId==A',     assertSucceeds(getDocs(query(collectionGroup(ownerA, 'appointments'), where('clinicId', '==', 'clinicA')))));
+  await check('cg-appt: doctorA lists where clinicId==A',    assertSucceeds(getDocs(query(collectionGroup(doctorA, 'appointments'), where('clinicId', '==', 'clinicA')))));
+  await check('cg-appt: ownerA UNSCOPED list DENIED',        assertFails(getDocs(collectionGroup(ownerA, 'appointments'))));
+  await check('cg-appt: ownerB DENIED list clinicA appts',   assertFails(getDocs(query(collectionGroup(ownerB, 'appointments'), where('clinicId', '==', 'clinicA')))));
+  await check('cg-appt: P1 DENIED collectionGroup list',     assertFails(getDocs(query(collectionGroup(p1, 'appointments'), where('clinicId', '==', 'clinicA')))));
 
-  await check('codes: ownerA reads own clinic code', assertSucceeds(getDoc(doc(ownerA, 'patientCodes/CODE1'))));
-  await check('codes: ownerB CANNOT read clinicA code', assertFails(getDoc(doc(ownerB, 'patientCodes/CODE1'))));
-  await check('codes: guest CANNOT read code', assertFails(getDoc(doc(guest, 'patientCodes/CODE1'))));
+  console.log('\n── threads ────────────────────────────────────────────────');
+  await check('thread: ownerA reads clinicA_P1',             assertSucceeds(getDoc(doc(ownerA, 'threads/clinicA_P1'))));
+  await check('thread: P1 reads clinicA_P1',                 assertSucceeds(getDoc(doc(p1, 'threads/clinicA_P1'))));
+  await check('thread: ownerB DENIED read clinicA_P1',       assertFails(getDoc(doc(ownerB, 'threads/clinicA_P1'))));
+  await check('thread: ownerA lists own',                    assertSucceeds(getDocs(query(collection(ownerA, 'threads'), where('clinicId', '==', 'clinicA')))));
+  await check('thread: ownerB DENIED list clinicA',          assertFails(getDocs(query(collection(ownerB, 'threads'), where('clinicId', '==', 'clinicA')))));
+  await check('thread: ownerA creates for clinicA',          assertSucceeds(setDoc(doc(ownerA, 'threads/clinicA_new'), { clinicId: 'clinicA', lastMessageAt: 2 })));
+  await check('thread: ownerB DENIED create for clinicA',    assertFails(setDoc(doc(ownerB, 'threads/clinicA_evil'), { clinicId: 'clinicA', lastMessageAt: 2 })));
 
-  await check('ai_logs: ownerA CANNOT read', assertFails(getDoc(doc(ownerA, 'ai_logs/L1'))));
+  console.log('\n── clinics_public ─────────────────────────────────────────');
+  await check('public: guest reads clinics_public',          assertSucceeds(getDoc(doc(guest, 'clinics_public/clinicA'))));
+  await check('public: ownerA writes own',                   assertSucceeds(setDoc(doc(ownerA, 'clinics_public/clinicA'), { name: 'A3' }, { merge: true })));
+  await check('public: ownerB DENIED write clinicA',         assertFails(setDoc(doc(ownerB, 'clinics_public/clinicA'), { name: 'X' }, { merge: true })));
+  await check('public: guest DENIED writes',                 assertFails(setDoc(doc(guest, 'clinics_public/clinicA'), { name: 'X' }, { merge: true })));
+  await check('public bootstrap: no-claim owner writes own', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics_public/clinicA'), { name: 'A4' }, { merge: true })));
 
-  // ── QUERY tests (login-critical + collection scoping) ──
-  await check('query: ownerA finds own clinic by ownerUid (LOGIN query)', assertSucceeds(getDocs(query(collection(ownerA, 'clinics'), where('ownerUid', '==', 'ownerA')))));
-  await check('query: no-claim user finds own clinic by ownerUid (bootstrap login)', assertSucceeds(getDocs(query(collection(ownerA_noclaim, 'clinics'), where('ownerUid', '==', 'ownerA')))));
-  await check('query: doctorA login clinics query returns empty (allowed)', assertSucceeds(getDocs(query(collection(doctorA, 'clinics'), where('ownerUid', '==', 'doctorA')))));
-  await check('query: ownerB scoped clinics query (own only)', assertSucceeds(getDocs(query(collection(ownerB, 'clinics'), where('ownerUid', '==', 'ownerB')))));
-  await check('query: ownerA CANNOT list ALL clinics unscoped', assertFails(getDocs(collection(ownerA, 'clinics'))));
-  await check('query: ownerA lists own clinic patients', assertSucceeds(getDocs(collection(ownerA, 'clinics/clinicA/patients'))));
-  await check('query: P1 CANNOT list all clinicA patients', assertFails(getDocs(collection(p1, 'clinics/clinicA/patients'))));
-  await check('query: P1 lists own sessions', assertSucceeds(getDocs(collection(p1, 'clinics/clinicA/patients/P1/sessions'))));
-  await check('query: P1 queries own messages', assertSucceeds(getDocs(collection(p1, 'patients/P1/messages'))));
-  await check('query: ownerA queries own-clinic patient messages', assertSucceeds(getDocs(collection(ownerA, 'patients/P1/messages'))));
-  await check('query: guest reads public media collection', assertSucceeds(getDocs(collection(guest, 'clinics/clinicA/media'))));
-  await check('query: guest CANNOT list clinic settings', assertFails(getDocs(collection(guest, 'clinics/clinicA/settings'))));
+  console.log('\n── users/{uid} + users/{uid}/saved ────────────────────────');
+  await check('users: self reads own',                        assertSucceeds(getDoc(doc(ownerA, 'users/ownerA'))));
+  await check('users: self writes own',                       assertSucceeds(setDoc(doc(ownerA, 'users/ownerA'), { clinicId: 'clinicA' }, { merge: true })));
+  await check('users: ownerB DENIED reads users/ownerA',      assertFails(getDoc(doc(ownerB, 'users/ownerA'))));
+  await check('users: guest DENIED reads users/ownerA',       assertFails(getDoc(doc(guest, 'users/ownerA'))));
+  await check('users/saved: guest reads',                     assertSucceeds(getDoc(doc(guest, 'users/ownerA/saved/PP1'))));
+  await check('users/saved: guest writes',                    assertSucceeds(setDoc(doc(guest, 'users/deviceX/saved/PPnew'), { at: 2 })));
+  await check('users/saved: ownerB reads (public sub)',       assertSucceeds(getDoc(doc(ownerB, 'users/ownerA/saved/PP1'))));
 
-  // ── onboarding bootstrap (writes that happen BEFORE owner claims) ──
-  await check('bootstrap: no-claim owner publishes own clinics_public', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics_public/clinicA'), { name: 'pub' }, { merge: true })));
-  await check('bootstrap: ownerB CANNOT publish clinicA public (cross-tenant)', assertFails(setDoc(doc(ownerB, 'clinics_public/clinicA'), { name: 'x' }, { merge: true })));
-  await check('bootstrap: no-claim owner merges own clinic without restating ownerUid', assertSucceeds(setDoc(doc(ownerA_noclaim, 'clinics/clinicA'), { subscribed: true }, { merge: true })));
+  console.log('\n── patientCodes ───────────────────────────────────────────');
+  await check('codes: guest DENIED reads',                    assertFails(getDoc(doc(guest, 'patientCodes/CODE1'))));
+  await check('codes: ownerA DENIED reads',                   assertFails(getDoc(doc(ownerA, 'patientCodes/CODE1'))));
+  await check('codes: P1 DENIED reads',                       assertFails(getDoc(doc(p1, 'patientCodes/CODE1'))));
+  await check('codes: ownerA creates',                        assertSucceeds(setDoc(doc(ownerA, 'patientCodes/CODE2'), { clinicId: 'clinicA', patientId: 'P2' })));
+  await check('codes: doctorA DENIED creates',                assertFails(setDoc(doc(doctorA, 'patientCodes/CODE3'), { clinicId: 'clinicA' })));
+  await check('codes: P1 DENIED creates',                     assertFails(setDoc(doc(p1, 'patientCodes/CODE4'), { clinicId: 'clinicA' })));
+
+  console.log('\n── ai_logs ────────────────────────────────────────────────');
+  await check('ai_logs: ownerA DENIED reads',                 assertFails(getDoc(doc(ownerA, 'ai_logs/L1'))));
+  await check('ai_logs: ownerA DENIED writes',                assertFails(setDoc(doc(ownerA, 'ai_logs/L2'), { a: 1 })));
+  await check('ai_logs: guest DENIED reads',                  assertFails(getDoc(doc(guest, 'ai_logs/L1'))));
+
+  console.log('\n── list scoping (defense-in-depth) ────────────────────────');
+  await check('list: ownerA lists own patients',              assertSucceeds(getDocs(collection(ownerA, 'clinics/clinicA/patients'))));
+  await check('list: P1 DENIED list all clinicA patients',    assertFails(getDocs(collection(p1, 'clinics/clinicA/patients'))));
+  await check('list: P1 lists own sessions',                  assertSucceeds(getDocs(collection(p1, 'clinics/clinicA/patients/P1/sessions'))));
+  await check('list: guest DENIED lists clinic settings',     assertFails(getDocs(collection(guest, 'clinics/clinicA/settings'))));
+  await check('list: guest reads clinic media collection',    assertSucceeds(getDocs(collection(guest, 'clinics/clinicA/media'))));
 
   await env.cleanup();
   console.log(`\n${passed} passed, ${failed} failed`);
