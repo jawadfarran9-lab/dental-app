@@ -661,7 +661,7 @@ export default function ClinicSubscribeLanding() {
         onClose={() => setIsRenewOpen(false)}
         onAuthSuccess={() => {
           setIsRenewOpen(false);
-          router.push('/clinic/renew-subscribe' as any);
+          router.replace('/clinic/renew-subscribe' as any);
         }}
       />
     </View>
