@@ -10,6 +10,10 @@ service cloud.firestore {
     function isPatientOfClinic(cid) { return signedIn() && tok().role == 'patient' && tok().clinicId == cid; }
     function isPatient(pid) { return signedIn() && tok().role == 'patient' && tok().patientId == pid; }
     function patientClinic() { return tok().clinicId; }
+    function ownsPatient(pid) {
+      return signedIn() && (tok().role == 'owner' || tok().role == 'doctor')
+        && exists(/databases/$(database)/documents/clinics/$(tok().clinicId)/patients/$(pid));
+    }
 
     match /clinics/{cid} {
       allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
@@ -18,7 +22,7 @@ service cloud.firestore {
       allow list, delete: if false;
 
       match /members/{mid} {
-        allow read: if isStaff(cid);
+        allow read: if isStaff(cid) || ownsClinicDoc(cid);
         allow create, update, delete: if isOwner(cid) || ownsClinicDoc(cid);
       }
       match /patients/{pid} {
@@ -39,18 +43,18 @@ service cloud.firestore {
       match /settings/{doc}          { allow read: if isStaff(cid); allow write: if isOwner(cid) || ownsClinicDoc(cid); }
       match /branding/{doc}          { allow read: if isStaff(cid) || isPatientOfClinic(cid); allow write: if isOwner(cid); }
       match /auditLogs/{doc}         { allow read: if isOwner(cid); allow create: if isStaff(cid); allow update, delete: if false; }
-      match /analytics/{doc}         { allow read, write: if isOwner(cid); }
+      match /analytics/{doc}         { allow read, write: if isStaff(cid); }
       match /usage/{doc}             { allow read, write: if isOwner(cid); }
       match /trial/{doc}             { allow read, write: if isOwner(cid); }
       match /counters/{doc}          { allow read, write: if isStaff(cid); }
-      match /questionResponses/{doc} { allow read, write: if isOwner(cid); }
+      match /questionResponses/{doc} { allow read, write: if isStaff(cid); }
       match /invites/{doc}           { allow read, write: if isOwner(cid); }
-      match /highlights/{doc}        { allow read: if true; allow write: if isOwner(cid); }
-      match /stories/{doc}           { allow read: if true; allow write: if isOwner(cid); }
-      match /archive/{doc}           { allow read, write: if isOwner(cid); }
+      match /highlights/{doc}        { allow read: if true; allow write: if isStaff(cid); }
+      match /stories/{doc}           { allow read: if true; allow write: if isStaff(cid); }
+      match /archive/{doc}           { allow read, write: if isStaff(cid); }
       match /media/{mid} {
         allow read: if true;
-        allow write: if isOwner(cid);
+        allow write: if isStaff(cid);
         match /likes/{deviceId} { allow read: if true; allow write: if signedIn(); }
       }
     }
@@ -58,14 +62,14 @@ service cloud.firestore {
     match /patients/{pid} {
       allow read, write: if false;
       match /messages/{mid} {
-        allow read:   if isStaff(resource.data.clinicId) || isPatient(pid);
+        allow read:   if ownsPatient(pid) || isPatient(pid);
         allow create: if request.resource.data.clinicId is string
           && (isStaff(request.resource.data.clinicId) || (isPatient(pid) && request.resource.data.clinicId == patientClinic()))
           && exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicId)/patients/$(pid));
         allow update, delete: if isStaff(resource.data.clinicId) || isPatient(pid);
       }
       match /appointments/{aid} {
-        allow read:   if isStaff(resource.data.clinicId) || isPatient(pid);
+        allow read:   if ownsPatient(pid) || isPatient(pid);
         allow create: if request.resource.data.clinicId is string
           && (isStaff(request.resource.data.clinicId) || (isPatient(pid) && request.resource.data.clinicId == patientClinic()))
           && exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicId)/patients/$(pid));
@@ -96,7 +100,7 @@ service cloud.firestore {
 
     match /patientCodes/{code} {
       allow read: if false;
-      allow create, update, delete: if signedIn() && tok().role == 'owner';
+      allow write: if false;
     }
 
     match /ai_logs/{doc} { allow read, write: if false; }

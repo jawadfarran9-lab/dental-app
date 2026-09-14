@@ -15,15 +15,14 @@
  *   • No AsyncStorage, no SecureStore, no global state.
  */
 
-import { auth, db } from '@/firebaseConfig';
+import { auth } from '@/firebaseConfig';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { ensureOwnerMembership } from '@/src/services/clinicMembersService';
+import { ensureOwnerMembership, resolveClinicIdForUid } from '@/src/services/clinicMembersService';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { sendPasswordResetEmail, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { collection, getDocs, query, where } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
@@ -128,21 +127,14 @@ export default function RenewLoginSheet({ visible, onClose, onAuthSuccess }: Ren
       const userCredential = await signInWithEmailAndPassword(auth, normalizedEmail, password);
       const firebaseUid = userCredential.user.uid;
 
-      // Query clinic by ownerUid (same pattern as login.tsx)
-      const q = query(
-        collection(db, 'clinics'),
-        where('ownerUid', '==', firebaseUid)
-      );
-      const snapshot = await getDocs(q);
+      // Resolve clinicId via the users/{uid} mirror (F1). No clinics list scan.
+      const clinicId = await resolveClinicIdForUid(firebaseUid);
 
-      if (snapshot.empty) {
+      if (!clinicId) {
         setError('No clinic found for this account.');
         setPassword('');
         return;
       }
-
-      const clinicDoc = snapshot.docs[0];
-      const clinicId = clinicDoc.id;
 
       // Ensure owner membership exists
       const ownerMember = await ensureOwnerMembership(clinicId, normalizedEmail);

@@ -1,6 +1,7 @@
 import { auth, db } from '@/firebaseConfig';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
 import {
+    ensureOwnerClaims,
     ensureOwnerMembership,
     fetchMemberProfile,
     recordMemberLogin,
@@ -131,6 +132,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Member keys (clinicMemberId/Role/Status) enrich the session but never
       // block subscription detection — this guarantees platform parity.
       if (clinicId) {
+        // Ensure owner claims land on the token BEFORE any staff-only reads
+        // (members/patients/etc.). Skip on stored doctor sessions — doctor
+        // claims are minted server-side at account creation and refreshed on
+        // first sign-in.
+        if (storedRole !== 'doctor') {
+          await ensureOwnerClaims(clinicId);
+        }
+
         const subResult = await checkClinicSubscription(clinicId);
 
         if (subResult.clinicMissing) {
@@ -194,6 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Default clinicRole to 'owner' so useClinicRoleGuard(['owner'])
           // does not eject the user to /clinic/dashboard on mobile where
           // Firebase Auth persistence is fully cleared after signOut.
+          await ensureOwnerClaims(clinicId);
           setAuthState({
             userRole: 'clinic',
             userId: clinicId,
@@ -254,6 +264,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const restoredClinicId = await resolveClinicIdForUid(firebaseUid);
 
         if (restoredClinicId) {
+          // Ensure owner claims land BEFORE ensureOwnerMembership reads members.
+          await ensureOwnerClaims(restoredClinicId);
+
           const clinicDoc = await getDoc(doc(db, 'clinics', restoredClinicId));
           const clinicEmail = clinicDoc.data()?.email ?? '';
           const ownerMember = await ensureOwnerMembership(restoredClinicId, clinicEmail);

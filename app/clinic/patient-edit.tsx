@@ -3,7 +3,7 @@ import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { changePatientCode } from '@/src/services/patientCodeService';
+import { reservePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
 import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -179,7 +179,7 @@ export default function PatientEditScreen() {
           onPress: async () => {
             try {
               setChangingCode(true);
-              const newCode = await changePatientCode(clinicId, patientId as string, code);
+              const newCode = await reservePatientCode(patientId as string, code);
               setCode(newCode);
               await Clipboard.setStringAsync(String(newCode));
               setCopied(true);

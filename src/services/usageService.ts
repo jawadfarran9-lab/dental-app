@@ -60,13 +60,11 @@ export async function recalculateUsageStats(clinicId: string): Promise<UsageStat
       sessionsCount += sessionsSnap.size;
     }
 
-    // Count messages across all patients
-    let messagesCount = 0;
-    for (const patientDoc of patientsSnap.docs) {
-      const messagesRef = collection(db, 'clinics', clinicId, 'patients', patientDoc.id, 'messages');
-      const messagesSnap = await getDocs(messagesRef);
-      messagesCount += messagesSnap.size;
-    }
+    // Messages have lived at top-level `patients/{pid}/messages` since F2; the
+    // legacy nested `clinics/{cid}/patients/{pid}/messages` path is not covered
+    // by any Firestore rule and returns nothing. Skip the client-side count and
+    // keep the field stable at 0; a server-side aggregator can populate it later.
+    const messagesCount = 0;
 
     const stats: UsageStats = {
       clinicId,

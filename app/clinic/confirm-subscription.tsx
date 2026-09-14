@@ -5,6 +5,7 @@ import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackg
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
 import { ensureClinicPublished } from '@/src/services/clinicDirectorySync';
+import { ensureOwnerClaims } from '@/src/services/clinicMembersService';
 import { DAYS_ORDER, formatDayLabel, WeeklySchedule } from '@/src/types/clinicSchedule';
 import { parseWorkingHours } from '@/src/utils/parseWorkingHours';
 import { getHomeRoute } from '@/src/utils/getHomeRoute';
@@ -456,6 +457,8 @@ BeSmile AI Team
       if (clinicPhone) confirmPayload.clinicPhone = clinicPhone;
 
       await setDoc(doc(db, 'clinics', clinicId), confirmPayload, { merge: true });
+
+      await ensureOwnerClaims(clinicId);
 
       // Link anonymous account to real email/password credential
       if (auth.currentUser && email && pendingPassword) {

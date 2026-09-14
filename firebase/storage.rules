@@ -1,9 +1,31 @@
 rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
-    // TEST PHASE — fully open (matches the open Firestore rules). LOCK DOWN before real launch.
-    match /{allPaths=**} {
-      allow read, write: if true;
+    function signedIn() { return request.auth != null; }
+    function tok() { return request.auth.token; }
+    function isOwner(cid) { return signedIn() && tok().role == 'owner' && tok().clinicId == cid; }
+    function isStaff(cid) { return signedIn() && (tok().role == 'owner' || tok().role == 'doctor') && tok().clinicId == cid; }
+    function isPatientOfClinic(cid) { return signedIn() && tok().role == 'patient' && tok().clinicId == cid; }
+    function isPatientOf(cid, pid) { return signedIn() && tok().role == 'patient' && tok().clinicId == cid && tok().patientId == pid; }
+
+    // Public discovery/hero assets
+    match /public/clinics/{cid}/{allPaths=**} {
+      allow read: if true;
+      allow write: if isOwner(cid);
+    }
+
+    match /clinics/{cid} {
+      match /profile.jpg              { allow read: if true; allow write: if isOwner(cid); }
+      match /branding/{allPaths=**}   { allow read: if isStaff(cid) || isPatientOfClinic(cid); allow write: if isOwner(cid); }
+      match /stories/{allPaths=**}    { allow read: if true; allow write: if isOwner(cid); }
+
+      match /patients/{pid} {
+        match /messages/{allPaths=**}              { allow read, write: if isStaff(cid) || isPatientOf(cid, pid); }
+        match /sessions/{sid}/photos/{allPaths=**} { allow read: if isStaff(cid) || isPatientOf(cid, pid); allow write: if isStaff(cid); }
+        match /{allPaths=**}                        { allow read, write: if isStaff(cid); }   // xrays, images, other patient media — staff only
+      }
+
+      match /{allPaths=**}            { allow read: if isStaff(cid); allow write: if isOwner(cid); }  // any other clinic asset
     }
   }
 }

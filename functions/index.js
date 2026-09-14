@@ -567,6 +567,60 @@ exports.removeDoctorAccount = functions.https.onCall(async (data, context) => {
 });
 
 // ─────────────────────────────────────────────────────────────
+// reservePatientCode (HTTPS callable, v1)
+// ─────────────────────────────────────────────────────────────
+// Atomically reserves a globally-unique 6-digit patient code in a Firestore
+// transaction. Guard: signed-in clinic staff (owner or doctor). clinicId is
+// taken from the caller's verified token — NEVER trusted from input.
+// Optional releaseCode: delete the old code atomically (change-code flow).
+exports.reservePatientCode = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'Sign in required.');
+  }
+  const role = context.auth.token.role;
+  const clinicId = context.auth.token.clinicId;
+  if (!(role === 'owner' || role === 'doctor') || !clinicId) {
+    throw new functions.https.HttpsError('permission-denied', 'Only clinic staff can reserve patient codes.');
+  }
+  const patientId = data && data.patientId;
+  if (!patientId || typeof patientId !== 'string') {
+    throw new functions.https.HttpsError('invalid-argument', 'patientId is required.');
+  }
+  const releaseCode = data && data.releaseCode ? String(data.releaseCode) : null;
+  const { FieldValue } = require('firebase-admin/firestore');
+  const db = admin.firestore();
+  const code = await db.runTransaction(async (tx) => {
+    // --- all reads first (Firestore tx rule) ---
+    let releaseRef = null;
+    if (releaseCode) {
+      releaseRef = db.doc(`patientCodes/${releaseCode}`);
+      const relSnap = await tx.get(releaseRef);
+      if (relSnap.exists && relSnap.data().clinicId !== clinicId) {
+        throw new functions.https.HttpsError('permission-denied', 'Cannot release a code from another clinic.');
+      }
+      if (!relSnap.exists) releaseRef = null; // nothing to delete
+    }
+    const patientRef = db.doc(`clinics/${clinicId}/patients/${patientId}`);
+    const patientSnap = await tx.get(patientRef);
+    // find a free 6-digit code (reads only, before any write)
+    for (let i = 0; i < 12; i++) {
+      const candidate = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+      const codeRef = db.doc(`patientCodes/${candidate}`);
+      const snap = await tx.get(codeRef);
+      if (!snap.exists) {
+        // --- writes ---
+        tx.set(codeRef, { clinicId, patientId, createdAt: FieldValue.serverTimestamp() });
+        if (releaseRef && releaseCode !== candidate) tx.delete(releaseRef);
+        if (patientSnap.exists) tx.update(patientRef, { code: candidate });
+        return candidate;
+      }
+    }
+    throw new functions.https.HttpsError('resource-exhausted', 'Could not generate a unique code. Please try again.');
+  });
+  return { code };
+});
+
+// ─────────────────────────────────────────────────────────────
 // Phase 5b — issuePatientToken (HTTPS callable, v1)
 // ─────────────────────────────────────────────────────────────
 // Mints a Firebase custom token for a validated patient so the client can

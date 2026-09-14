@@ -1,4 +1,4 @@
-import { db } from '@/firebaseConfig';
+import { auth, db, functions } from '@/firebaseConfig';
 import { ClinicMember, UserClinicProfile } from '@/src/types/members';
 import {
     collection,
@@ -8,6 +8,7 @@ import {
     serverTimestamp,
     setDoc
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { writeAuditLog } from './auditLogService';
 
 const usersCollection = collection(db, 'users');
@@ -47,6 +48,21 @@ export async function resolveClinicIdForUid(uid: string): Promise<string | null>
   return null;
 }
 
+export async function ensureOwnerClaims(expectedClinicId?: string): Promise<void> {
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    const tr = await user.getIdTokenResult();
+    if (tr.claims.role === 'owner' && (!expectedClinicId || tr.claims.clinicId === expectedClinicId)) {
+      return; // claims already present and correct — cheap cached path
+    }
+    await httpsCallable(functions, 'assignOwnerClaims')();
+    await user.getIdToken(true); // force refresh so Firestore sees the new claims
+  } catch (e) {
+    console.warn('[ensureOwnerClaims] failed (non-fatal):', e);
+  }
+}
+
 export async function fetchMemberProfile(clinicId: string, memberId: string): Promise<ClinicMember | null> {
   const memberRef = doc(db, `clinics/${clinicId}/members`, memberId);
   const snap = await getDoc(memberRef);
@@ -78,35 +94,29 @@ export async function ensureOwnerMembership(clinicId: string, email?: string): P
 
   await setDoc(memberRef, baseMember, { merge: true });
 
-  const userRef = doc(usersCollection, clinicId);
-  const userProfile: UserClinicProfile = {
-    clinicId,
-    role: 'owner',
-    status: 'ACTIVE',
-    email: baseMember.email,
-    displayName: baseMember.displayName,
-    lastLoginAt: now,
-  };
-
-  await setDoc(userRef, userProfile, { merge: true });
-
   return baseMember;
 }
 
 export async function recordMemberLogin(clinicId: string, memberId: string): Promise<void> {
   const now = serverTimestamp();
   const memberRef = doc(membersCollection(clinicId), memberId);
-  const userRef = doc(usersCollection, memberId);
 
   // Fetch member name for audit log
   const memberSnap = await getDoc(memberRef);
   const memberData = memberSnap.exists() ? memberSnap.data() : null;
   const memberName = memberData?.displayName || 'Unknown';
 
-  await Promise.all([
+  const writes: Promise<void>[] = [
     setDoc(memberRef, { lastLoginAt: now }, { merge: true }),
-    setDoc(userRef, { lastLoginAt: now }, { merge: true }),
-  ]);
+  ];
+  // Only mirror to users/{memberId} when memberId matches the auth uid
+  // (doctor path). Owners use memberId=clinicId which does NOT match uid,
+  // and the users/{uid} rule requires request.auth.uid == uid; the F1
+  // mirror at users/{ownerUid} is written server-side by assignOwnerClaims.
+  if (auth.currentUser && memberId === auth.currentUser.uid) {
+    writes.push(setDoc(doc(usersCollection, memberId), { lastLoginAt: now }, { merge: true }));
+  }
+  await Promise.all(writes);
 
   // Log the login event
   await writeAuditLog({

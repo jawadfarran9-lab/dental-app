@@ -132,6 +132,7 @@ export default function ClinicProfileScreen() {
   const auth = useAuth();
 
   const isOwner = !!(auth.clinicId && clinicId && auth.clinicId === clinicId);
+  const canEditClinicProfile = isOwner && auth.clinicRole === 'owner';
 
   // ─── Creation Hub Sheet ───
   const [showCreateSheet, setShowCreateSheet] = useState(false);
@@ -162,6 +163,10 @@ export default function ClinicProfileScreen() {
 
   const handleUploadProfileImage = useCallback(async () => {
     if (!clinicId) return;
+    if (!canEditClinicProfile) {
+      Alert.alert('Owner only', 'Only the clinic owner can change the profile image.');
+      return;
+    }
     closeCreateSheet();
 
     // Request permission
@@ -220,7 +225,7 @@ export default function ClinicProfileScreen() {
     } finally {
       setUploadingImage(false);
     }
-  }, [clinicId, closeCreateSheet]);
+  }, [clinicId, closeCreateSheet, canEditClinicProfile]);
 
   const handleCreateOption = useCallback((label: string) => {
     if (label === 'Upload Profile Image') {
@@ -1219,22 +1224,24 @@ export default function ClinicProfileScreen() {
             {/* Spacer */}
             <View style={sheetStyles.groupSpacer} />
 
-            {/* Group 3: Profile Image */}
-            <View style={[sheetStyles.group, isDark ? sheetStyles.groupDark : sheetStyles.groupLight]}>
-              <TouchableOpacity
-                style={sheetStyles.option}
-                activeOpacity={0.65}
-                onPress={() => handleCreateOption('Upload Profile Image')}
-              >
-                <View style={[sheetStyles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
-                  <Ionicons name="camera-outline" size={22} color="#4A90D9" />
-                </View>
-                <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
-                  Upload Profile Image
-                </Text>
-                <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
-              </TouchableOpacity>
-            </View>
+            {/* Group 3: Profile Image (owner-only) */}
+            {canEditClinicProfile && (
+              <View style={[sheetStyles.group, isDark ? sheetStyles.groupDark : sheetStyles.groupLight]}>
+                <TouchableOpacity
+                  style={sheetStyles.option}
+                  activeOpacity={0.65}
+                  onPress={() => handleCreateOption('Upload Profile Image')}
+                >
+                  <View style={[sheetStyles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+                    <Ionicons name="camera-outline" size={22} color="#4A90D9" />
+                  </View>
+                  <Text style={[sheetStyles.optionLabel, { color: colors.sheetText }]}>
+                    Upload Profile Image
+                  </Text>
+                  <Ionicons name="chevron-forward" size={17} color={colors.sheetChevron} style={{ opacity: 0.45 }} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             {/* Cancel */}
             <TouchableOpacity

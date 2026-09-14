@@ -3,7 +3,7 @@ import i18n from '@/i18n';
 import { PremiumGradientBackground } from '@/src/components/PremiumGradientBackground';
 import { useAuth } from '@/src/context/AuthContext';
 import { useTheme } from '@/src/context/ThemeContext';
-import { generateUniquePatientCode, reservePatientCode } from '@/src/services/patientCodeService';
+import { reservePatientCode } from '@/src/services/patientCodeService';
 import type { BloodType } from '@/src/types/patient';
 import { fetchClinicData } from '@/src/utils/clinicDataUtils';
 import { useClinicGuard } from '@/src/utils/navigationGuards';
@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Stack, useRouter } from 'expo-router';
-import { addDoc, collection, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
@@ -124,9 +124,10 @@ export default function CreatePatientScreen() {
 
     setLoading(true);
     try {
-      const code = await generateUniquePatientCode();
+      const patientRef = doc(collection(db, 'clinics', clinicId, 'patients'));
+      const code = await reservePatientCode(patientRef.id);
 
-      const patientRef = await addDoc(collection(db, 'clinics', clinicId, 'patients'), {
+      await setDoc(patientRef, {
         clinicId,
         code,
         name,
@@ -155,8 +156,6 @@ export default function CreatePatientScreen() {
         insurancePolicyNumber: insurancePolicyNumber || null,
         createdAt: serverTimestamp(),
       });
-
-      await reservePatientCode(code, clinicId, patientRef.id);
 
       const localizedCode = localizeNumber(code);
 

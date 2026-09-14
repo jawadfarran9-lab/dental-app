@@ -1,47 +1,108 @@
-// ============================================================
-//  DO NOT DEPLOY OR "FIX" THIS FILE WITHOUT READING THIS BLOCK
-// ============================================================
-//
-// This file MIRRORS the rules currently LIVE in production.
-// They are FULLY OPEN: anyone can read and write all data.
-//
-// This is NOT the intended end state. It is a deliberate snapshot
-// of reality, kept here so that source matches production and a
-// stray `firebase deploy` cannot change behaviour.
-//
-// WHY THE PREVIOUS CONTENTS WERE REMOVED:
-// The old contents of this file (see git history) were never
-// deployed and CANNOT be. They gate on an isOwner() custom claim
-// that is set NOWHERE in the codebase, and read resource.data
-// .ownerId while every writer uses ownerUid. Deploying them would
-// break ~10 of 12 core flows and lock every clinic out of its own
-// data.
-//
-// THE REAL RULES ARE BLOCKED ON THREE THINGS:
-//   1. Owner custom claims (role + clinicId) — never issued today.
-//   2. Doctor Firebase Auth — doctors currently have NO Firebase
-//      Auth session at all (login compares a plaintext password
-//      field in Firestore), so ANY rule requiring
-//      request.auth != null locks out every doctor.
-//   3. Patient Firebase Auth — patients sign in with a 6-digit code
-//      and have no Firebase Auth session either.
-//
-// Until those land, tightening these rules WILL take the app down.
-// Do NOT hand-edit this file to "improve security".
-//
-// LAUNCH BLOCKER: no real clinic may onboard while these rules are
-// live. Today, anyone can read every doctor's plaintext password,
-// grant themselves a free subscription, hijack any clinic, and
-// read or delete all patient data.
-// ============================================================
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    //  DEVELOPMENT MODE - OPEN ACCESS
-    // WARNING: This allows anyone to read/write all data
-    // Use only for development/testing
-    match /{document=**} {
-      allow read, write: if true;
+
+    function signedIn() { return request.auth != null; }
+    function tok() { return request.auth.token; }
+    function isOwner(cid) { return signedIn() && tok().role == 'owner' && tok().clinicId == cid; }
+    function isStaff(cid) { return signedIn() && (tok().role == 'owner' || tok().role == 'doctor') && tok().clinicId == cid; }
+    function ownsClinicDoc(cid) { return signedIn() && exists(/databases/$(database)/documents/clinics/$(cid)) && get(/databases/$(database)/documents/clinics/$(cid)).data.ownerUid == request.auth.uid; }
+    function isPatientOfClinic(cid) { return signedIn() && tok().role == 'patient' && tok().clinicId == cid; }
+    function isPatient(pid) { return signedIn() && tok().role == 'patient' && tok().patientId == pid; }
+    function patientClinic() { return tok().clinicId; }
+    function ownsPatient(pid) {
+      return signedIn() && (tok().role == 'owner' || tok().role == 'doctor')
+        && exists(/databases/$(database)/documents/clinics/$(tok().clinicId)/patients/$(pid));
     }
+
+    match /clinics/{cid} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow update: if isOwner(cid) || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow get:    if isStaff(cid) || isPatientOfClinic(cid) || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow list, delete: if false;
+
+      match /members/{mid} {
+        allow read: if isStaff(cid) || ownsClinicDoc(cid);
+        allow create, update, delete: if isOwner(cid) || ownsClinicDoc(cid);
+      }
+      match /patients/{pid} {
+        allow read: if isStaff(cid) || isPatient(pid);
+        allow create, update, delete: if isStaff(cid);
+        match /sessions/{sid} {
+          allow read: if isStaff(cid) || isPatient(pid);
+          allow write: if isStaff(cid);
+          match /photos/{photoId} { allow read: if isStaff(cid) || isPatient(pid); allow write: if isStaff(cid); }
+          match /private/{doc}    { allow read, write: if isStaff(cid); }
+          match /{sub=**}         { allow read, write: if isStaff(cid); }
+        }
+        match /timeline/{tid} { allow read, write: if isStaff(cid); }
+        match /media/{mid}    { allow read, write: if isStaff(cid);
+          match /annotations/{a} { allow read, write: if isStaff(cid); } }
+        match /images/{imgId} { allow read, write: if isStaff(cid); }
+      }
+      match /settings/{doc}          { allow read: if isStaff(cid); allow write: if isOwner(cid) || ownsClinicDoc(cid); }
+      match /branding/{doc}          { allow read: if isStaff(cid) || isPatientOfClinic(cid); allow write: if isOwner(cid); }
+      match /auditLogs/{doc}         { allow read: if isOwner(cid); allow create: if isStaff(cid); allow update, delete: if false; }
+      match /analytics/{doc}         { allow read, write: if isStaff(cid); }
+      match /usage/{doc}             { allow read, write: if isOwner(cid); }
+      match /trial/{doc}             { allow read, write: if isOwner(cid); }
+      match /counters/{doc}          { allow read, write: if isStaff(cid); }
+      match /questionResponses/{doc} { allow read, write: if isStaff(cid); }
+      match /invites/{doc}           { allow read, write: if isOwner(cid); }
+      match /highlights/{doc}        { allow read: if true; allow write: if isStaff(cid); }
+      match /stories/{doc}           { allow read: if true; allow write: if isStaff(cid); }
+      match /archive/{doc}           { allow read, write: if isStaff(cid); }
+      match /media/{mid} {
+        allow read: if true;
+        allow write: if isStaff(cid);
+        match /likes/{deviceId} { allow read: if true; allow write: if signedIn(); }
+      }
+    }
+
+    match /patients/{pid} {
+      allow read, write: if false;
+      match /messages/{mid} {
+        allow read:   if ownsPatient(pid) || isPatient(pid);
+        allow create: if request.resource.data.clinicId is string
+          && (isStaff(request.resource.data.clinicId) || (isPatient(pid) && request.resource.data.clinicId == patientClinic()))
+          && exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicId)/patients/$(pid));
+        allow update, delete: if isStaff(resource.data.clinicId) || isPatient(pid);
+      }
+      match /appointments/{aid} {
+        allow read:   if ownsPatient(pid) || isPatient(pid);
+        allow create: if request.resource.data.clinicId is string
+          && (isStaff(request.resource.data.clinicId) || (isPatient(pid) && request.resource.data.clinicId == patientClinic()))
+          && exists(/databases/$(database)/documents/clinics/$(request.resource.data.clinicId)/patients/$(pid));
+        allow update, delete: if isStaff(resource.data.clinicId) || isPatient(pid);
+      }
+    }
+
+    match /{path=**}/appointments/{aid} {
+      allow list: if signedIn() && (tok().role == 'owner' || tok().role == 'doctor') && resource.data.clinicId == tok().clinicId;
+    }
+
+    match /threads/{tid} {
+      allow read, list, create, update, delete: if signedIn() && (
+        (request.resource != null && request.resource.data.clinicId == tok().clinicId) ||
+        (resource != null && resource.data.clinicId == tok().clinicId)
+      );
+    }
+
+    match /clinics_public/{cid} {
+      allow read: if true;
+      allow write: if isOwner(cid) || ownsClinicDoc(cid);
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+      match /saved/{postId} { allow read, write: if true; }
+    }
+
+    match /patientCodes/{code} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    match /ai_logs/{doc} { allow read, write: if false; }
   }
 }
